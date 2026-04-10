@@ -1,0 +1,332 @@
+/* ==========================================================================
+   1. ROOT VARIABLES (프로젝트 전역 변수)
+   - 색상, 폰트, 간격 등 모든 디자인 요소를 변수로 정의합니다.
+   - JavaScript (theme.js) 와 인터페이스가 가능하도록 설계되었습니다.
+   ========================================================================== */
+:root {
+  /* Colors */
+  --app-bg-color: #f8f9fa;
+  --app-text-color: #212529;
+  --app-primary-color: #007bff;
+  --app-primary-hover-color: #0056b3;
+  --app-secondary-color: #6c757d;
+  --app-border-color: #dee2e6;
+  --app-surface-color: #ffffff;
+
+  /* Typography */
+  --app-font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --app-font-size-base: 16px;
+  --app-line-height: 1.5;
+  --app-font-weight-normal: 400;
+  --app-font-weight-bold: 700;
+
+  /* Spacing */
+  --app-spacing-none: 0px;
+  --app-spacing-sm: 8px;
+  --app-spacing-md: 16px;
+  --app-spacing-lg: 24px;
+  --app-spacing-xl: 32px;
+
+  /* Layout & Sizes */
+  --app-header-height: 60px;
+  --app-sidebar-width: 250px;
+  --app-border-radius: 4px;
+  --app-border-width: 1px;
+  --app-border-style: solid;
+
+  /* Utilities */
+  --app-display-flex: flex;
+  --app-display-block: block;
+  --app-display-none: none;
+  --app-flex-direction-col: column;
+  --app-flex-direction-row: row;
+  --app-cursor-pointer: pointer;
+  --app-transition-default: all 0.2s ease-in-out;
+}
+
+/* ==========================================================================
+   2. GLOBAL STYLES (동적 변수 전용 스타일)
+   ========================================================================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: var(--app-spacing-none);
+  padding: var(--app-spacing-none);
+}
+
+body {
+  background-color: var(--app-bg-color);
+  color: var(--app-text-color);
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size-base);
+  line-height: var(--app-line-height);
+  font-weight: var(--app-font-weight-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--app-primary-color);
+  text-decoration: var(--app-display-none);
+  transition: var(--app-transition-default);
+}
+
+a:hover {
+  color: var(--app-primary-hover-color);
+}
+
+/* ==========================================================================
+   3. LAYOUT COMPONENTS (변수 기반 레이아웃)
+   ========================================================================== */
+.app-container {
+  display: var(--app-display-flex);
+  flex-direction: var(--app-flex-direction-col);
+  min-height: 100vh;
+}
+
+.app-header {
+  display: var(--app-display-flex);
+  height: var(--app-header-height);
+  background-color: var(--app-surface-color);
+  border-bottom-width: var(--app-border-width);
+  border-bottom-style: var(--app-border-style);
+  border-bottom-color: var(--app-border-color);
+  padding: var(--app-spacing-md);
+}
+
+.app-body {
+  display: var(--app-display-flex);
+  flex-direction: var(--app-flex-direction-row);
+  flex: 1;
+}
+
+.app-sidebar {
+  width: var(--app-sidebar-width);
+  background-color: var(--app-surface-color);
+  border-right-width: var(--app-border-width);
+  border-right-style: var(--app-border-style);
+  border-right-color: var(--app-border-color);
+  padding: var(--app-spacing-md);
+}
+
+.app-content {
+  flex: 1;
+  padding: var(--app-spacing-lg);
+  background-color: var(--app-bg-color);
+}
+
+.app-footer {
+  display: var(--app-display-flex);
+  padding: var(--app-spacing-md);
+  background-color: var(--app-surface-color);
+  border-top-width: var(--app-border-width);
+  border-top-style: var(--app-border-style);
+  border-top-color: var(--app-border-color);
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   4. UI COMPONENTS (변수 기반 UI)
+   ========================================================================== */
+.btn {
+  display: inline-block;
+  cursor: var(--app-cursor-pointer);
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size-base);
+  padding: var(--app-spacing-sm) var(--app-spacing-md);
+  border-radius: var(--app-border-radius);
+  border-width: var(--app-border-width);
+  border-style: var(--app-border-style);
+  transition: var(--app-transition-default);
+}
+
+.btn-primary {
+  background-color: var(--app-primary-color);
+  color: var(--app-surface-color);
+  border-color: var(--app-primary-color);
+}
+
+.btn-primary:hover {
+  background-color: var(--app-primary-hover-color);
+  border-color: var(--app-primary-hover-color);
+}
+
+.btn-secondary {
+  background-color: var(--app-secondary-color);
+  color: var(--app-surface-color);
+  border-color: var(--app-secondary-color);
+}
+
+.btn-secondary:hover {
+  opacity: 0.9;
+}
+
+/* Card Component */
+.app-card {
+  background-color: var(--app-surface-color);
+  border-radius: var(--app-border-radius);
+  border-width: var(--app-border-width);
+  border-style: var(--app-border-style);
+  border-color: var(--app-border-color);
+  padding: var(--app-spacing-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: var(--app-display-flex);
+  flex-direction: var(--app-flex-direction-col);
+}
+
+/* Input Component */
+.app-input {
+  width: 100%;
+  padding: var(--app-spacing-sm) var(--app-spacing-md);
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size-base);
+  color: var(--app-text-color);
+  background-color: var(--app-surface-color);
+  border-radius: var(--app-border-radius);
+  border-width: var(--app-border-width);
+  border-style: var(--app-border-style);
+  border-color: var(--app-border-color);
+  transition: var(--app-transition-default);
+}
+
+.app-input:focus {
+  outline: none;
+  border-color: var(--app-primary-color);
+}
+
+/* Page Title Component */
+.app-page-title {
+  font-family: var(--app-font-family);
+  font-size: 24px;
+  font-weight: var(--app-font-weight-bold);
+  color: var(--app-text-color);
+  margin-bottom: var(--app-spacing-lg);
+  padding-bottom: var(--app-spacing-sm);
+  border-bottom-width: var(--app-border-width);
+  border-bottom-style: var(--app-border-style);
+  border-bottom-color: var(--app-border-color);
+}
+
+/* Grid System (Flexbox) */
+.app-grid {
+  display: var(--app-display-flex);
+  flex-wrap: wrap;
+  gap: var(--app-spacing-md);
+}
+
+.app-grid-item {
+  flex: 1;
+  min-width: 250px;
+}
+
+/* Table Component */
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--app-surface-color);
+  border-width: var(--app-border-width);
+  border-style: var(--app-border-style);
+  border-color: var(--app-border-color);
+}
+
+.app-table th,
+.app-table td {
+  padding: var(--app-spacing-sm) var(--app-spacing-md);
+  border-bottom-width: var(--app-border-width);
+  border-bottom-style: var(--app-border-style);
+  border-bottom-color: var(--app-border-color);
+  text-align: left;
+}
+
+.app-table th {
+  background-color: var(--app-bg-color);
+  font-weight: var(--app-font-weight-bold);
+}
+
+/* Modal Component */
+.app-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: var(--app-display-flex);
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.app-modal {
+  background-color: var(--app-surface-color);
+  border-radius: var(--app-border-radius);
+  width: 500px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: var(--app-display-flex);
+  flex-direction: var(--app-flex-direction-col);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.app-modal-body {
+  padding: var(--app-spacing-lg);
+  overflow-y: auto;
+}
+
+/* Tree Table Component */
+.app-tree-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--app-surface-color);
+}
+
+.app-tree-table th,
+.app-tree-table td {
+  padding: var(--app-spacing-sm) var(--app-spacing-md);
+  border-bottom-width: var(--app-border-width);
+  border-bottom-style: var(--app-border-style);
+  border-bottom-color: var(--app-border-color);
+  text-align: left;
+}
+
+.app-tree-table th {
+  background-color: var(--app-bg-color);
+  font-weight: var(--app-font-weight-bold);
+}
+
+.app-tree-row {
+  transition: var(--app-transition-default);
+}
+
+.app-tree-row:hover {
+  background-color: var(--app-bg-color);
+}
+
+.tree-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tree-toggle {
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  user-select: none;
+}
+
+.tree-toggle:hover {
+  background-color: var(--app-border-color);
+}
+
+.tree-indent {
+  display: inline-block;
+  width: 24px;
+}
