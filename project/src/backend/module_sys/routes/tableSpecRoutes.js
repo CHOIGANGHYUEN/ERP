@@ -4,13 +4,20 @@ import {
   getTableDetail,
   saveTableSpec,
   generateSql,
+  generateInsertSql,
+  generateUpdateSql,
+  executeSql,
 } from '../controllers/tableSpecController.js'
+import { verifyToken } from '../../common/middleware/authMiddleware.js'
 
 const router = express.Router()
 
-router.get('/', getTableList)
-router.get('/:tablen', getTableDetail)
-router.post('/', saveTableSpec)
-router.post('/:tablen/generate-sql', generateSql)
+router.get('/', verifyToken, getTableList)
+router.get('/:tablen', verifyToken, getTableDetail)
+router.post('/', verifyToken, saveTableSpec)
+router.post('/:tablen/generate-sql', verifyToken, generateSql)
+router.get('/:tablen/sql/insert', verifyToken, generateInsertSql)
+router.get('/:tablen/sql/update', verifyToken, generateUpdateSql)
+router.post('/:tablen/execute-sql', verifyToken, executeSql)
 
 export default router

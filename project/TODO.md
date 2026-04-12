@@ -14,13 +14,13 @@ Implement secure access and user management focusing on Google Account integrati
 ## 📊 Phase 2: API Logging System
 Ensure all interactions with the backend are recorded for auditing and debugging.
 
-- [ ] **API Logging Middleware**: Implement middleware in `src/backend/common/config/logger.js` (or a dedicated middleware) to log every incoming API request (Method, URL, User ID from Token, Timestamp, Response Status).
-- [ ] **Database/File Logging**: Configure the logger to write to a persistent store (database table or rotating log files).
+- [x] **API Logging Middleware**: Implement middleware in `src/backend/common/middleware/apiLogger.js` to log every incoming API request (Method, URL, User ID from Token, Timestamp, Response Status) after `verifyToken` populates `req.user`.
+- [x] **Database/File Logging**: Configure the logger to write to a persistent store (`sysLogUser` database table).
 
 ## 🏗️ Phase 3: Backend Service Architecture (API-First)
 Ensure the backend acts as a fully capable, standalone service.
 
-- [ ] **API Completeness**: Ensure all business logic across `module_fi`, `module_hr`, `module_mm`, `module_sd`, and `module_sys` is fully executable via RESTful API calls without depending on frontend state.
+- [ ] **API Completeness**: Ensure all business logic across `module_sys` is fully executable via RESTful API calls without depending on frontend state.
 - [ ] **Standardized API Responses**: Implement consistent success/error response formatting across all controllers.
 - [x] **Layer Separation (Service/Repository)**: Separate DB queries into Repository files (e.g., `roleRepository.js`) to keep Services focused on business logic.
 
@@ -47,8 +47,12 @@ Implement and refactor the frontend screens corresponding to the core system mod
 - [x] **SYST01 User Management**: Implement `SYST01V001.vue` (List) and `SYST01V002.vue` (Detail/Form).
 - [x] **SYST02 Role & Permission**: Implement `SYST02V001.vue` (List) and `SYST02V002.vue` (Detail/Form).
 - [x] **SYST03 Menu Management**: Implement `SYST03V001.vue` (List) and `SYST03V002.vue` (Detail/Form).
-- [ ] **SYST04 Common Code**: Implement `SYST04V001.vue` (List) and `SYST04V002.vue` (Detail/Form).
+- [x] **SYST04 Common Code**: Implement `SYST04V001.vue` (List) and `SYST04V002.vue` (Detail/Form).
 - [x] **SYST05 System Settings**: Implement `SYST05V001.vue` (List) and `SYST05V002.vue` (Detail/Form).
+- [x] **Bugfix: SYST05 System Settings (`configService.js`)**:
+  - [x] Fix "Config not found" error when updating mock data. (Seed initial data to DB)
+  - [x] Fix issue where mock data disappears after a new config is created.
+  - [x] Allow updates without changes (handle `updatedRows === 0` gracefully).
 ## ⚙️ Phase 8: SYST06 Table Specifications Manager Implementation
 Implement the module to manage database table specifications, track change history, and generate SQL DDL scripts.
 
@@ -58,14 +62,21 @@ Implement the module to manage database table specifications, track change histo
 - [x] **Frontend: Views Creation**: Create `SYST06/SYST06V001.vue` (List View) and `SYST06/SYST06V002.vue` (Detail View).
 - [x] **Frontend: Master-Detail UI**: Implement Master form (Table info) and Detail tabs/grids (Fields, Indexes, History) in `SYST06V002`.
 - [x] **Frontend: SQL Execution UI**: Add "Generate SQL" modal and execution functionality to apply changes to the DB.
+- [x] **Bugfix & UX/UI: SYST06**:
+  - [x] Fix Cartesian Product (N+1) bug in `tableSpecService` causing slow loads and duplicated index IDs.
+  - [x] Add up/down reorder buttons to Fields and Indexes lists.
+  - [x] Support AUTO_INCREMENT configuration in Fields (`isAutoIncrement`) and DDL generation.
+  - [x] Fix Vue Router path mismatch (`/sys/tables` to `/sys/syst06`).
+  - [x] **Modern UI Refactoring**: Completely refactored `SYST05V002` and `SYST06V002` to use responsive flex/grids, staggered CSS animations (`fadeInUp`), and modern input/button styles (`icon-btn`, `btn-danger`, transparent table cells).
 - [x] **SYST00 System Dashboard**: Implement `SYST00V001.vue` (Dashboard).
 
-## 🔍 Phase 7: Mandatory Search & Pagination Implementation
-Ensure all list views contain proper search conditions, a search button, and pagination.
+## 🔍 Phase 7: Mandatory Search, Pagination & UI Modernization Implementation
+Ensure all list views contain proper search conditions, a search button, pagination, and adhere strictly to the new modern UX/UI guidelines.
 
 - [x] **UI Component Update**: Create or update existing pagination and search bar UI components.
-- [ ] **System Module (SYS) Update**: Apply search filters and pagination to the list views: `SYST01V001`, `SYST02V001`, and `SYST04V001`.
-- [ ] **Global Standard Enforced**: Verify that any future view screens adhere to this mandatory standard.
+- [x] **System Module (SYS) Update**: Apply search filters, pagination, and the new **modern UI classes** (smooth animations, responsive auto-fit grids, modern-data-table) to the list views: `SYST01V001`, `SYST02V001`, and `SYST04V001`.
+- [x] **Strict API Modularization**: Refactor any remaining views (SYST02, SYST03, SYST05, SYST06, SYST00) to strictly use API modules (`api/*Api.js`) and completely remove raw `fetch`/`axios` calls.
+- [ ] **Global Standard Enforced**: Verify that any future view screens adhere to this mandatory modern standard.
 
 ## 🔧 Ongoing Maintenance
 - [ ] **System Variables Documentation**: Maintain documentation of all required `.env` variables (e.g., `DB_HOST`, `VITE_GOOGLE_CLIENT_ID`, `JWT_SECRET`) in `README.md`.

@@ -23,7 +23,7 @@ const configController = {
 
   async createConfig(req, res) {
     try {
-      const userId = req.user.userId
+      const userId = req.user?.userId || 'system'
       const config = await configService.createConfig(req.body, userId)
       res.status(201).json(config)
     } catch (error) {
@@ -34,7 +34,7 @@ const configController = {
   async updateConfig(req, res) {
     try {
       const { id } = req.params
-      const userId = req.user.userId
+      const userId = req.user?.userId || 'system'
       const config = await configService.updateConfig(id, req.body, userId)
       res.json(config)
     } catch (error) {

@@ -1,9 +1,6 @@
-import axios from 'axios'
+import { createApiClient } from '@/frontend/common/utils/apiClient.js'
 
-const apiClient = axios.create({
-  baseURL: '/api/sys/roles',
-  withCredentials: true,
-})
+const apiClient = createApiClient('/api/sys/roles')
 
 export const getRoles = async (params) => {
   const response = await apiClient.get('/', { params })
@@ -36,7 +33,7 @@ export const getRoleMenus = async (id) => {
 }
 
 export const updateRoleMenus = async (id, menuIds) => {
-  const response = await apiClient.post(`/${id}/menus`, { menuIds })
+  const response = await apiClient.put(`/${id}/menus`, { menuIds })
   return response.data
 }
 
@@ -46,6 +43,6 @@ export const getRoleUsers = async (id) => {
 }
 
 export const updateRoleUsers = async (id, userIds) => {
-  const response = await apiClient.post(`/${id}/users`, { userIds })
+  const response = await apiClient.put(`/${id}/users`, { userIds })
   return response.data
 }

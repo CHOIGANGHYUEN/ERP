@@ -5,21 +5,22 @@
    ========================================================================== */
 :root {
   /* Colors */
-  --app-bg-color: #f8f9fa;
-  --app-text-color: #212529;
+  --app-bg-color: #f4f6f8; /* slightly softer and modern background */
+  --app-text-color: #2c3e50;
   --app-primary-color: #007bff;
   --app-primary-hover-color: #0056b3;
   --app-secondary-color: #6c757d;
-  --app-border-color: #dee2e6;
+  --app-border-color: #e2e8f0;
   --app-surface-color: #ffffff;
 
   /* Typography */
   --app-font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --app-font-size-base: 16px;
-  --app-line-height: 1.5;
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --app-font-size-base: 15px; /* slightly more modern base size */
+  --app-line-height: 1.6;
   --app-font-weight-normal: 400;
-  --app-font-weight-bold: 700;
+  --app-font-weight-bold: 600; /* 600 often looks cleaner than 700 */
 
   /* Spacing */
   --app-spacing-none: 0px;
@@ -29,9 +30,9 @@
   --app-spacing-xl: 32px;
 
   /* Layout & Sizes */
-  --app-header-height: 60px;
-  --app-sidebar-width: 250px;
-  --app-border-radius: 4px;
+  --app-header-height: 64px; /* slightly taller */
+  --app-sidebar-width: 260px;
+  --app-border-radius: 8px; /* rounder corners for modern feel */
   --app-border-width: 1px;
   --app-border-style: solid;
 
@@ -42,7 +43,69 @@
   --app-flex-direction-col: column;
   --app-flex-direction-row: row;
   --app-cursor-pointer: pointer;
-  --app-transition-default: all 0.2s ease-in-out;
+  --app-transition-default: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); /* smoother cubic bezier */
+  --app-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --app-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --app-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* ==========================================================================
+   다크 모드 (Dark Mode) 글로벌 CSS 변수 덮어쓰기
+   ========================================================================== */
+body.theme-dark {
+  --app-bg-color: #0f172a;
+  --app-surface-color: #1e293b;
+  --app-text-color: #f8fafc;
+  --app-border-color: #334155;
+}
+
+body.theme-dark .app-table th,
+body.theme-dark .app-tree-table th {
+  background-color: #334155;
+  color: #e2e8f0;
+}
+
+body.theme-dark .btn-secondary {
+  background-color: #334155;
+  color: #f8fafc;
+  border-color: #475569;
+}
+
+body.theme-dark .btn-danger {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+  border-color: #991b1b;
+}
+body.theme-dark .btn-danger:hover {
+  background-color: #991b1b;
+  color: white;
+}
+body.theme-dark .badge-success {
+  background-color: #064e3b;
+  color: #6ee7b7;
+}
+body.theme-dark .badge-warning {
+  background-color: #78350f;
+  color: #fcd34d;
+}
+body.theme-dark .badge-danger {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+body.theme-dark .icon-btn:hover:not(:disabled) {
+  background-color: #334155;
+}
+body.theme-dark .icon-btn.danger:hover:not(:disabled) {
+  background-color: #7f1d1d;
+}
+
+body.theme-dark .app-input:disabled {
+  background-color: #334155;
+  color: #94a3b8;
+}
+body.theme-dark .empty-state {
+  color: #64748b;
 }
 
 /* ==========================================================================
@@ -64,6 +127,7 @@ body {
   line-height: var(--app-line-height);
   font-weight: var(--app-font-weight-normal);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -74,6 +138,38 @@ a {
 
 a:hover {
   color: var(--app-primary-hover-color);
+}
+
+/* Smooth Entrance Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 /* ==========================================================================
@@ -92,13 +188,21 @@ a:hover {
   border-bottom-width: var(--app-border-width);
   border-bottom-style: var(--app-border-style);
   border-bottom-color: var(--app-border-color);
-  padding: var(--app-spacing-md);
+  padding: 0 var(--app-spacing-lg);
+  align-items: center;
+  box-shadow: var(--app-shadow-sm);
+  z-index: 10;
+  position: sticky;
+  top: 0;
+  transition: var(--app-transition-default);
 }
 
 .app-body {
   display: var(--app-display-flex);
   flex-direction: var(--app-flex-direction-row);
   flex: 1;
+  position: relative;
+  overflow: hidden;
 }
 
 .app-sidebar {
@@ -108,12 +212,18 @@ a:hover {
   border-right-style: var(--app-border-style);
   border-right-color: var(--app-border-color);
   padding: var(--app-spacing-md);
+  transition: var(--app-transition-default);
+  overflow-y: auto;
+  z-index: 5;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.02);
 }
 
 .app-content {
   flex: 1;
   padding: var(--app-spacing-lg);
   background-color: var(--app-bg-color);
+  overflow-y: auto;
+  animation: fadeIn 0.5s ease-out;
 }
 
 .app-footer {
@@ -125,42 +235,113 @@ a:hover {
   border-top-color: var(--app-border-color);
   align-items: center;
   justify-content: center;
+  font-size: 0.9em;
+  color: var(--app-secondary-color);
 }
 
 /* ==========================================================================
    4. UI COMPONENTS (변수 기반 UI)
    ========================================================================== */
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: var(--app-cursor-pointer);
   font-family: var(--app-font-family);
-  font-size: var(--app-font-size-base);
-  padding: var(--app-spacing-sm) var(--app-spacing-md);
-  border-radius: var(--app-border-radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 8px var(--app-spacing-md);
+  border-radius: 6px;
   border-width: var(--app-border-width);
   border-style: var(--app-border-style);
   transition: var(--app-transition-default);
+  user-select: none;
+  outline: none;
+}
+
+.btn:active {
+  transform: scale(0.96);
 }
 
 .btn-primary {
   background-color: var(--app-primary-color);
   color: var(--app-surface-color);
   border-color: var(--app-primary-color);
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.25);
 }
 
 .btn-primary:hover {
   background-color: var(--app-primary-hover-color);
   border-color: var(--app-primary-hover-color);
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-primary:focus-visible {
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.3);
 }
 
 .btn-secondary {
-  background-color: var(--app-secondary-color);
-  color: var(--app-surface-color);
-  border-color: var(--app-secondary-color);
+  background-color: var(--app-surface-color);
+  color: var(--app-text-color);
+  border-color: var(--app-border-color);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .btn-secondary:hover {
-  opacity: 0.9;
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.btn-secondary:focus-visible {
+  box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.2);
+}
+
+.btn-danger {
+  background-color: #fee2e2;
+  color: #ef4444;
+  border-color: #fca5a5;
+  transition: var(--app-transition-default);
+}
+.btn-danger:hover {
+  background-color: #ef4444;
+  color: white;
+  border-color: #ef4444;
+  box-shadow: 0 4px 6px rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: var(--app-transition-default);
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:hover:not(:disabled) {
+  background-color: #f1f5f9;
+}
+.icon-btn.danger {
+  color: #ef4444;
+}
+.icon-btn.danger:hover:not(:disabled) {
+  background-color: #fee2e2;
+}
+.icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
 }
 
 /* Card Component */
@@ -170,43 +351,79 @@ a:hover {
   border-width: var(--app-border-width);
   border-style: var(--app-border-style);
   border-color: var(--app-border-color);
-  padding: var(--app-spacing-md);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: var(--app-spacing-lg);
+  box-shadow: var(--app-shadow-sm);
   display: var(--app-display-flex);
   flex-direction: var(--app-flex-direction-col);
+  transition: var(--app-transition-default);
+  animation: fadeInUp 0.4s ease-out backwards;
+}
+
+.app-card:hover {
+  box-shadow: var(--app-shadow-md);
+}
+
+/* Add staggered animation delays for multiple cards */
+.app-card:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.app-card:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.app-card:nth-child(3) {
+  animation-delay: 0.15s;
+}
+.app-card:nth-child(4) {
+  animation-delay: 0.2s;
+}
+.app-card:nth-child(5) {
+  animation-delay: 0.25s;
 }
 
 /* Input Component */
 .app-input {
   width: 100%;
-  padding: var(--app-spacing-sm) var(--app-spacing-md);
+  padding: 9px var(--app-spacing-md);
   font-family: var(--app-font-family);
-  font-size: var(--app-font-size-base);
+  font-size: 0.95rem;
   color: var(--app-text-color);
   background-color: var(--app-surface-color);
-  border-radius: var(--app-border-radius);
+  border-radius: 6px;
   border-width: var(--app-border-width);
   border-style: var(--app-border-style);
   border-color: var(--app-border-color);
   transition: var(--app-transition-default);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.app-input:hover {
+  border-color: #cbd5e1;
 }
 
 .app-input:focus {
   outline: none;
   border-color: var(--app-primary-color);
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+.app-input:disabled {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.8;
 }
 
 /* Page Title Component */
 .app-page-title {
   font-family: var(--app-font-family);
-  font-size: 24px;
+  font-size: 1.75rem;
   font-weight: var(--app-font-weight-bold);
   color: var(--app-text-color);
   margin-bottom: var(--app-spacing-lg);
   padding-bottom: var(--app-spacing-sm);
-  border-bottom-width: var(--app-border-width);
-  border-bottom-style: var(--app-border-style);
-  border-bottom-color: var(--app-border-color);
+  border-bottom: 2px solid var(--app-border-color);
+  animation: fadeIn 0.5s ease-out;
+  letter-spacing: -0.5px;
 }
 
 /* Grid System (Flexbox) */
@@ -216,33 +433,155 @@ a:hover {
   gap: var(--app-spacing-md);
 }
 
+.modern-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px 24px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.form-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--app-text-color);
+  letter-spacing: 0.3px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--app-border-color);
+}
+.right-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.select-wrapper {
+  position: relative;
+}
+.select-wrapper::after {
+  content: '▼';
+  font-size: 0.7rem;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--app-secondary-color);
+}
+.modern-select {
+  appearance: none;
+  padding-right: 32px;
+  cursor: pointer;
+}
+.modern-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--app-primary-color);
+}
+
+.badge-success {
+  background-color: #d1fae5;
+  color: #059669;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-block;
+  text-align: center;
+}
+.badge-warning {
+  background-color: #fef3c7;
+  color: #b45309;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-block;
+  text-align: center;
+}
+.badge-danger {
+  background-color: #fee2e2;
+  color: #ef4444;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-block;
+  text-align: center;
+}
+.empty-state {
+  text-align: center;
+  padding: 32px !important;
+  color: var(--app-secondary-color);
+  font-size: 0.95rem;
+}
+
 .app-grid-item {
   flex: 1;
   min-width: 250px;
 }
 
 /* Table Component */
+.table-responsive {
+  overflow-x: auto;
+  border-radius: var(--app-border-radius);
+  border: 1px solid var(--app-border-color);
+  background-color: var(--app-surface-color);
+}
+
 .app-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background-color: var(--app-surface-color);
-  border-width: var(--app-border-width);
-  border-style: var(--app-border-style);
-  border-color: var(--app-border-color);
+  font-size: 0.95rem;
 }
 
 .app-table th,
 .app-table td {
-  padding: var(--app-spacing-sm) var(--app-spacing-md);
-  border-bottom-width: var(--app-border-width);
-  border-bottom-style: var(--app-border-style);
-  border-bottom-color: var(--app-border-color);
+  padding: 12px var(--app-spacing-md);
+  border-bottom: 1px solid var(--app-border-color);
   text-align: left;
+  transition: background-color 0.2s ease;
+  vertical-align: middle;
 }
 
 .app-table th {
-  background-color: var(--app-bg-color);
-  font-weight: var(--app-font-weight-bold);
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.app-table tbody tr {
+  transition: var(--app-transition-default);
+}
+
+.app-table tbody tr:hover {
+  background-color: #f1f5f9;
+}
+
+.app-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 /* Modal Component */
@@ -252,22 +591,25 @@ a:hover {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(15, 23, 42, 0.6); /* darker modern overlay */
+  backdrop-filter: blur(4px); /* soft blur effect */
   display: var(--app-display-flex);
   justify-content: center;
   align-items: center;
   z-index: 9999;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .app-modal {
   background-color: var(--app-surface-color);
-  border-radius: var(--app-border-radius);
-  width: 500px;
-  max-width: 90vw;
+  border-radius: 12px;
+  width: 600px;
+  max-width: 95vw;
   max-height: 90vh;
   display: var(--app-display-flex);
   flex-direction: var(--app-flex-direction-col);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--app-shadow-lg);
+  animation: modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* bouncy pop */
 }
 
 .app-modal-body {
@@ -278,22 +620,27 @@ a:hover {
 /* Tree Table Component */
 .app-tree-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background-color: var(--app-surface-color);
+  font-size: 0.95rem;
 }
 
 .app-tree-table th,
 .app-tree-table td {
-  padding: var(--app-spacing-sm) var(--app-spacing-md);
-  border-bottom-width: var(--app-border-width);
-  border-bottom-style: var(--app-border-style);
-  border-bottom-color: var(--app-border-color);
+  padding: 12px var(--app-spacing-md);
+  border-bottom: 1px solid var(--app-border-color);
   text-align: left;
+  vertical-align: middle;
 }
 
 .app-tree-table th {
-  background-color: var(--app-bg-color);
-  font-weight: var(--app-font-weight-bold);
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .app-tree-row {
@@ -301,7 +648,7 @@ a:hover {
 }
 
 .app-tree-row:hover {
-  background-color: var(--app-bg-color);
+  background-color: #f1f5f9;
 }
 
 .tree-cell {
@@ -312,21 +659,81 @@ a:hover {
 
 .tree-toggle {
   cursor: pointer;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  border-radius: var(--app-border-radius);
+  transition: var(--app-transition-default);
   user-select: none;
+  background-color: #f1f5f9;
+  color: #64748b;
+  font-weight: bold;
 }
 
 .tree-toggle:hover {
-  background-color: var(--app-border-color);
+  background-color: #e2e8f0;
+  color: #0f172a;
+  transform: scale(1.05);
+}
+
+.tree-toggle:active {
+  transform: scale(0.95);
 }
 
 .tree-indent {
   display: inline-block;
-  width: 24px;
+  width: 28px;
+}
+
+/* Custom Scrollbar for modern look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==========================================================================
+   5. RESPONSIVE DESIGN (미디어 쿼리)
+   ========================================================================== */
+@media (max-width: 768px) {
+  .app-sidebar {
+    position: absolute;
+    height: 100%;
+    transform: translateX(-100%);
+    box-shadow: var(--app-shadow-lg);
+  }
+
+  /* When sidebar is active (Needs JS logic to toggle '.active' class) */
+  .app-sidebar.active {
+    transform: translateX(0);
+  }
+
+  .app-content {
+    padding: var(--app-spacing-md);
+  }
+
+  .app-page-title {
+    font-size: 1.4rem;
+    margin-bottom: var(--app-spacing-md);
+  }
+
+  .app-card {
+    padding: var(--app-spacing-md);
+  }
+
+  .app-table th,
+  .app-table td {
+    padding: 8px var(--app-spacing-sm);
+  }
 }

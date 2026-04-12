@@ -45,12 +45,15 @@ onMounted(() => {
 
 const handleCredentialResponse = async (response) => {
   try {
+    // 토큰을 Base64로 인코딩하여 백엔드로 전송 (향후 AES 등으로 확장 가능)
+    const encryptedCredential = btoa(response.credential)
+
     const res = await fetch('/api/auth/google', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ credential: response.credential }),
+      body: JSON.stringify({ credential: encryptedCredential }),
     })
     const data = await res.json()
     if (res.ok) {

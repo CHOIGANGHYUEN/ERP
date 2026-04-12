@@ -186,7 +186,7 @@ const saveData = async () => {
     if (isNew.value) {
       await saveRole(roleData.value)
       alert('저장되었습니다.')
-      router.push(`/sys/roles/${roleData.value.roleId}`)
+      router.push(`/sys/syst02/${roleData.value.roleId}`)
     } else {
       await updateRole(roleData.value.roleId, roleData.value)
       
@@ -216,7 +216,7 @@ const deleteData = async () => {
 }
 
 const goBack = () => {
-  router.push('/sys/roles')
+  router.push('/sys/syst02')
 }
 
 onMounted(() => {

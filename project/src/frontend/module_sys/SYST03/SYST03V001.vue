@@ -56,9 +56,7 @@
             <td>{{ menu.useYn === 1 ? 'Y' : 'N' }}</td>
           </tr>
           <tr v-if="visibleMenus.length === 0">
-            <td colspan="7" style="text-align: center; padding: 24px">
-              데이터가 없습니다.
-            </td>
+            <td colspan="7" style="text-align: center; padding: 24px">데이터가 없습니다.</td>
           </tr>
         </tbody>
       </table>
@@ -73,7 +71,7 @@ import AppPageTitle from '@/frontend/common/components/AppPageTitle.vue'
 import AppCard from '@/frontend/common/components/AppCard.vue'
 import AppInput from '@/frontend/common/components/AppInput.vue'
 import AppButton from '@/frontend/common/components/AppButton.vue'
-import { getMenus } from '../api/menuApi'
+import { getMenus } from '../api/menuApi.js'
 
 const router = useRouter()
 const menus = ref([])
@@ -152,30 +150,29 @@ const fetchMenus = async () => {
     // because pagination breaks the tree hierarchy if children are on page 2
     const data = await getMenus({
       page: 1,
-      limit: 1000, 
+      limit: 1000,
       search: searchQuery.value,
     })
     menus.value = data.data
-    
+
     // Auto-expand all root nodes on load
     if (menus.value.length > 0 && expandedNodes.value.size === 0) {
-      const rootNodes = menus.value.filter(m => !m.parentMenuId || m.parentMenuId.trim() === '')
+      const rootNodes = menus.value.filter((m) => !m.parentMenuId || m.parentMenuId.trim() === '')
       const newSet = new Set()
-      rootNodes.forEach(n => newSet.add(n.menuId))
+      rootNodes.forEach((n) => newSet.add(n.menuId))
       expandedNodes.value = newSet
     }
-
   } catch (error) {
     console.error('Error fetching menus:', error)
   }
 }
 
 const goToDetail = (id) => {
-  router.push(`/sys/menus/${id}`)
+  router.push(`/sys/syst03/${id}`)
 }
 
 const goToCreate = () => {
-  router.push(`/sys/menus/new`)
+  router.push(`/sys/syst03/new`)
 }
 
 onMounted(() => {

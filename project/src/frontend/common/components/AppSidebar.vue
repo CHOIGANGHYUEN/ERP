@@ -3,7 +3,7 @@
     <nav>
       <ul class="menu-list">
         <li
-          v-for="menu in menuTree"
+          v-for="menu in filteredMenuTree"
           :key="menu.menuId"
           @mouseenter="menu.isHovered = true"
           @mouseleave="menu.isHovered = false"
@@ -76,12 +76,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useConfigStore } from '@/frontend/module_sys/SYST05/configStore'
 
 const route = useRoute()
+const configStore = useConfigStore()
 const flatMenus = ref([])
 const menuTree = ref([])
+
+// ERP 모듈 사용 설정(MOD_*)에 따라 노출할 메인 메뉴 필터링
+const filteredMenuTree = computed(() => {
+  return menuTree.value.filter((menu) => {
+    // 루트 메뉴의 ID(SYS, FI, HR 등)를 기준으로 사용 여부(Y/N) 판단
+    const modKey = `MOD_${menu.menuId}`
+    return configStore.getConfigValue(modKey, 'Y') === 'Y'
+  })
+})
 
 const isActive = (path) => {
   if (!path) return false

@@ -107,6 +107,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getTableList } from '../api/tableSpecApi.js'
 
 const router = useRouter()
 
@@ -119,40 +120,34 @@ const searchQuery = ref({
 const tables = ref([])
 const currentPage = ref(1)
 const totalPages = ref(1)
+const pageSize = ref(10)
 
 const searchTables = async () => {
-  // Mock API call based on search
-  const allTables = [
-    {
-      module: 'SYS',
-      tablen: 'sysUser',
-      tableNm: '사용자 정보',
-      description: '시스템 사용자 기본 정보',
-    },
-    { module: 'SYS', tablen: 'sysRole', tableNm: '권한 정보', description: '시스템 권한 정보' },
-    { module: 'FI', tablen: 'fiAccount', tableNm: '계정과목 정보', description: '회계 계정과목' },
-    { module: 'HR', tablen: 'hrEmployee', tableNm: '직원 정보', description: '인사 기본 정보' },
-  ]
+  try {
+    const result = await getTableList({
+      module: searchQuery.value.module,
+      tablen: searchQuery.value.tablen,
+      tableNm: searchQuery.value.tableNm,
+      page: currentPage.value,
+      size: pageSize.value,
+    })
 
-  tables.value = allTables.filter(
-    (t) =>
-      (!searchQuery.value.module || t.module.includes(searchQuery.value.module)) &&
-      (!searchQuery.value.tablen ||
-        t.tablen.toLowerCase().includes(searchQuery.value.tablen.toLowerCase())) &&
-      (!searchQuery.value.tableNm ||
-        t.tableNm.toLowerCase().includes(searchQuery.value.tableNm.toLowerCase())),
-  )
-
-  totalPages.value = Math.max(1, Math.ceil(tables.value.length / 10))
+    tables.value = result.data || []
+    totalPages.value = Math.max(1, Math.ceil((result.total || 0) / pageSize.value))
+  } catch (error) {
+    console.error('Error fetching tables:', error)
+    alert('조회 중 오류가 발생했습니다.')
+  }
 }
 
 const goToDetail = (tablen) => {
-  router.push(`/sys/tables/${tablen}`)
+  router.push(`/sys/syst06/${tablen}`)
 }
 
 const changePage = (page) => {
   if (page >= 1 && page <= totalPages.value) {
     currentPage.value = page
+    searchTables()
   }
 }
 
@@ -160,9 +155,3 @@ onMounted(() => {
   searchTables()
 })
 </script>
-
-<style scoped>
-.app-table tbody tr:hover {
-  background-color: #f1f3f5;
-}
-</style>

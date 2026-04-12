@@ -28,58 +28,97 @@ const router = createRouter({
         },
         {
           path: 'sys',
-          name: 'sys',
+          redirect: '/sys/syst00',
+        },
+        {
+          path: 'sys/syst00',
+          name: 'sys-syst00',
           component: () => import('@/frontend/module_sys/SYST00/SYST00V001.vue'),
         },
         {
-          path: 'sys/users',
-          name: 'sys-users',
+          path: 'sys/syst01',
+          name: 'sys-syst01',
           component: () => import('@/frontend/module_sys/SYST01/SYST01V001.vue'),
         },
         {
-          path: 'sys/roles',
-          name: 'sys-roles',
+          path: 'sys/syst01/:id',
+          name: 'sys-syst01-detail',
+          component: () => import('@/frontend/module_sys/SYST01/SYST01V002.vue'),
+        },
+        {
+          path: 'sys/syst02',
+          name: 'sys-syst02',
           component: () => import('@/frontend/module_sys/SYST02/SYST02V001.vue'),
         },
         {
-          path: 'sys/roles/:id',
-          name: 'sys-role-detail',
+          path: 'sys/syst02/:id',
+          name: 'sys-syst02-detail',
           component: () => import('@/frontend/module_sys/SYST02/SYST02V002.vue'),
         },
         {
-          path: 'sys/menus',
-          name: 'sys-menus',
+          path: 'sys/syst03',
+          name: 'sys-syst03',
           component: () => import('@/frontend/module_sys/SYST03/SYST03V001.vue'),
         },
         {
-          path: 'sys/menus/:id',
-          name: 'sys-menu-detail',
+          path: 'sys/syst03/:id',
+          name: 'sys-syst03-detail',
           component: () => import('@/frontend/module_sys/SYST03/SYST03V002.vue'),
         },
         {
-          path: 'sys/codes',
-          name: 'sys-codes',
+          path: 'sys/syst04',
+          name: 'sys-syst04',
           component: () => import('@/frontend/module_sys/SYST04/SYST04V001.vue'),
         },
         {
-          path: 'sys/settings',
-          name: 'sys-settings',
+          path: 'sys/syst04/:id',
+          name: 'sys-syst04-detail',
+          component: () => import('@/frontend/module_sys/SYST04/SYST04V002.vue'),
+        },
+        {
+          path: 'sys/syst05',
+          name: 'sys-syst05',
           component: () => import('@/frontend/module_sys/SYST05/SYST05V001.vue'),
         },
         {
-          path: 'sys/settings/:id',
-          name: 'sys-setting-detail',
+          path: 'sys/syst05/:id',
+          name: 'sys-syst05-detail',
           component: () => import('@/frontend/module_sys/SYST05/SYST05V002.vue'),
         },
         {
-          path: 'sys/tables',
-          name: 'sys-tables',
+          path: 'sys/syst05/:id/delete',
+          name: 'sys-syst05-delete',
+          component: () => import('@/frontend/module_sys/SYST05/SYST05V003.vue'),
+        },
+        {
+          path: 'sys/syst06',
+          name: 'sys-syst06',
           component: () => import('@/frontend/module_sys/SYST06/SYST06V001.vue'),
         },
         {
-          path: 'sys/tables/:tablen',
-          name: 'sys-table-detail',
+          path: 'sys/syst06/:tablen',
+          name: 'sys-syst06-detail',
           component: () => import('@/frontend/module_sys/SYST06/SYST06V002.vue'),
+        },
+        {
+          path: 'sys/syst07',
+          name: 'sys-syst07',
+          component: () => import('@/frontend/module_sys/SYST07/SYST07V001.vue'),
+        },
+        {
+          path: 'sys/syst071',
+          name: 'sys-syst071',
+          component: () => import('@/frontend/module_sys/SYST071/SYST071V001.vue'),
+        },
+        {
+          path: 'sys/syst072',
+          name: 'sys-syst072',
+          component: () => import('@/frontend/module_sys/SYST072/SYST072V001.vue'),
+        },
+        {
+          path: 'sys/syst073',
+          name: 'sys-syst073',
+          component: () => import('@/frontend/module_sys/SYST073/SYST073V001.vue'),
         },
         // Future routes like /fi, /hr will go here
       ],
@@ -89,6 +128,14 @@ const router = createRouter({
 
 // Basic authentication guard
 router.beforeEach((to, from) => {
+  // URL 경로에서 메뉴 ID(예: SYST01)를 추출하여 로컬 스토리지에 저장 (API 요청 시 사용)
+  const menuMatch = to.path.match(/\/sys\/(syst\d+)/i)
+  if (menuMatch) {
+    localStorage.setItem('currentMenuId', menuMatch[1].toUpperCase())
+  } else {
+    localStorage.removeItem('currentMenuId')
+  }
+
   const isAuthenticated = !!localStorage.getItem('user') // Check local storage for user info
   if (to.meta.requiresAuth && !isAuthenticated) {
     return '/login'

@@ -1,353 +1,220 @@
-import pool from '../../common/config/db.js'
+import { Menu, UserRole, RoleMenu } from '../models/index.js'
+import { Op } from 'sequelize'
 
 const mockMenus = [
   {
-    menuId: 'M001',
-    menuNm: 'Dashboard',
-    path: '/',
+    menuId: 'SYS',
+    menuNm: 'System',
     menuLevel: 1,
     ordNum: 1,
-    parentMenuId: null,
-    langu: 'ko',
+    path: '/sys',
+    parentMenuId: '',
     useYn: 1,
   },
   {
-    menuId: 'M002',
-    menuNm: 'System (SYS)',
-    path: null,
-    menuLevel: 1,
-    ordNum: 2,
-    parentMenuId: null,
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M003',
-    menuNm: 'User Mgt',
-    path: '/sys/SYST01',
+    menuId: 'SYST00',
+    menuNm: '시스템 바로가기',
     menuLevel: 2,
     ordNum: 1,
-    parentMenuId: 'M002',
-    langu: 'ko',
+    path: '/sys/syst00',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
   {
-    menuId: 'M004',
-    menuNm: 'Role Mgt',
-    path: '/sys/SYST02',
+    menuId: 'SYST01',
+    menuNm: '사용자관리',
     menuLevel: 2,
     ordNum: 2,
-    parentMenuId: 'M002',
-    langu: 'ko',
+    path: '/sys/syst01',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
   {
-    menuId: 'M005',
-    menuNm: 'Menu Mgt',
-    path: '/sys/menus',
+    menuId: 'SYST02',
+    menuNm: '권한관리',
     menuLevel: 2,
     ordNum: 3,
-    parentMenuId: 'M002',
-    langu: 'ko',
+    path: '/sys/syst02',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
   {
-    menuId: 'M006',
-    menuNm: 'Code Mgt',
-    path: '/sys/SYST04',
+    menuId: 'SYST03',
+    menuNm: '메뉴관리',
     menuLevel: 2,
     ordNum: 4,
-    parentMenuId: 'M002',
-    langu: 'ko',
+    path: '/sys/syst03',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
   {
-    menuId: 'M007',
-    menuNm: 'Settings',
-    path: '/sys/SYST05',
+    menuId: 'SYST04',
+    menuNm: '코드관리',
     menuLevel: 2,
     ordNum: 5,
-    parentMenuId: 'M002',
-    langu: 'ko',
+    path: '/sys/syst04',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
   {
-    menuId: 'M008',
-    menuNm: 'Table Specs',
-    path: '/sys/tables',
+    menuId: 'SYST05',
+    menuNm: '시스템설정',
     menuLevel: 2,
     ordNum: 6,
-    parentMenuId: 'M002',
-    langu: 'ko',
+    path: '/sys/syst05',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
   {
-    menuId: 'M009',
-    menuNm: 'Financial (FI)',
-    path: null,
-    menuLevel: 1,
-    ordNum: 3,
-    parentMenuId: null,
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M010',
-    menuNm: 'General Ledger',
-    path: '/fi/gl',
+    menuId: 'SYST06',
+    menuNm: '테이블명세서',
     menuLevel: 2,
-    ordNum: 1,
-    parentMenuId: 'M009',
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M011',
-    menuNm: 'Human Resources (HR)',
-    path: '/hr',
-    menuLevel: 1,
-    ordNum: 4,
-    parentMenuId: null,
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M012',
-    menuNm: 'Materials (MM)',
-    path: null,
-    menuLevel: 1,
-    ordNum: 5,
-    parentMenuId: null,
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M013',
-    menuNm: 'Purchasing',
-    path: null,
-    menuLevel: 2,
-    ordNum: 1,
-    parentMenuId: 'M012',
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M014',
-    menuNm: 'Purchase Orders',
-    path: '/mm/po',
-    menuLevel: 3,
-    ordNum: 1,
-    parentMenuId: 'M013',
-    langu: 'ko',
-    useYn: 1,
-  },
-  {
-    menuId: 'M015',
-    menuNm: 'Sales (SD)',
-    path: '/sd',
-    menuLevel: 1,
-    ordNum: 6,
-    parentMenuId: null,
-    langu: 'ko',
+    ordNum: 7,
+    path: '/sys/syst06',
+    parentMenuId: 'SYS',
     useYn: 1,
   },
 ]
 
 const menuService = {
   async getUserMenus(userId) {
-    const connection = await pool.getConnection()
-    try {
-      const query = `
-        SELECT DISTINCT m.menuId, m.menuNm, m.path, m.parentMenuId, m.menuLevel, m.ordNum
-        FROM sysMenu m
-        JOIN sysRoleMenu rm ON m.menuId = rm.menuId
-        JOIN sysUserRole ur ON rm.roleId = ur.roleId
-        WHERE ur.userId = ? 
-          AND (m.useYn = 1 OR m.useYn IS NULL)
-          AND (rm.useYn = 1 OR rm.useYn IS NULL)
-          AND (ur.useYn = 1 OR ur.useYn IS NULL)
-        ORDER BY m.menuLevel, m.ordNum
-      `
-      const [rows] = await connection.query(query, [userId])
-
-      if (rows.length === 0) {
-        return mockMenus
-      }
-
-      return rows
-    } catch (error) {
-      console.error('Error fetching user menus:', error)
+    // 1. DB에 메뉴가 아예 없으면 Mock 데이터 반환 (초기 개발용)
+    const totalMenus = await Menu.count()
+    if (totalMenus === 0) {
       return mockMenus
-    } finally {
-      connection.release()
     }
+
+    // 2. 현재 로그인한 사용자의 권한(Role) 조회
+    const userRoles = await UserRole.findAll({ where: { userId, useYn: 1 } })
+    const roleIds = userRoles.map((ur) => ur.roleId)
+
+    if (roleIds.length === 0) {
+      // [안전장치] 시스템 전체에 권한 맵핑 데이터가 단 하나도 없다면 잠김 방지를 위해 전체 메뉴 반환
+      const totalUserRoles = await UserRole.count()
+      if (totalUserRoles === 0) {
+        const allMenus = await Menu.findAll({
+          where: { useYn: 1 },
+          order: [
+            ['menuLevel', 'ASC'],
+            ['ordNum', 'ASC'],
+          ],
+        })
+        return allMenus.map((m) => m.toJSON())
+      }
+      return []
+    }
+
+    // 3. 해당 권한들에 맵핑된 메뉴 ID 조회
+    const roleMenus = await RoleMenu.findAll({
+      where: { roleId: { [Op.in]: roleIds }, useYn: 1 },
+    })
+    const menuIds = [...new Set(roleMenus.map((rm) => rm.menuId))]
+
+    if (menuIds.length === 0) return []
+
+    // 4. 최종 접근 가능한 메뉴 목록 조회
+    const menus = await Menu.findAll({
+      where: { menuId: { [Op.in]: menuIds }, useYn: 1 },
+      order: [
+        ['menuLevel', 'ASC'],
+        ['ordNum', 'ASC'],
+      ],
+    })
+
+    return menus.map((m) => m.toJSON())
   },
 
-  async getAllMenus(page = 1, limit = 10, search = '') {
-    const connection = await pool.getConnection()
-    try {
-      const offset = (page - 1) * limit
-      let query = 'SELECT * FROM sysMenu'
-      const params = []
+  async getAllMenus(page = 1, limit = 100, search = '') {
+    const offset = (page - 1) * limit
 
+    const totalInDb = await Menu.count()
+    if (totalInDb === 0) {
+      let filteredMocks = mockMenus
       if (search) {
-        query += ' WHERE menuId LIKE ? OR menuNm LIKE ?'
-        params.push(`%${search}%`, `%${search}%`)
+        const s = search.toLowerCase()
+        filteredMocks = mockMenus.filter(
+          (m) =>
+            m.menuId.toLowerCase().includes(s) || (m.menuNm && m.menuNm.toLowerCase().includes(s)),
+        )
       }
-
-      query += ' ORDER BY menuLevel, ordNum LIMIT ? OFFSET ?'
-      params.push(parseInt(limit), parseInt(offset))
-
-      const [rows] = await connection.query(query, params)
-
-      let countQuery = 'SELECT COUNT(*) as total FROM sysMenu'
-      const countParams = []
-      if (search) {
-        countQuery += ' WHERE menuId LIKE ? OR menuNm LIKE ?'
-        countParams.push(`%${search}%`, `%${search}%`)
-      }
-      const [countRows] = await connection.query(countQuery, countParams)
-
-      if (rows.length === 0 && !search) {
-        const start = parseInt(offset)
-        const end = start + parseInt(limit)
-        return {
-          data: mockMenus.slice(start, end),
-          total: mockMenus.length,
-          page: parseInt(page),
-          limit: parseInt(limit),
-        }
-      }
-
       return {
-        data: rows,
-        total: countRows[0].total,
+        data: filteredMocks.slice(offset, offset + limit),
+        total: filteredMocks.length,
         page: parseInt(page),
         limit: parseInt(limit),
       }
-    } catch (error) {
-      console.error('Error fetching menus:', error)
-      throw error
-    } finally {
-      connection.release()
+    }
+
+    const where = search
+      ? {
+          [Op.or]: [
+            { menuId: { [Op.like]: `%${search}%` } },
+            { menuNm: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {}
+
+    const { rows, count } = await Menu.findAndCountAll({
+      where,
+      offset: parseInt(offset),
+      limit: parseInt(limit),
+      order: [
+        ['menuLevel', 'ASC'],
+        ['ordNum', 'ASC'],
+      ],
+    })
+
+    return {
+      data: rows.map((r) => r.toJSON()),
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
     }
   },
 
   async getMenuById(menuId) {
-    const connection = await pool.getConnection()
-    try {
-      const [rows] = await connection.query('SELECT * FROM sysMenu WHERE menuId = ?', [menuId])
-      if (rows.length === 0) {
-        const mockMenu = mockMenus.find((m) => m.menuId === menuId)
-        if (mockMenu) return mockMenu
-        throw new Error('Menu not found')
-      }
-      return rows[0]
-    } catch (error) {
-      console.error('Error fetching menu by ID:', error)
-      throw error
-    } finally {
-      connection.release()
-    }
+    const menu = await Menu.findOne({ where: { menuId } })
+    if (!menu) throw new Error('Menu not found')
+    return menu.toJSON()
   },
 
   async createMenu(menuData, userId) {
-    const connection = await pool.getConnection()
-    try {
-      const now = new Date()
-      const {
-        langu = 'ko',
-        menuId,
-        menuLevel,
-        ordNum,
-        menuNm,
-        description,
-        parentMenuId,
-        path,
-        useYn = 1,
-      } = menuData
+    const { menuId, langu = 'KO' } = menuData
+    const existingMenu = await Menu.findOne({ where: { menuId, langu } })
 
-      const query = `
-        INSERT INTO sysMenu 
-        (langu, menuId, menuLevel, ordNum, menuNm, description, parentMenuId, path, useYn, createdBy, createdAt, changedBy, changedAt) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `
-      const params = [
-        langu,
-        menuId,
-        menuLevel,
-        ordNum,
-        menuNm,
-        description,
-        parentMenuId || null,
-        path,
-        useYn,
-        userId,
-        now,
-        userId,
-        now,
-      ]
-      const [result] = await connection.query(query, params)
-      return { id: result.insertId, ...menuData }
-    } catch (error) {
-      console.error('Error creating menu:', error)
-      throw error
-    } finally {
-      connection.release()
+    if (existingMenu) {
+      throw new Error(`Menu ID '${menuId}' already exists.`)
     }
+
+    const newMenu = await Menu.create({
+      ...menuData,
+      createdBy: userId,
+      changedBy: userId,
+    })
+    return newMenu.toJSON()
   },
 
   async updateMenu(menuId, menuData, userId) {
-    const connection = await pool.getConnection()
-    try {
-      const now = new Date()
-      const { langu, menuLevel, ordNum, menuNm, description, parentMenuId, path, useYn } = menuData
+    const [updatedRows] = await Menu.update(
+      {
+        ...menuData,
+        changedBy: userId,
+      },
+      { where: { menuId } },
+    )
 
-      const query = `
-        UPDATE sysMenu 
-        SET langu = ?, menuLevel = ?, ordNum = ?, menuNm = ?, description = ?, parentMenuId = ?, path = ?, useYn = ?, changedBy = ?, changedAt = ?
-        WHERE menuId = ?
-      `
-      const params = [
-        langu,
-        menuLevel,
-        ordNum,
-        menuNm,
-        description,
-        parentMenuId || null,
-        path,
-        useYn,
-        userId,
-        now,
-        menuId,
-      ]
-      const [result] = await connection.query(query, params)
-      if (result.affectedRows === 0) {
-        throw new Error('Menu not found or no changes made')
-      }
-      return { menuId, ...menuData }
-    } catch (error) {
-      console.error('Error updating menu:', error)
-      throw error
-    } finally {
-      connection.release()
+    if (updatedRows === 0) {
+      throw new Error('Menu not found or no changes made')
     }
+    return { menuId, ...menuData, changedBy: userId }
   },
 
   async deleteMenu(menuId) {
-    const connection = await pool.getConnection()
-    try {
-      const [result] = await connection.query('DELETE FROM sysMenu WHERE menuId = ?', [menuId])
-      if (result.affectedRows === 0) {
-        throw new Error('Menu not found')
-      }
-      return { message: 'Menu deleted successfully' }
-    } catch (error) {
-      console.error('Error deleting menu:', error)
-      throw error
-    } finally {
-      connection.release()
+    const deletedRows = await Menu.destroy({ where: { menuId } })
+    if (deletedRows === 0) {
+      throw new Error('Menu not found')
     }
+    return { message: 'Menu deleted successfully' }
   },
 }
 

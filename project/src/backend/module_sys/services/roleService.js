@@ -1,4 +1,5 @@
-import roleRepository from '../repositories/roleRepository.js'
+import { sequelize, Role, RoleMenu, UserRole } from '../models/index.js'
+import { Op } from 'sequelize'
 
 const mockRoles = [
   {
@@ -33,11 +34,9 @@ const roleService = {
     try {
       const offset = (page - 1) * limit
 
-      // DB에 전체 데이터가 있는지 확인 (Mock fallback 용도)
-      const totalInDb = await roleRepository.countRoles('')
+      const totalInDb = await Role.count()
 
       if (totalInDb === 0) {
-        // DB가 비어있으면 검색어 포함하여 Mock 데이터 필터링 후 반환
         let filteredMocks = mockRoles
         if (search) {
           const s = search.toLowerCase()
@@ -57,13 +56,25 @@ const roleService = {
         }
       }
 
-      // DB 조회 수행
-      const rows = await roleRepository.findRoles(offset, limit, search)
-      const total = await roleRepository.countRoles(search)
+      const where = search
+        ? {
+            [Op.or]: [
+              { roleId: { [Op.like]: `%${search}%` } },
+              { description: { [Op.like]: `%${search}%` } },
+            ],
+          }
+        : {}
+
+      const { rows, count } = await Role.findAndCountAll({
+        where,
+        offset: parseInt(offset),
+        limit: parseInt(limit),
+        order: [['roleId', 'ASC']],
+      })
 
       return {
-        data: rows,
-        total,
+        data: rows.map((r) => r.toJSON()),
+        total: count,
         page: parseInt(page),
         limit: parseInt(limit),
       }
@@ -74,34 +85,29 @@ const roleService = {
   },
 
   async getRoleById(roleId) {
-    const role = await roleRepository.findRoleById(roleId)
+    const role = await Role.findOne({ where: { roleId } })
     if (!role) {
       const mockRole = mockRoles.find((r) => r.roleId === roleId)
       if (mockRole) return mockRole
       throw new Error('Role not found')
     }
-    return role
+    return role.toJSON()
   },
 
   async createRole(roleData, userId) {
     const { roleId, description, useYn = 1 } = roleData
 
-    // 1. Role ID 중복 체크 (비즈니스 로직)
-    const existingRole = await roleRepository.findRoleById(roleId)
+    const existingRole = await Role.findOne({ where: { roleId } })
     if (existingRole) {
       throw new Error(`Role ID '${roleId}' already exists.`)
     }
 
-    // 2. 신규 생성
-    const now = new Date()
-    await roleRepository.createRole({
+    await Role.create({
       roleId,
       description,
       useYn,
       createdBy: userId,
-      createdAt: now,
       changedBy: userId,
-      changedAt: now,
     })
 
     return { roleId, description, useYn, createdBy: userId, createdAt: now }
@@ -109,48 +115,71 @@ const roleService = {
 
   async updateRole(roleId, roleData, userId) {
     const { description, useYn } = roleData
-    const now = new Date()
 
-    const result = await roleRepository.updateRole(roleId, {
-      description,
-      useYn,
-      changedBy: userId,
-      changedAt: now,
-    })
+    const [updatedRows] = await Role.update(
+      {
+        description,
+        useYn,
+        changedBy: userId,
+      },
+      { where: { roleId } },
+    )
 
-    if (result.affectedRows === 0) {
+    if (updatedRows === 0) {
       throw new Error('Role not found or no changes made')
     }
-    return { roleId, ...roleData, changedBy: userId, changedAt: now }
+    return { roleId, ...roleData, changedBy: userId }
   },
 
   async deleteRole(roleId) {
-    const result = await roleRepository.deleteRole(roleId)
-    if (result.affectedRows === 0) {
+    const deletedRows = await Role.destroy({ where: { roleId } })
+    if (deletedRows === 0) {
       throw new Error('Role not found')
     }
     return { message: 'Role deleted successfully' }
   },
 
   async getRoleMenus(roleId) {
-    const rows = await roleRepository.findRoleMenus(roleId)
+    const rows = await RoleMenu.findAll({ where: { roleId, useYn: 1 } })
     return rows.map((r) => r.menuId)
   },
 
   async updateRoleMenus(roleId, menuIds, userId) {
-    const now = new Date()
-    await roleRepository.updateRoleMenusTx(roleId, menuIds, userId, now)
+    await sequelize.transaction(async (t) => {
+      await RoleMenu.destroy({ where: { roleId }, transaction: t })
+      if (menuIds && menuIds.length > 0) {
+        const records = menuIds.map((menuId) => ({
+          roleId,
+          menuId,
+          useYn: 1,
+          createdBy: userId,
+          changedBy: userId,
+        }))
+        await RoleMenu.bulkCreate(records, { transaction: t })
+      }
+    })
     return { success: true }
   },
 
   async getRoleUsers(roleId) {
-    const rows = await roleRepository.findRoleUsers(roleId)
+    const rows = await UserRole.findAll({ where: { roleId, useYn: 1 } })
     return rows.map((r) => r.userId)
   },
 
   async updateRoleUsers(roleId, userIds, userId) {
-    const now = new Date()
-    await roleRepository.updateRoleUsersTx(roleId, userIds, userId, now)
+    await sequelize.transaction(async (t) => {
+      await UserRole.destroy({ where: { roleId }, transaction: t })
+      if (userIds && userIds.length > 0) {
+        const records = userIds.map((uid) => ({
+          userId: uid,
+          roleId,
+          useYn: 1,
+          createdBy: userId,
+          changedBy: userId,
+        }))
+        await UserRole.bulkCreate(records, { transaction: t })
+      }
+    })
     return { success: true }
   },
 }

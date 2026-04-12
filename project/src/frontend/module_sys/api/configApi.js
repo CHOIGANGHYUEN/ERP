@@ -1,9 +1,6 @@
-import axios from 'axios'
+import { createApiClient } from '@/frontend/common/utils/apiClient.js'
 
-const apiClient = axios.create({
-  baseURL: '/api/sys/configs',
-  withCredentials: true,
-})
+const apiClient = createApiClient('/api/sys/configs')
 
 export const getConfigs = async (params) => {
   const response = await apiClient.get('/', { params })

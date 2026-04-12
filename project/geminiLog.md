@@ -198,3 +198,109 @@ Timestamp: 2023-10-27THH:MM:SSZ (Actual timestamp will be inserted)
 - `src/backend/module_sys/services/roleService.js` 리팩토링: `roleRepository`를 의존성으로 주입받아 비즈니스 로직(Mock 데이터 Fallback, 데이터 검증)에 집중하도록 개선함.
 - **조회 로직 개선**: 기존에는 검색 조건(`search`)이 있을 때 Mock 데이터를 조회하지 못하는 버그가 있었으나, DB 전체 카운트를 확인하여 완전히 비어있을 경우 Mock 데이터 내에서 검색 및 페이징을 처리하도록 수정함.
 - **등록 로직 개선**: 역할(Role) 등록 시 `roleId` 중복 여부를 사전에 Repository를 통해 확인하고, 이미 존재하는 경우 명확한 에러 메시지를 반환하여 DB 무결성 예외 처리를 비즈니스 로직 단에서 대응하도록 수정함.
+
+[Bugfix & Refactoring] Role 모달의 API 메서드 불일치 및 구형 Sequelize 코드 제거
+- `src/frontend/module_sys/api/roleApi.js`: 역할의 메뉴/사용자 할당 정보를 저장하는 API 호출을 백엔드 라우터에 맞게 `POST`에서 `PUT`으로 수정하여 404 오류 해결.
+- `src/backend/module_sys/models/role.js`, `userRole.js`, `roleMenu.js`: 기존 CommonJS 방식의 Sequelize 보일러플레이트 코드를 제거하고, 프로젝트 규격(Raw Query)에 맞는 ES 모듈 스키마 객체 명세로 모두 치환 완료.
+
+[Architecture Refactoring] 시스템 전면 Sequelize ORM 기반 MVC 모델 도입 및 고도화
+- `src/backend/common/config/sequelize.js` 신규 생성: 기존 `db.js`(Raw Query Pool) 대신 순수 Sequelize ORM 전용 연결 설정 구성.
+- `src/backend/module_sys/models/*` 전면 개편: 16개 이상의 엔티티 파일(`user.js`, `table.js`, `field.js`, `menu.js`, `role.js`, `codeHead.js` 등)을 ES6 Class 기반의 순수 Sequelize Model로 완전 전환.
+- `src/backend/module_sys/models/index.js` 신규 생성: 모든 모델을 임포트하고 엔티티 간의 복잡한 관계(Associations - `hasMany`, `belongsTo` 등)를 중앙에서 선언하여 관리.
+- `src/backend/module_sys/models/tableHistory.js` 신규 생성: 테이블 변경 이력을 관리하기 위한 전용 ORM 모델 추가 및 연동.
+- `src/backend/module_sys/services/userService.js`, `tableSpecService.js` 전면 리팩토링: 서비스 내부에 섞여 있던 모든 원시 SQL 문자열(`sequelize.query`)을 제거하고, `findOne`, `findAll`, `findAndCountAll`, `create`, `update`, `destroy` 등 순수 ORM 객체 메서드와 트랜잭션(`t`)을 활용하는 객체지향적 코드로 완벽히 전환 완료.
+
+[Architecture Refactoring] Role 및 Menu 서비스의 순수 ORM 적용
+- `src/backend/module_sys/services/roleService.js`: 기존 `roleRepository` 의존성을 제거하고, `Role`, `RoleMenu`, `UserRole` 등의 Sequelize 모델 객체를 직접 사용하여 CRUD 및 트랜잭션 로직을 간결하게 리팩토링함.
+- `src/backend/module_sys/repositories/roleRepository.js`: 더 이상 사용되지 않아 내용 삭제 (Deprecated).
+- `src/backend/module_sys/services/menuService.js`: `sysMenu` CRUD 로직을 ORM 기반으로 리팩토링 완료.
+
+[Bugfix] 사이드바 메뉴 렌더링 누락 및 권한 폴백 로직 추가
+- `src/backend/module_sys/services/menuService.js`: ORM 전환 과정에서 누락되었던 `getUserMenus` 함수를 복구함.
+- `Menu`, `UserRole`, `RoleMenu` 모델을 조인하여 사용자의 권한에 맞는 메뉴만 반환하도록 구현함.
+- **안전장치(Fallback) 추가**: DB에 메뉴가 아예 없거나, 사용자-권한 맵핑이 단 하나도 이루어지지 않은 초기 환경에서는 Mock 데이터나 전체 메뉴를 반환하도록 하여 UI가 멈추거나 잠기는 현상을 방지함.
+
+[Refactoring] 라우터 경로 및 메뉴 데이터 구조 일치화
+- `src/frontend/router/index.js`: 기획 구조 변경에 따라 라우팅 경로를 `/sys/users` 등에서 모듈 번호 기반인 `/sys/syst01` 등으로 전면 수정.
+- `src/backend/module_sys/services/menuService.js`: 변경된 라우팅 구조가 사이드바 네비게이션에 반영되도록 Mock 데이터의 메뉴 ID와 `path` 속성을 `SYST00` ~ `SYST06` 규칙으로 매핑.
+- `SYST02V001.vue`, `SYST02V002.vue`, `SYST03V001.vue`: 화면 내에서 동적으로 동작하는 `router.push()`의 경로를 `/sys/systXX` 로 동기화하여 상세 화면 진입 및 목록 복귀 시 404 에러 방지.
+
+[Bugfix & UX/UI] SYST06 테이블 명세서 관리 화면 성능 및 사용성 개선
+- `src/backend/module_sys/services/tableSpecService.js`: 상세 조회(`getDetail`) 시 발생하는 카테시안 곱(Cartesian Product, N+1) 버그를 해결. `Field`, `TableIndex`, `IndexField` 등을 한 번의 `include` 조인으로 가져오던 로직을, 각각의 독립적인 쿼리로 분리하여 성능을 비약적으로 향상시키고 데이터 증식 버그를 완벽히 차단함.
+- `src/frontend/module_sys/SYST06/SYST06V002.vue`: 사용자가 직관적으로 컬럼 및 인덱스의 순서를 변경할 수 있도록, 행별로 **상하 이동(▲, ▼)** 버튼을 추가함 (Vue 반응형 배열 조작).
+- **AUTO_INCREMENT 지원 추가**: 백엔드 `Field` 모델에 존재하는 `isAutoIncrement` 컬럼을 프론트엔드 UI의 'A_I(자동증가)' 체크박스와 연동함. (INT, BIGINT 타입에서만 활성화). DDL 생성 로직(`generateSql`)에서도 `AUTO_INCREMENT` 키워드가 정상적으로 생성되도록 로직 보완.
+- **라우터 버그 수정**: `SYST06V001.vue`와 `SYST06V002.vue`의 `router.push()` 경로가 `/sys/tables`로 오기입되어 화면 전환이 먹통이 되던 현상을 발견하고, 실제 라우터 설정에 맞게 `/sys/syst06`으로 일괄 수정하여 네비게이션 기능 복구.
+
+[UI/UX Modernization] 전역 CSS 및 화면 디자인 현대화 (Modernization)
+- `src/frontend/common/main.css`: 투박했던 기존 디자인 기조를 버리고, SaaS 애플리케이션에 걸맞은 **현대적인 디자인 시스템**으로 전면 재설계함.
+  - **Color & Shadow**: 차분한 색상(`--app-bg-color`, `--app-border-color`)과 3단계의 섬세한 그림자 변수(`--app-shadow-sm, md, lg`)를 통해 입체감을 부여.
+  - **Animations & Transitions**: 화면 전환 시 요소들이 아래에서 스르륵 나타나는 스태거 애니메이션(`fadeInUp`, `fadeIn`)과, 모달이 부드럽게 튕겨 오르는 애니메이션(`modalPop`), 그리고 버튼 호버/클릭 시 `transform`과 `box-shadow`를 활용한 쫀득한 조작감을 추가.
+  - **Responsive Grid**: `grid-template-columns: repeat(auto-fit, minmax(250px, 1fr))`를 도입하여 모바일에서도 깨지지 않는 유연한 폼 레이아웃 구축.
+- `SYST05V002.vue` 및 `SYST06V002.vue` 리팩토링: `main.css`의 새로운 클래스(`modern-form`, `form-grid`, `btn-danger`, `icon-btn`, `modern-data-table` 등)를 적용하여 데이터 테이블과 입력 폼을 완전히 현대화된 룩앤필로 탈바꿈시킴.
+- `README.md`, `TODO.md`, `gemini.md` 업데이트: 이후 진행될 **모든 프론트엔드 프로그래밍 시 부드러운 애니메이션, 반응형 그리드, 모던 컴포넌트(현대적인 디자인 시스템)를 강제 준수**하도록 **Development Standards & Rules** 조항에 명시함.
+
+[Architecture Refactoring] 시스템 설정(Config) 서비스 순수 ORM 적용
+- `src/backend/module_sys/models/config.js` 신규 생성: `sysConfig` 테이블에 대한 Sequelize 모델 정의.
+- `src/backend/module_sys/models/index.js`: `Config` 모델 연동 및 내보내기 추가.
+- `src/backend/module_sys/services/configService.js`: 원시 SQL(`pool.query`)을 전면 제거하고, `Config` 객체 모델을 활용한 CRUD, 페이징, 데이터 폴백 로직으로 완벽하게 전환 완료.
+
+## 2026-04-12
+[Backend & Frontend Setup] Phase 6 - SYST01 사용자 관리 및 SYST04 공통 코드 관리 화면/API 구현
+- `src/backend/server.js`: 누락되어 있던 `userRoutes`, `codeRoutes` API 라우터를 명시적으로 등록하여 프론트엔드와 정상 연동되도록 수정함.
+- `src/frontend/module_sys/SYST01/SYST01V001.vue`, `SYST01V002.vue`: 사용자 목록 조회, 검색 및 개별 상세 조회/등록/삭제가 가능한 시스템 사용자 관리 화면 구현.
+- `src/frontend/module_sys/SYST04/SYST04V001.vue`, `SYST04V002.vue`: 시스템 전역 공통 코드 관리 화면 구현. 특히 상세 화면의 경우 코드 그룹 마스터(`sysCodeHead`)와 하위 상세 코드(`sysCodeItem`)를 동시에 다룰 수 있는 **Master-Detail 그리드 복합 폼**으로 고도화하여 구현함.
+- 화면 전반에 걸쳐 최근 수립된 모던 UI 디자인(`modern-data-table`, `modern-form`, 반응형 `app-grid` 등)을 강제 적용함.
+- `TODO.md`에서 Phase 6 'SYST04 Common Code' 구현 및 Phase 7 'System Module (SYS) Update' 항목 완료 처리.
+
+## 2026-04-13
+[Feature] SYST06 테이블 명세서 INSERT / UPDATE DML 자동 생성 기능 추가
+- `src/backend/module_sys/services/tableSpecService.js`: `generateInsertSql`, `generateUpdateSql` 함수를 추가하여 필드 명세 기반의 샘플 데이터 DML 쿼리 자동 생성 로직 구현 (AUTO_INCREMENT 제외, PK 조건절 자동 매핑 등).
+- `src/backend/module_sys/controllers/tableSpecController.js` 및 라우터: `/:tablen/sql/insert`, `/:tablen/sql/update` 엔드포인트 연동.
+- `src/frontend/module_sys/SYST06/SYST06V002.vue`: 프론트엔드 상세 화면에 INSERT / UPDATE 생성 버튼을 추가하고 기존 `SqlExecutionModal`을 재활용하여 결과 쿼리를 출력하도록 연동.
+
+[Bugfix & Setup] SYST01 사용자 관리 누락 모델 및 서비스 구현 (sysUser 에러 해결)
+- 데이터베이스 조회 에러(Table 'sysUser' doesn't exist)를 해결하기 위해 누락되었던 Sequelize ORM 파일 신규 작성.
+- `src/backend/module_sys/models/user.js`, `userRole.js`: 사용자 및 권한 맵핑 테이블 모델 정의.
+- `src/backend/module_sys/services/userService.js`: 페이징 기반 사용자 목록 조회, 조회, 등록/수정/삭제 비즈니스 로직 및 구글 소셜 로그인 연동(`findOrCreateUser`) 로직 완벽 구현.
+
+[Feature] SYST05 시스템 설정 초기 더미 데이터(Seeding) 자동 생성 로직 도입
+- `src/backend/module_sys/services/configService.js`: `getAllConfigs` 조회 시 데이터베이스 카운트가 0건일 경우, `SYS_TITLE`, `SESSION_TIMEOUT`, `THEME_MODE`, `DEFAULT_LANGUAGE` 등 필수 시스템 설정 4건을 자동으로 `bulkCreate` 하는 `initializeDefaultConfigs` 기능 추가.
+
+[Bugfix & UI Refactoring] AppTable 렌더링 에러 해결 및 공통 컴포넌트 규격화
+- `src/frontend/module_sys/SYST05/SYST05V001.vue`, `SYST03/SYST03V001.vue`: `<AppTable>` 내부에 HTML 태그를 하드코딩하여 발생하던 컴포넌트 속성 읽기 에러(`Cannot read properties of undefined (reading 'length')`) 원천 해결.
+- `:columns` 및 `:data` Props를 전달하는 표준 방식으로 리팩토링하고, API 응답 데이터 매핑 시 빈 배열(`|| []`) 방어 코드를 추가하여 렌더링 안정성 확보.
+- 템플릿 슬롯(Slots)을 활용한 뱃지(Badge) UI 적용 및 페이징 컴포넌트(`AppPagination`) 데이터 연동 정상화.
+
+## 2026-04-14
+[Feature & Security] 로그인 보안 강화 및 이력 추적(SYST071) 시스템 도입
+- `src/backend/module_sys/models/logLoginUser.js`: `sysLogLoginUser` 테이블에 대한 Sequelize 모델(로그인 일자, 시도 일시, 인증값, 상태 로그) 생성.
+- `src/backend/module_sys/controllers/authController.js`: 구글 로그인 시 클라이언트 토큰(Base64) 복호화 처리, 토큰 만료 사전 검증, 그리고 **1초 미만 동시/중복 로그인 시도 차단(429 방어 로직)** 추가. 성공/실패/차단 모든 경우에 대해 DB에 이력을 남기도록 고도화.
+- `src/frontend/views/LoginView.vue`: 구글 로그인 응답 토큰을 `btoa()`를 사용하여 Base64로 인코딩한 후 백엔드로 전송하도록 보안 계층 추가.
+
+[Frontend & Backend] SYST07 대시보드 및 SYST071 로그인 이력 화면 구현
+- `src/backend/module_sys/controllers/logLoginUserController.js` 및 라우터: 로그인 이력 페이징/검색(사용자 ID, 로그인 일자) API 구현 및 `server.js`에 마운트.
+- `src/frontend/module_sys/SYST071/SYST071V001.vue`: 로그인 이력 조회 화면 구현 (성공/실패/차단 상태별 뱃지 적용).
+- `src/frontend/module_sys/SYST07/SYST07V001.vue`: 시스템 서브 대시보드 화면 구성 및 라우터 맵핑.
+- `src/frontend/module_sys/api/logLoginUserApi.js`: 프론트엔드 API 통신 모듈 분리 규정 준수.
+
+[Bugfix] 권한 관리 및 동적 메뉴 증발(Mock Data 해제) 버그 수정
+- `src/backend/module_sys/services/menuService.js`: 새로운 메뉴를 1개라도 등록하면 Mock Data 폴백이 해제되어 사이드바 메뉴가 모두 증발하는 현상 발견.
+- `initializeDefaultMenus` 메서드를 추가하여 `sysMenu` 데이터가 비어있을 경우 단순히 Mock Data를 반환하는 것에 그치지 않고, DB에 초기 필수 메뉴들을 영구적으로 자동 생성(Seeding)하도록 로직 전면 리팩토링.
+
+[Feature] Phase 2 - 전역 API 로깅 미들웨어(Global API Logger) 구축
+- `src/backend/common/middleware/apiLogger.js` 생성: `res.on('finish')` 이벤트를 활용하여 API 요청이 끝난 시점의 상태 코드와 `verifyToken`이 주입한 `req.user` 정보를 추출해 `sysLogUser` 테이블에 기록.
+- `src/backend/server.js`: 기존 단순 콘솔 로깅을 대체하여 새로 만든 전역 로깅 미들웨어를 앱 최상단에 마운트 완료.
+
+[Feature & Refactoring] sysConfig 계층형 구조 전면 개편 및 Pinia 전역 스토어 연동
+- `sysConfig` 테이블 스키마를 트리 구조(`configLevel`, `parentConfigId`, `ordNum` 등)로 개편하고, 6가지 마스터 그룹(시스템, 테마, 보안, 포맷, 모듈, 알림) 기초 데이터를 시딩함.
+- `src/frontend/module_sys/SYST05/configStore.js`: 백엔드의 설정값을 한 번만 호출하여 프론트엔드 전역에서 캐싱 및 사용할 수 있도록 Pinia Store 구축.
+- `App.vue`, `AppHeader.vue`, `AppSidebar.vue`: `configStore`를 연동하여 `SYS_TITLE` 동적 렌더링 및 `THEME_MODE` 다크/라이트 모드 실시간 전환 기능 적용.
+
+[Feature & Security] 동적 보안 규칙 제어 및 유저 활동 로그(SYST073) 통합
+- `authController.js`: 하드코딩되었던 세션 만료 시간과 중복 로그인 통제 로직을 `sysConfig`의 `SEC_SESSION_TIMEOUT`, `SEC_ALLOW_MULTI_LOGIN` 값과 실시간 연동. 로그아웃 시에도 `sysLogLoginUser`에 이력 기록.
+- `SYST073` 유저 활동 로그(User Activity Logs) 프론트엔드 뷰 구현 및 라우터 연결. 모든 API 요청 이력을 모니터링 가능.
+
+[Bugfix] 폼 데이터 저장 먹통 및 중복 호출(Double-Submit) 버그 해결
+- `SYST05V002.vue`: `saveConfig` API 함수 임포트 시 이름이 어긋나 라우터 진입이 뻗어버리던 참조 오류 수정 (`saveConfig as createConfigApi`).
+- `SYST01V002.vue`, `SYST05V002.vue`: `<AppButton>` 커스텀 컴포넌트의 submit 이벤트 미작동 현상을 `@click.prevent`로 명시적 바인딩하여 해결.
+- 네트워크 통신 중 마우스 더블클릭이나 엔터키 연타로 인해 동일한 데이터가 2번 저장되는 현상을 막기 위해 `isSaving` 상태 플래그 기반의 방어 로직 적용.

@@ -27,8 +27,8 @@ export const getTableDetail = async (req, res) => {
 
 export const saveTableSpec = async (req, res) => {
   try {
-    // Basic user id retrieval (assume it is added to req by some auth middleware)
-    const user = req.user?.id || 'system'
+    // 토큰에서 추출된 실제 접속 사용자 ID (userId) 확보
+    const user = req.user?.userId || 'system'
     const result = await tableSpecService.saveSpec(req.body, user)
     res.json(result)
   } catch (error) {
@@ -44,6 +44,40 @@ export const generateSql = async (req, res) => {
     res.json({ sql })
   } catch (error) {
     console.error('Error in generateSql:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export const generateInsertSql = async (req, res) => {
+  try {
+    const { tablen } = req.params
+    const sql = await tableSpecService.generateInsertSql(tablen)
+    res.json({ sql })
+  } catch (error) {
+    console.error('Error in generateInsertSql:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export const generateUpdateSql = async (req, res) => {
+  try {
+    const { tablen } = req.params
+    const sql = await tableSpecService.generateUpdateSql(tablen)
+    res.json({ sql })
+  } catch (error) {
+    console.error('Error in generateUpdateSql:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+export const executeSql = async (req, res) => {
+  try {
+    const { tablen } = req.params
+    const { sql } = req.body
+    const result = await tableSpecService.executeRawSql(tablen, sql)
+    res.json(result)
+  } catch (error) {
+    console.error('Error in executeSql:', error)
     res.status(500).json({ error: error.message })
   }
 }

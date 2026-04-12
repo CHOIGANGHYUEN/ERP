@@ -1,9 +1,6 @@
-import axios from 'axios'
+import { createApiClient } from '@/frontend/common/utils/apiClient.js'
 
-const apiClient = axios.create({
-  baseURL: '/api/sys/menus',
-  withCredentials: true,
-})
+const apiClient = createApiClient('/api/sys/menus')
 
 export const getMenus = async (params) => {
   const response = await apiClient.get('/', { params })

@@ -174,6 +174,6 @@ const deleteMenu = async () => {
 }
 
 const goBack = () => {
-  router.push('/sys/menus')
+  router.push('/sys/syst03')
 }
 </script>

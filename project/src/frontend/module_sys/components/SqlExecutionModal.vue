@@ -19,13 +19,22 @@
         <textarea
           class="app-input"
           rows="12"
-          readonly
-          style="font-family: monospace; font-size: 0.9rem; background-color: #f8f9fa"
-          >{{ generatedSql }}</textarea
-        >
+          v-model="localSql"
+          style="
+            font-family: monospace;
+            font-size: 0.9rem;
+            background-color: #f8f9fa;
+            width: 100%;
+            box-sizing: border-box;
+          "
+        ></textarea>
         <div style="margin-top: 16px; text-align: right">
           <button class="btn btn-secondary" @click="$emit('close')">닫기</button>
-          <button class="btn btn-primary" style="margin-left: 8px" @click="$emit('execute')">
+          <button
+            class="btn btn-primary"
+            style="margin-left: 8px"
+            @click="$emit('execute', localSql)"
+          >
             DB 적용(실행)
           </button>
         </div>
@@ -35,39 +44,20 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, watch } from 'vue'
 
+// props 변수를 명시적으로 선언해주어야 내부 스크립트에서 props.sqlContent 로 접근할 수 있습니다.
 const props = defineProps({
-  tableInfo: { type: Object, required: true },
-  fields: { type: Array, required: true },
-  indexes: { type: Array, required: true },
+  sqlContent: { type: String, required: true },
 })
 
 defineEmits(['close', 'execute'])
 
-const generatedSql = computed(() => {
-  if (!props.tableInfo.tablen) return '-- 테이블 정보가 부족합니다.'
-
-  let sql = `CREATE TABLE ${props.tableInfo.tablen} (\n`
-
-  const fieldDefs = props.fields.map((f) => {
-    let def = `  ${f.name} ${f.type}`
-    if (f.type === 'VARCHAR' && f.length) def += `(${f.length})`
-    if (!f.isNull) def += ' NOT NULL'
-    if (f.isPk) def += ' PRIMARY KEY'
-    return def
-  })
-
-  sql += fieldDefs.join(',\n')
-  sql += '\n);\n\n'
-
-  const indexDefs = props.indexes.map((idx) => {
-    let idxSql = `CREATE ${idx.isUnique ? 'UNIQUE ' : ''}INDEX ${idx.name} ON ${props.tableInfo.tablen} (${idx.fields});`
-    return idxSql
-  })
-
-  sql += indexDefs.join('\n')
-
-  return sql
-})
+const localSql = ref(props.sqlContent)
+watch(
+  () => props.sqlContent,
+  (newVal) => {
+    localSql.value = newVal
+  },
+)
 </script>

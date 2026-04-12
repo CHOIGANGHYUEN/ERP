@@ -15,11 +15,7 @@
     </AppCard>
 
     <AppCard>
-      <AppTable 
-        :columns="tableColumns" 
-        :data="roles"
-        @row-click="(row) => goToDetail(row.roleId)"
-      >
+      <AppTable :columns="tableColumns" :data="roles" @row-click="(row) => goToDetail(row.roleId)">
         <template #useYn="{ value }">
           {{ value === 1 ? 'Y' : 'N' }}
         </template>
@@ -56,7 +52,7 @@ const limit = ref(10)
 const tableColumns = [
   { key: 'roleId', label: '권한 ID' },
   { key: 'description', label: '설명' },
-  { key: 'useYn', label: '사용 여부' }
+  { key: 'useYn', label: '사용 여부' },
 ]
 
 const fetchRoles = async () => {
@@ -64,7 +60,7 @@ const fetchRoles = async () => {
     const data = await getRoles({
       page: currentPage.value,
       limit: limit.value,
-      search: searchQuery.value
+      search: searchQuery.value,
     })
     roles.value = data.data
     totalItems.value = data.total
@@ -79,11 +75,11 @@ const onPageChange = (page) => {
 }
 
 const goToDetail = (id) => {
-  router.push(`/sys/roles/${id}`)
+  router.push(`/sys/syst02/${id}`)
 }
 
 const goToCreate = () => {
-  router.push(`/sys/roles/new`)
+  router.push(`/sys/syst02/new`)
 }
 
 onMounted(() => {
