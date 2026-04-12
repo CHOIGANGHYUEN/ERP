@@ -52,7 +52,7 @@ Each module under src/frontend is structured into:
 5. Strict API Centralization (API 호출 중앙화 강제)
 - **Vue 컴포넌트 내에서 `fetch()` 또는 `axios`를 직접 호출하는 것을 엄격히 금지합니다.**
 - 모든 프론트엔드 API 호출은 반드시 각 모듈의 전용 API 디렉토리(예: `src/frontend/module_sys/api/`)에 있는 API 모듈(예: `userApi.js`)에 정의되어야 합니다.
-- 컴포넌트는 오직 이 API 모듈의 함수만 임포트(`import`)하여 사용해야 하며, 서버 주소 등은 `.env` 파일을 통해 관리합니다.
+- 컴포넌트는 오직 이 API 모듈의 함수만 임포트(`import`)하여 사용해야 하며, API 모듈은 `src/frontend/common/utils/apiClient.js`의 전역 Axios 인스턴스를 사용하여 메뉴 ID 로깅 및 헤더 주입을 일관되게 처리해야 합니다.
 
 6. Global State Management & Caching (전역 상태 캐싱)
 - 데이터베이스에서 관리되는 전역 설정값(`sysConfig` 등)은 매 컴포넌트 렌더링 시마다 API를 호출하지 않습니다.

@@ -304,3 +304,19 @@ Timestamp: 2023-10-27THH:MM:SSZ (Actual timestamp will be inserted)
 - `SYST05V002.vue`: `saveConfig` API 함수 임포트 시 이름이 어긋나 라우터 진입이 뻗어버리던 참조 오류 수정 (`saveConfig as createConfigApi`).
 - `SYST01V002.vue`, `SYST05V002.vue`: `<AppButton>` 커스텀 컴포넌트의 submit 이벤트 미작동 현상을 `@click.prevent`로 명시적 바인딩하여 해결.
 - 네트워크 통신 중 마우스 더블클릭이나 엔터키 연타로 인해 동일한 데이터가 2번 저장되는 현상을 막기 위해 `isSaving` 상태 플래그 기반의 방어 로직 적용.
+
+[Feature & Bugfix] SYST06 테이블 명세서 SQL DDL 실행 기능 고도화
+- `tableSpecService.js`: 인덱스 대상 필드 오타 기입 시 DB 에러가 발생하지 않도록 사전 무결성 검증 방어 로직 추가. 적용 완료된 이력을 시각적으로 구분하는 상태 배지 추가.
+- `SqlExecutionModal.vue`: DDL 생성 팝업에서 스크립트를 직접 수정하여 실행할 수 있도록 `readonly` 해제. `defineProps` 선언 누락으로 인한 팝업 렌더링 크래시 버그 수정.
+
+[Architecture Refactoring] 전역 API 통신 모듈(Axios) 통합 및 헤더 주입
+- `src/backend/module_sys/models/logUser.js`: `menuId` 및 `request`(HTTP Method) 컬럼 추가 및 인덱스(`sysLogUser_IDX3`) 적용.
+- `src/frontend/common/utils/apiClient.js` 신규 생성: 각 API 파일에 분산되어 있던 `axios.create`를 중앙화하고, `localStorage`의 `currentMenuId`를 읽어 모든 요청 헤더(`x-menu-id`)에 자동 주입하는 인터셉터 구축.
+
+[UI/UX Refactoring] CSS 전역화 및 중복 스타일 제거
+- 각 화면(`.vue`)의 `<style scoped>`에 중복 선언되어 있던 폼(`modern-form`, `form-grid`), 배지(`badge-success` 등), 버튼(`btn-danger`, `icon-btn`) 스타일을 `src/frontend/common/main.css`로 완벽히 통합 이관.
+
+[Feature] ERP 통합 대시보드 및 시스템/로그 서브 대시보드 전면 개편
+- `HomeView.vue`: 시스템 설정에 활성화된 모듈(SYS, FI, HR 등) 퀵링크 카드 제공.
+- `SYST00V001.vue`: 시스템 관리 기능 퀵메뉴 및 마스터 데이터(유저, 권한, 테이블 등) 등록 통계 위젯 구현.
+- `SYST07V001.vue`: 로그/감사 이력(071~073) 전용 퀵메뉴 및 로그 누적 발생 통계 위젯으로 개편.

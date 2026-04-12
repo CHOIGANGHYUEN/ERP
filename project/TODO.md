@@ -76,7 +76,7 @@ Ensure all list views contain proper search conditions, a search button, paginat
 - [x] **UI Component Update**: Create or update existing pagination and search bar UI components.
 - [x] **System Module (SYS) Update**: Apply search filters, pagination, and the new **modern UI classes** (smooth animations, responsive auto-fit grids, modern-data-table) to the list views: `SYST01V001`, `SYST02V001`, and `SYST04V001`.
 - [x] **Strict API Modularization**: Refactor any remaining views (SYST02, SYST03, SYST05, SYST06, SYST00) to strictly use API modules (`api/*Api.js`) and completely remove raw `fetch`/`axios` calls.
-- [ ] **Global Standard Enforced**: Verify that any future view screens adhere to this mandatory modern standard.
+- [x] **Global Standard Enforced**: Consolidated redundant `<style scoped>` CSS blocks from all individual Vue components into the global `main.css`. Verified that dashboards (`HomeView`, `SYST00`, `SYST07`) and all system views strictly adhere to this mandatory modern standard.
 
 ## 🔧 Ongoing Maintenance
 - [ ] **System Variables Documentation**: Maintain documentation of all required `.env` variables (e.g., `DB_HOST`, `VITE_GOOGLE_CLIENT_ID`, `JWT_SECRET`) in `README.md`.

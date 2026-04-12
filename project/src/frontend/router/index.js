@@ -120,6 +120,26 @@ const router = createRouter({
           name: 'sys-syst073',
           component: () => import('@/frontend/module_sys/SYST073/SYST073V001.vue'),
         },
+        {
+          path: 'sys/syst08',
+          name: 'sys-syst08',
+          component: () => import('@/frontend/module_sys/SYST08/SYST08V001.vue'),
+        },
+        {
+          path: 'sys/syst08/:id',
+          name: 'sys-syst08-detail',
+          component: () => import('@/frontend/module_sys/SYST08/SYST08V002.vue'),
+        },
+        {
+          path: 'sys/syst09',
+          name: 'sys-syst09',
+          component: () => import('@/frontend/module_sys/SYST09/SYST09V001.vue'),
+        },
+        {
+          path: 'sys/syst09/:id',
+          name: 'sys-syst09-detail',
+          component: () => import('@/frontend/module_sys/SYST09/SYST09V002.vue'),
+        },
         // Future routes like /fi, /hr will go here
       ],
     },

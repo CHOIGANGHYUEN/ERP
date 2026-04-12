@@ -19,6 +19,8 @@ import TableHistory from './tableHistory.js'
 import Config from './config.js'
 import LogLoginUser from './logLoginUser.js'
 import LogUser from './logUser.js'
+import Plant from './plant.js'
+import Unit from './unit.js'
 
 // 테이블 명세서 관리를 위한 핵심 Association 정의
 Table.hasMany(Tablex, { foreignKey: 'tablen', sourceKey: 'tablen', as: 'names' })
@@ -53,4 +55,6 @@ export {
   Config,
   LogLoginUser,
   LogUser,
+  Plant,
+  Unit,
 }

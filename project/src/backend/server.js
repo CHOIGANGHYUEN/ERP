@@ -21,6 +21,8 @@ import codeRoutes from './module_sys/routes/codeRoutes.js'
 import logLoginUserRoutes from './module_sys/routes/logLoginUserRoutes.js'
 import logTableHistoryRoutes from './module_sys/routes/logTableHistoryRoutes.js'
 import logUserRoutes from './module_sys/routes/logUserRoutes.js'
+import plantRoutes from './module_sys/routes/plantRoutes.js'
+import unitRoutes from './module_sys/routes/unitRoutes.js'
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -51,6 +53,8 @@ app.use('/api/sys/codes', codeRoutes)
 app.use('/api/sys/logs/login', logLoginUserRoutes)
 app.use('/api/sys/logs/table-history', logTableHistoryRoutes)
 app.use('/api/sys/logs/user', logUserRoutes)
+app.use('/api/sys/plants', plantRoutes)
+app.use('/api/sys/units', unitRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend is running' })
