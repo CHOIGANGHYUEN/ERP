@@ -20,7 +20,7 @@ export const RETURNING = (creature, deltaTime, world) => {
       creature.village.inventory.food--
       CreatureEmotion.fulfillHunger(creature)
     }
-    if (creature.needs.fatigue > 50) CreatureEmotion.fulfillFatigue(creature)
+    if (creature.needs.fatigue > 50) CreatureEmotion.fulfillFatigue(creature) // 완전 회복
 
     creature.state = 'WANDERING'
     creature.target = null

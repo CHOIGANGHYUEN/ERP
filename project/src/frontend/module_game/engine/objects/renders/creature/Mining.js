@@ -2,21 +2,24 @@ import { drawCreatureBody } from './drawCreatureBody.js'
 import { RenderUtils } from '../../../utils/RenderUtils.js'
 
 export const MINING = (creature, ctx, timestamp) => {
-  if (timestamp - creature.lastFrameTime > creature.frameInterval) {
-    creature.currentFrame = (creature.currentFrame + 1) % 8
-    creature.lastFrameTime = timestamp
+  // 채광하는 듯한 상하 모션
+  const yOffset = Math.abs(Math.sin(timestamp * 0.015) * 2)
+
+  // Pickaxe swinging animation
+  const animProps = {
+    armR: Math.abs(Math.sin(timestamp * 0.015) * 8),
+    bodyTilt: 0.1,
   }
-  const yOffset = creature.frameOffsets[creature.currentFrame] * 1.5
-  const drawSize = drawCreatureBody(creature, ctx, yOffset)
+  const drawSize = drawCreatureBody(creature, ctx, yOffset, animProps)
 
   if (creature.isAdult && creature.target) {
     RenderUtils.drawBar(
       ctx,
       creature.x,
-      creature.y - drawSize - 8 + yOffset,
+      creature.y - drawSize - 8,
       20,
       3,
-      creature.currentFrame / 8,
+      creature.target.energy / creature.target.maxEnergy,
     )
   }
 }

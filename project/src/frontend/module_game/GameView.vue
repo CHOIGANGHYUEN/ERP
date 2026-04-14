@@ -13,6 +13,7 @@
         @mouseup="handleMouseUp"
         @mouseleave="handleMouseUp"
         @click="handleCanvasClick"
+        @wheel.prevent="handleWheel"
       ></canvas>
 
       <!-- 상단 HUD (통계 및 시스템 버튼) -->
@@ -40,155 +41,34 @@
       </div>
 
       <!-- 좌측 HUD: 상태창 (Inspector) -->
-      <div v-if="selectedEntityData" class="hud-left hud-panel custom-scroll">
-        <h4
-          style="
-            margin: 0 0 12px 0;
-            color: #fff;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-            padding-bottom: 8px;
-          "
-        >
-          🔍 개체 관찰 (Inspector)
-        </h4>
-
-        <template v-if="selectedEntityData.isVillage">
-          <!-- 마을 정보 -->
-          <div class="app-grid" style="font-size: 0.95rem; gap: 12px">
-            <div class="app-grid-item">
-              <strong>마을 이름:</strong> {{ selectedEntityData.name }}
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.nation">
-              <strong>국가:</strong>
-              <span :style="{ color: selectedEntityData.nation.color, fontWeight: 'bold' }">{{
-                selectedEntityData.nation.name
-              }}</span>
-            </div>
-            <div class="app-grid-item">
-              <strong>인구:</strong> {{ selectedEntityData.population }}명
-            </div>
-            <div class="app-grid-item">
-              <strong>건물:</strong> {{ selectedEntityData.buildings }}채
-            </div>
-            <div class="app-grid-item" style="color: #2ecc71">
-              <strong>식량 🧺:</strong>
-              {{
-                Math.floor(
-                  selectedEntityData.inventory.food || selectedEntityData.inventory.biomass || 0,
-                )
-              }}
-            </div>
-            <div class="app-grid-item" style="color: #e67e22">
-              <strong>목재 🪓:</strong> {{ Math.floor(selectedEntityData.inventory.wood || 0) }}
-            </div>
-            <div class="app-grid-item" style="color: #bdc3c7">
-              <strong>석재 🪨:</strong> {{ Math.floor(selectedEntityData.inventory.stone || 0) }}
-            </div>
-            <div class="app-grid-item" style="color: #e67e22">
-              <strong>철광 ⛏️:</strong> {{ Math.floor(selectedEntityData.inventory.iron || 0) }}
-            </div>
-            <div class="app-grid-item" style="color: #f1c40f">
-              <strong>금 💰:</strong> {{ Math.floor(selectedEntityData.inventory.gold || 0) }}
-            </div>
-            <div class="app-grid-item" style="color: #3498db">
-              <strong>지식 💡:</strong>
-              {{ Math.floor(selectedEntityData.inventory.knowledge || 0) }}
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <!-- 개체 정보 -->
-          <div class="app-grid" style="font-size: 0.95rem; gap: 12px">
-            <div class="app-grid-item">
-              <strong>종류:</strong>
-              <span class="badge-primary">{{ getEntityTypeName(selectedEntityData) }}</span>
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.village">
-              <strong>소속 마을:</strong> {{ selectedEntityData.village.name }}
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.age !== undefined">
-              <strong>나이:</strong> {{ Math.floor(selectedEntityData.age) }}살
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.profession">
-              <strong>직업:</strong> {{ getProfessionName(selectedEntityData.profession) }}
-            </div>
-            <div
-              class="app-grid-item"
-              v-if="
-                selectedEntityData.type &&
-                ['stone', 'iron', 'gold'].includes(selectedEntityData.type)
-              "
-            >
-              <strong>광물 잔량:</strong> {{ Math.floor(selectedEntityData.energy) }}
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.energy !== undefined">
-              <strong>체력:</strong>
-              <span :class="selectedEntityData.energy > 50 ? 'badge-success' : 'badge-danger'">{{
-                Math.floor(selectedEntityData.energy)
-              }}</span>
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.state">
-              <strong>상태:</strong> {{ selectedEntityData.state }}
-            </div>
-            <div class="app-grid-item" v-if="selectedEntityData.isImmortal">
-              <strong>특성:</strong> 🛡️불사(Immortal)
-            </div>
-            <!-- 욕구 및 감정 패널 -->
-            <div
-              class="app-grid-item"
-              v-if="selectedEntityData.needs && Object.keys(selectedEntityData.needs).length > 0"
-              style="grid-column: span 2"
-            >
-              <strong>🔥 욕구 (Needs):</strong>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px">
-                <span
-                  v-for="(val, key) in selectedEntityData.needs"
-                  :key="key"
-                  class="badge-warning"
-                  style="background: #e67e22; font-size: 0.8rem; padding: 2px 6px"
-                >
-                  {{ translateKey(key) }}: {{ Math.floor(val) }}%
-                </span>
-              </div>
-            </div>
-            <div
-              class="app-grid-item"
-              v-if="
-                selectedEntityData.emotions && Object.keys(selectedEntityData.emotions).length > 0
-              "
-              style="grid-column: span 2"
-            >
-              <strong>💖 감정 (Emotions):</strong>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px">
-                <span
-                  v-for="(val, key) in selectedEntityData.emotions"
-                  :key="key"
-                  class="badge-primary"
-                  style="background: #9b59b6; font-size: 0.8rem; padding: 2px 6px"
-                >
-                  {{ translateKey(key) }}: {{ Math.floor(val) }}%
-                </span>
-              </div>
-            </div>
-          </div>
-        </template>
+      <div class="hud-left hud-panel custom-scroll">
+        <GameInspector v-if="selectedEntityData" :entity-data="selectedEntityData" />
       </div>
 
       <!-- 우측 HUD: 상호작용 패널 -->
       <div class="hud-right custom-scroll">
         <GameInteractionPanel
           v-if="worldInstanceReady"
+          :world-inventory="worldInventory"
           :world="worldInstance"
           v-model:spawnType="currentSpawnType"
         />
       </div>
 
+      <!-- 좌측 하단 채팅/이벤트 로그 -->
+      <GameChatLog :logs="chatLogs" />
+
       <!-- 우측 하단 미니 정보 -->
       <div class="hud-bottom-right">
-        🗺️ 맵 크기: {{ mapWidth }} x {{ mapHeight }}<br />
-        <span style="color: #bbb; font-size: 0.8rem"
-          >※ 화면 드래그 이동 / 빈 공간 클릭 시 소환</span
-        >
+        <GameMinimap
+          v-if="worldInstanceReady"
+          :world="worldInstance"
+          :map-width="mapWidth"
+          :map-height="mapHeight"
+          :zoom-level="zoomLevel"
+          :game-canvas="gameCanvas"
+          @sync-camera="syncCameraToWorker"
+        />
       </div>
     </div>
 
@@ -224,13 +104,17 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import AppPageTitle from '@/frontend/common/components/AppPageTitle.vue'
-import AppCard from '@/frontend/common/components/AppCard.vue'
-import AppButton from '@/frontend/common/components/AppButton.vue'
+import AppPageTitle from '../common/components/AppPageTitle.vue'
+import AppCard from '../common/components/AppCard.vue'
+import AppButton from '../common/components/AppButton.vue'
 import { World } from './engine/core/World.js'
+import { setupDI } from './di/providers/setupDI.js'
 import { saveWorld, loadWorlds } from './api/gameApi.js'
 import { Village } from './engine/objects/society/Village.js' // 필요시 import
 import GameInteractionPanel from './components/GameInteractionPanel.vue'
+import GameInspector from './components/GameInspector.vue'
+import GameMinimap from './components/GameMinimap.vue'
+import GameChatLog from './components/GameChatLog.vue'
 
 const gameCanvas = ref(null)
 let worldInstance = null
@@ -243,11 +127,20 @@ const mapHeight = ref(0)
 const savedWorlds = ref([])
 const currentSpawnType = ref('human')
 const displayTime = ref('08:00')
+const zoomLevel = ref(100)
 const season = ref('SPRING')
 const selectedEntityData = ref(null)
+const worldInventory = ref(null)
+const chatLogs = ref([])
 let popInterval = null
 
 let gameWorker = null
+
+// Shared buffer indices mappings
+const INDEX_CREATURE_COUNT = 0
+const INDEX_FERTILITY = 8
+const INDEX_TIME_OF_DAY = 9
+const INDEX_SEASON = 10
 
 // 카메라 드래그 판별용 변수
 let isClickDrag = false
@@ -257,7 +150,7 @@ onMounted(() => {
     gameWorker = new Worker(new URL('./engine/worker/game.worker.js', import.meta.url), {
       type: 'module',
     })
-    worldInstance = new World(gameCanvas.value)
+    worldInstance = new World(setupDI(), gameCanvas.value)
     worldInstanceReady.value = true
     mapWidth.value = worldInstance.width
     mapHeight.value = worldInstance.height
@@ -269,26 +162,92 @@ onMounted(() => {
 
     // Worker 데이터 수신 및 렌더링
     gameWorker.onmessage = (e) => {
-      if (e.data.type === 'SYNC') {
-        worldInstance.importState(e.data.payload)
-        requestAnimationFrame((t) => worldInstance.render(t))
+      const { type, payload } = e.data
+      if (type === 'INIT_BUFFERS') {
+        // [SAB] Worker로부터 SharedArrayBuffer를 받아 월드(렌더러) 초기화
+        worldInstance.initSharedState(payload)
+        worldInstance.start() // 렌더링 루프 시작
+      } else if (type === 'SYNC') {
+        // [SAB] Worker로부터 동기화 신호를 받으면 메인 스레드에서 렌더링만 수행
+        // 데이터는 버퍼를 통해 직접 공유되므로 payload가 필요 없음
+        // worldInstance.loop는 requestAnimationFrame으로 이미 돌고 있으므로 별도 호출 불필요
+      } else if (type === 'VILLAGE_DETAILS') {
+        // [SAB] Worker로부터 받은 마을 상세 정보(이름, 인벤토리 등)를 병합
+        if (selectedEntityData.value && selectedEntityData.value.id === payload.id) {
+          // 기존 버퍼 데이터에 상세 페이로드를 덮어씀
+          const newEntityData = { ...selectedEntityData.value, ...payload }
+          selectedEntityData.value = newEntityData
+          if (payload.nation) {
+            worldInstance.onProxyAction({
+              type: 'GET_NATION_DETAILS',
+              payload: { id: payload.nation.id },
+            })
+          }
+        }
+      } else if (type === 'NATION_DETAILS') {
+        if (selectedEntityData.value?.nation?.id === payload.id) {
+          const newNationData = { ...selectedEntityData.value.nation, ...payload }
+          selectedEntityData.value = { ...selectedEntityData.value, nation: newNationData }
+        }
+      } else if (type === 'WORLD_INVENTORY_DETAILS') {
+        // [SAB] Worker로부터 받은 월드 전체 인벤토리 정보
+        worldInventory.value = payload
+      } else if (type === 'SPEECH_BUBBLE') {
+        worldInstance.showSpeechBubble(
+          payload.entityId,
+          payload.entityType,
+          payload.text,
+          payload.duration,
+        )
+        const timeStr = new Date().toLocaleTimeString('ko-KR', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+        chatLogs.value.push({
+          time: timeStr,
+          sender: payload.entityType === 'creature' ? `주민 ${payload.entityId || ''}` : '시스템',
+          text: payload.text,
+          color: '#ecf0f1',
+        })
+        if (chatLogs.value.length > 100) chatLogs.value.shift() // 로그 최대 100개 유지
+      } else if (type === 'SYSTEM_MESSAGE') {
+        const timeStr = new Date().toLocaleTimeString('ko-KR', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+        chatLogs.value.push({
+          time: timeStr,
+          sender: '시스템 알림',
+          text: payload.text,
+          color: payload.color || '#f1c40f',
+        })
+        if (chatLogs.value.length > 100) chatLogs.value.shift()
       }
     }
 
     gameWorker.postMessage({ type: 'INIT' })
 
     popInterval = setInterval(() => {
-      if (worldInstance) {
-        population.value = worldInstance.creatures.length
-        fertility.value = worldInstance.currentFertility
+      if (worldInstance && worldInstance.views) {
+        const globals = worldInstance.views.globals
+        population.value = globals[INDEX_CREATURE_COUNT]
+        fertility.value = globals[INDEX_FERTILITY]
         maxFertility.value = worldInstance.maxFertility
-        season.value = worldInstance.timeSystem.season
+        season.value = Object.keys({ SPRING: 0, SUMMER: 1, AUTUMN: 2, WINTER: 3 })[
+          globals[INDEX_SEASON]
+        ]
+        // 카메라 줌 레벨 추적 (기본 1.0 = 100%)
+        zoomLevel.value = Math.round((worldInstance.camera.zoom || 1) * 100)
         // 시간 표시 포맷팅 (0~24000)
-        const hours = Math.floor(worldInstance.timeSystem.timeOfDay / 1000)
+        const hours = Math.floor(globals[INDEX_TIME_OF_DAY] / 1000)
           .toString()
           .padStart(2, '0')
         displayTime.value = `${hours}:00`
-        updateSelectedEntityData()
+        updateSelectedEntityData() // SAB 기반으로 데이터 갱신
       }
     }, 200)
   }
@@ -310,14 +269,47 @@ const handleMouseDown = (e) => {
 
 const handleMouseMove = (e) => {
   if (!worldInstance || !worldInstance.camera.isDragging) return
+
+  // 마우스 미세 흔들림 방지 (드래그 임계값 설정)
+  const dx = Math.abs(e.clientX - worldInstance.camera.lastMouseX)
+  const dy = Math.abs(e.clientY - worldInstance.camera.lastMouseY)
+  if (dx > 3 || dy > 3) {
+    isClickDrag = true
+  }
+
   worldInstance.camera.handleMouseMove(e)
-  isClickDrag = true
+  syncCameraToWorker() // 패닝 중에도 Worker에 실시간 동기화
+}
+
+// Worker 동기화로 인한 카메라 리셋 방지용: 상태 강제 갱신
+const syncCameraToWorker = () => {
+  if (worldInstance && worldInstance.onProxyAction) {
+    worldInstance.onProxyAction({
+      type: 'CAMERA_UPDATE',
+      payload: {
+        x: worldInstance.camera.x,
+        y: worldInstance.camera.y,
+        zoom: worldInstance.camera.zoom,
+      },
+    })
+  }
 }
 
 const handleMouseUp = (e) => {
   if (!worldInstance) return
   worldInstance.camera.handleMouseUp()
   if (gameCanvas.value) gameCanvas.value.style.cursor = 'grab'
+}
+
+// Camera Wheel Zoom Controls
+const handleWheel = (e) => {
+  if (!worldInstance) return
+
+  // 엔진(World) 내부의 Camera 객체로 이벤트 위임
+  worldInstance.camera.handleWheel(e)
+
+  // 변경된 줌과 카메라 위치를 Worker 엔진에 즉각 브로드캐스팅
+  syncCameraToWorker()
 }
 
 const handleCanvasClick = (event) => {
@@ -333,145 +325,76 @@ const handleCanvasClick = (event) => {
 
   if (clickedEntity) {
     worldInstance.selectedEntity = clickedEntity
-    updateSelectedEntityData()
-  } else {
-    // 빈 공간을 클릭하면 마을인지 먼저 체크 (원 안에 포함되는지)
-    const worldX = mouseX + worldInstance.camera.x
-    const worldY = mouseY + worldInstance.camera.y
-    let clickedVillage = null
-    for (const v of worldInstance.villages) {
-      if (Math.sqrt(Math.pow(v.x - worldX, 2) + Math.pow(v.y - worldY, 2)) < v.radius) {
-        clickedVillage = v
-        break
-      }
+    const data = worldInstance.getDataFromBuffer(clickedEntity._type, clickedEntity.id)
+    selectedEntityData.value = data
+    if (data && data.isVillage) {
+      worldInstance.onProxyAction({
+        type: 'GET_VILLAGE_DETAILS',
+        payload: { id: clickedEntity.id },
+      })
     }
+  } else {
+    // 빈 공간을 클릭하면 선택 해제 후, 현재 선택된 소환 타입에 따라 개체 소환
+    worldInstance.selectedEntity = null
+    selectedEntityData.value = null
 
-    if (clickedVillage) {
-      worldInstance.selectedEntity = clickedVillage
-      updateSelectedEntityData()
-    } else {
-      worldInstance.selectedEntity = null
-      selectedEntityData.value = null
+    const currentZoom = worldInstance.camera.zoom || 1
+    const worldX = mouseX / currentZoom + worldInstance.camera.x
+    const worldY = mouseY / currentZoom + worldInstance.camera.y
 
-      // 선택된 개체 타입에 따라 클릭한 좌표에 소환
-      switch (currentSpawnType.value) {
-        case 'human':
-          worldInstance.spawnCreature(worldX, worldY)
-          break
-        case 'herbivore':
-          worldInstance.spawnAnimal(worldX, worldY, 'HERBIVORE')
-          break
-        case 'carnivore':
-          worldInstance.spawnAnimal(worldX, worldY, 'CARNIVORE')
-          break
-        case 'tree':
-          worldInstance.spawnPlant(worldX, worldY, 'tree')
-          break
-        case 'crop':
-          worldInstance.spawnPlant(worldX, worldY, 'crop')
-          break
-      }
+    // 선택된 개체 타입에 따라 클릭한 좌표에 소환
+    switch (currentSpawnType.value) {
+      case 'human':
+        worldInstance.spawnCreature(worldX, worldY)
+        break
+      case 'herbivore':
+        worldInstance.spawnAnimal(worldX, worldY, 'HERBIVORE')
+        break
+      case 'carnivore':
+        worldInstance.spawnAnimal(worldX, worldY, 'CARNIVORE')
+        break
+      case 'tree':
+        worldInstance.spawnPlant(worldX, worldY, 'tree')
+        break
+      case 'crop':
+        worldInstance.spawnPlant(worldX, worldY, 'crop')
+        break
     }
   }
 }
 
 const updateSelectedEntityData = () => {
-  if (!worldInstance || !worldInstance.selectedEntity) {
+  // [SAB] selectedEntity는 이제 { _type: 'creature', id: 123 } 형태의 객체
+  const ent = worldInstance.selectedEntity
+  if (!worldInstance || !ent) {
     selectedEntityData.value = null
     return
   }
-  const ent = worldInstance.selectedEntity
 
-  if (ent.isDead) {
+  const bufferedData = worldInstance.getDataFromBuffer(ent._type, ent.id)
+  if (!bufferedData || bufferedData.isDead) {
     worldInstance.selectedEntity = null
     selectedEntityData.value = null
     return
   }
 
-  if (ent instanceof Village || (ent.inventory && ent.creatures)) {
-    // 마을인 경우
-    selectedEntityData.value = {
-      isVillage: true,
-      name: ent.name,
-      nation: ent.nation,
-      population: ent.population !== undefined ? ent.population : ent.creatures.length,
-      buildings: ent.buildingCount !== undefined ? ent.buildingCount : ent.buildings.length,
-      inventory: ent.inventory,
-    }
+  // 마을의 경우, 이전에 비동기로 받아온 상세 정보(name, inventory)가 있다면 유지하고,
+  // 실시간으로 변하는 값(population 등)만 버퍼에서 덮어쓴다.
+  if (bufferedData.isVillage && selectedEntityData.value?.id === bufferedData.id) {
+    selectedEntityData.value = { ...selectedEntityData.value, ...bufferedData }
   } else {
-    // 일반 개체
-    selectedEntityData.value = {
-      isVillage: false,
-      type: ent.type,
-      profession: ent.profession,
-      age: ent.age,
-      energy: ent.energy,
-      state: ent.state,
-      isImmortal: ent.isImmortal,
-      village: ent.village,
-      needs: ent.needs,
-      emotions: ent.emotions,
+    // 다른 개체거나, 아직 상세 정보가 없는 마을은 버퍼 데이터로 바로 덮어쓴다.
+    selectedEntityData.value = bufferedData
+    // 마을이 새로 선택된 경우, 상세 정보를 요청
+    if (bufferedData.isVillage) {
+      worldInstance.onProxyAction({ type: 'GET_VILLAGE_DETAILS', payload: { id: ent.id } })
     }
   }
-}
-
-const getEntityTypeName = (entity) => {
-  if (entity.profession !== undefined) return '지성체 (인간)'
-  if (entity.type === 'HERBIVORE') return '초식동물 (토끼)'
-  if (entity.type === 'CARNIVORE') return '육식동물 (호랑이)'
-  if (entity.type === 'tree') return '나무'
-  if (entity.type === 'grass') return '풀'
-  if (entity.type === 'crop') return '농작물 (밀)'
-  if (entity.type === 'wood' || entity.type === 'biomass' || entity.type === 'food') return '자원'
-
-  const buildingTypes = {
-    HOUSE: '집',
-    SCHOOL: '학교',
-    FARM: '농장',
-    BARRACKS: '병영',
-    TEMPLE: '신전',
-    SMITHY: '대장간',
-  }
-  if (buildingTypes[entity.type]) return `건물 (${buildingTypes[entity.type]})`
-
-  if (entity.type === 'stone' || entity.type === 'iron' || entity.type === 'gold')
-    return '광맥 (' + entity.type + ')'
-  if (entity.lifeTime !== undefined && entity.angle !== undefined) return '재해 (토네이도)'
-  return '알 수 없음'
-}
-
-const getProfessionName = (prof) => {
-  const map = {
-    NONE: '아기/무직',
-    GATHERER: '채집가 🧺',
-    LUMBERJACK: '벌목꾼 🪓',
-    FARMER: '농부 🌱',
-    BUILDER: '건축가 🔨',
-    SCHOLAR: '학자 📖',
-    MINER: '광부 ⛏️',
-    WARRIOR: '전사 ⚔️',
-    LEADER: '마일 촌장 👑',
-  }
-  return map[prof] || prof
 }
 
 const getSeasonName = (s) => {
   const map = { SPRING: '봄 🌸', SUMMER: '여름 ☀️', AUTUMN: '가을 🍂', WINTER: '겨울 ❄️' }
   return map[s] || s
-}
-
-const translateKey = (key) => {
-  const dict = {
-    hunger: '허기',
-    fatigue: '피로',
-    moisture: '수분 갈증',
-    thirst: '갈증',
-    happiness: '행복',
-    fear: '공포',
-    aggression: '공격성',
-    vitality: '활력',
-  }
-  return dict[key] || key
 }
 
 const handleSave = async () => {
@@ -522,102 +445,3 @@ const loadWorldData = (world) => {
   }
 }
 </script>
-
-<style scoped>
-.game-wrapper {
-  position: relative;
-  width: 100%;
-  max-width: 1280px; /* 기존 800px 에서 대폭 확대 */
-  margin: 0 auto;
-  border: 2px solid var(--app-border-color);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  background-color: #a4b07e;
-}
-
-.game-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1280 / 720;
-  cursor: grab;
-}
-.game-canvas:active {
-  cursor: grabbing;
-}
-
-/* HUD 레이아웃 공통 */
-.hud-top {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  right: 16px;
-  display: flex;
-  justify-content: space-between;
-  pointer-events: none; /* 클릭 통과 */
-}
-.hud-top-left,
-.hud-top-right {
-  pointer-events: auto; /* 자식 요소만 클릭 활성화 */
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.hud-top-right span {
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-.hud-panel {
-  background: rgba(20, 30, 40, 0.85);
-  color: #ecf0f1;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  padding: 16px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
-  pointer-events: auto;
-}
-
-.hud-left {
-  position: absolute;
-  top: 70px;
-  left: 16px;
-  width: 300px;
-  max-height: calc(100% - 90px);
-  overflow-y: auto;
-}
-
-.hud-right {
-  position: absolute;
-  top: 70px;
-  right: 16px;
-  width: 300px;
-  max-height: calc(100% - 90px);
-  overflow-y: auto;
-  pointer-events: none; /* GameInteractionPanel 내부에서 auto로 제어 */
-}
-
-.hud-bottom-right {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  pointer-events: none;
-  text-align: right;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* 스크롤바 커스텀 */
-.custom-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
-}
-</style>

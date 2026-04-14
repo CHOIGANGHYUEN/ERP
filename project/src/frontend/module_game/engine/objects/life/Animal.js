@@ -2,6 +2,7 @@ import { Entity } from '../../core/Entity.js'
 import { AnimalActions } from '../action/AnimalActions.js'
 import { AnimalRenders } from '../renders/AnimalRenders.js'
 import { AnimalEmotion } from '../emotions/AnimalEmotion.js'
+import { AnimalBehaviors } from '../behavior/AnimalBehaviors.js'
 
 export class Animal extends Entity {
   init(x, y, type) {
@@ -29,9 +30,32 @@ export class Animal extends Entity {
     if (this.isDead) return
     AnimalEmotion.update(this, deltaTime)
 
+    // [SAB 수정] 애니메이션 프레임 업데이트 로직을 렌더러가 아닌 워커의 update 루프로 이동
+    this.lastFrameTime += deltaTime
+    if (this.lastFrameTime >= this.frameInterval) {
+      this.currentFrame = (this.currentFrame + 1) % 8
+      this.lastFrameTime = 0
+    }
+
     if (this.energy <= 0) {
       this.die(world)
       return
+    }
+
+    // 동물의 두뇌 AI (0.5초마다 판단)
+    this.aiTickTimer = (this.aiTickTimer || 0) - deltaTime
+    if (this.aiTickTimer <= 0) {
+      this.aiTickTimer = 500 + Math.random() * 500
+      const searchRange = { x: this.x - 200, y: this.y - 200, width: 400, height: 400 }
+      const candidates = world.chunkManager.query(searchRange)
+
+      const drive = AnimalEmotion.evaluateSurvivalNeeds(this, candidates)
+      if (drive) {
+        const behavior = AnimalBehaviors[drive.action]
+        if (behavior) behavior(this, drive.target, world)
+      } else if (this.state === 'WANDERING' || this.state === 'IDLE') {
+        if (Math.random() < 0.05) this.wander(world)
+      }
     }
 
     // 상태(State) 기반 전략 행동 실행 (Strategy Pattern)

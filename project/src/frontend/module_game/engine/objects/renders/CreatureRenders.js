@@ -6,6 +6,10 @@ import { BUILDING } from './creature/Building.js'
 import { ATTACKING } from './creature/Attacking.js'
 import { STUDYING } from './creature/Studying.js'
 import { RETURNING } from './creature/Returning.js'
+import { TRAINING } from './creature/Training.js'
+import { RESTING } from './creature/Resting.js'
+import { MATING } from './creature/Mating.js'
+import { FLEEING } from './creature/Fleeing.js'
 
 export const CreatureRenders = {
   WANDERING,
@@ -16,4 +20,8 @@ export const CreatureRenders = {
   ATTACKING,
   STUDYING,
   RETURNING,
+  TRAINING,
+  RESTING,
+  MATING,
+  FLEEING,
 }

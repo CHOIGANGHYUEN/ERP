@@ -17,15 +17,12 @@ src/frontend/module_game/
 │   │   └── World.js          # 게임 루프(Loop) 및 메인 렌더링 컨트롤러
 │   ├── objects/              # 도메인별로 분리된 게임 내 렌더링 개체들
 │   │   ├── action/           # 상태(State)별 행동(Action) 패턴 모듈
-│   │   │   ├── CreatureActions.js # 모든 Action을 묶어주는 팩토리 인덱스
-│   │   │   ├── AnimalActions.js   # 동물용 Action 팩토리 인덱스
-│   │   │   ├── Wandering.js  # 배회 로직 (WANDERING)
-│   │   │   ├── Gathering.js  # 자원 수집 로직 (GATHERING)
-│   │   │   ├── Building.js   # 건설 로직 (BUILDING)
-│   │   │   ├── AnimalWandering.js # 동물의 생태계 반경 탐색 로직
-│   │   │   ├── AnimalEating.js    # 초식동물 섭취 로직
-│   │   │   ├── AnimalHunting.js   # 육식동물 사냥 로직
-│   │   │   └── ...           
+│   │   │   ├── CreatureActions.js # 지성체 Action 팩토리
+│   │   │   ├── AnimalActions.js   # 동물 Action 팩토리
+│   │   │   ├── PlantActions.js    # 식물 Action 팩토리
+│   │   │   ├── creature/          # 지성체 전용 행동 (Wandering, Gathering 등)
+│   │   │   ├── animal/            # 동물 전용 행동 (Wandering, Eating, Hunting)
+│   │   │   └── plant/             # 식물 전용 행동 (Growing)
 │   │   ├── emotions/         # 개체별 욕구(Needs) 및 감정(Emotions) 통제 모듈
 │   │   │   ├── CreatureEmotion.js
 │   │   │   ├── AnimalEmotion.js
@@ -43,6 +40,9 @@ src/frontend/module_game/
 │   │   │   ├── CreatureRenders.js
 │   │   │   ├── AnimalRenders.js
 │   │   │   └── PlantRenders.js
+│   │   │   ├── creature/          # 지성체 상태별 렌더링 (Wandering, Attacking 등)
+│   │   │   ├── animal/            # 동물 상태별 렌더링
+│   │   │   └── plant/             # 식물 상태별 렌더링
 │   │   ├── life/
 │   │   │   ├── Animal.js     # 동물 (초식/육식동물)
 │   │   │   ├── Creature.js   # 지성체 (인간 및 직업군 FSM 적용)
@@ -52,17 +52,19 @@ src/frontend/module_game/
 │   │       ├── Nation.js     # 국가 시스템
 │   │       └── Village.js    # 마을 영토 확장 및 관리 시스템
 │   ├── systems/              # 물리, 환경, 카메라 등 논리 시스템
-│   │   ├── Camera.js         # 마우스 드래그 및 Culling Box 시스템
+│   │   ├── Camera.js         # 마우스 드래그 패닝, 휠 줌(Zoom) 및 Culling Box 시스템
 │   │   ├── QuadTree.js       # 공간 분할 알고리즘 (충돌 및 탐색 최적화)
 │   │   ├── TimeSystem.js     # 시간(낮/밤), 날짜, 계절 연산 및 조명 오버레이 시스템
-│   │   ├── DisasterSystem.js # 지진, 토네이도 등 자연재해 통제 및 카메라 쉐이크 연산
+│   │   ├── DisasterSystem.js # 지진(카메라 쉐이크), 토네이도 등 자연재해 통제 연산
 │   │   ├── DiplomacySystem.js# [예정] 국가 간 적대/동맹 및 전쟁/외교 연산 시스템
-│   │   └── WeatherSystem.js  # 날씨 및 환경 제어 시스템
-│   └── utils/                # 렌더링 및 공통 유틸리티
-│       └── RenderUtils.js    # 그림자, 상태바 등 공통 그리기 함수
+│   │   └── WeatherSystem.js  # 날씨(비, 안개) 파티클 및 환경 제어 시스템
+│   ├── utils/                # 렌더링 및 공통 유틸리티
+│   │   └── RenderUtils.js    # 그림자, 상태바 등 공통 그리기 함수
+│   └── worker/               # 멀티스레딩 워커 모듈
+│       └── game.worker.js    # 백그라운드 물리/AI 연산 전담 워커 스레드
 ├── gameDocument.md           # 게임 기획 및 아키텍처 명세서 (본 문서)
 ├── gameTodo.md               # 프론트엔드 게임 개발 로드맵
-└── GameView.vue              # 게임 메인 뷰 화면
+└── GameView.vue              # 게임 메인 뷰 화면 (메인 렌더링, 미니맵, Worker 동기화 컨트롤러)
 ```
 
 ---
@@ -85,15 +87,17 @@ src/frontend/module_game/
 - **Object Pooling (오브젝트 풀링)**: 생성/소멸이 잦은 생명체, 동물, 자원의 가비지 컬렉터(GC) 부하를 막기 위해 죽은 객체를 재사용(Reset)합니다.
 - **Offscreen Canvas (사전 렌더링)**: 고정된 마을 영토와 완공된 건물은 보이지 않는 `bgCanvas`에 1회만 그려두고 메인 캔버스에 복사(`drawImage`)하여 Draw Call을 획기적으로 줄입니다.
 - **Tick Throttling (틱 분산)**: 무거운 AI 행동 연산이나 영토 확장 로직은 매 프레임이 아닌 1초 등 특정 주기 타이머에 맞춰 분산 처리됩니다.
-- **System 모듈화 지향**: `World.js`가 너무 많은 역할을 짊어지는 God Object가 되는 것을 방지하기 위해 환경, 렌더링, 시간 로직은 독립된 `System` 모듈로 분할하여 관리합니다 (진행 중).
+- **System 모듈화 지향**: `World.js`가 너무 많은 역할을 짊어지는 God Object가 되는 것을 방지하기 위해 날씨, 시간(TimeSystem), 재난(DisasterSystem) 로직을 전담 모듈로 완전히 분리 완료했습니다.
+- **픽셀 렌더링 최적화 (Pixel-Perfect Rendering)**: 줌 인/아웃 시 그래픽 뭉개짐(Anti-aliasing)을 방지하고 크리스프(Crisp)한 픽셀 아트 스타일을 유지하기 위해 캔버스 API의 `imageSmoothingEnabled = false` 속성과 CSS의 `image-rendering: pixelated`를 결합하여 적용했습니다.
 
-### 4.2 카메라 시스템 (`Camera.js`)
-- 플레이어는 마우스 **드래그(Click & Drag)** 를 통해 3200x3200 크기의 월드를 자유롭게 탐색할 수 있습니다.
+### 4.2 카메라 및 뷰포트 시스템 (`Camera.js` & Minimap)
+- **이동 및 줌(Zoom)**: 플레이어는 마우스 **드래그(패닝)**를 통해 3200x3200 크기의 월드를 자유롭게 탐색할 수 있으며, **마우스 휠**을 조작해 마우스 커서 지점을 향해 부드럽게 확대/축소(0.5배 ~ 3.0배)할 수 있습니다.
+- **미니맵 (Minimap)**: 우측 하단의 작은 캔버스(256x144)를 통해 월드 전체의 지형, 마을 세력권, 생명체 분포, 그리고 현재 카메라의 뷰포트(흰색 테두리)를 실시간으로 조감하고, 클릭/드래그하여 즉시 이동할 수 있습니다.
 - 최적화를 위해 카메라 뷰포트 영역(화면 + 여분 마진 50px) 내에 존재하는 엔티티들만 캔버스에 렌더링하는 Culling 로직이 적용되어 있습니다.
 
 ### 4.3 날씨 시스템 (`WeatherSystem.js`)
 - 실시간 시간 변화(deltaTime)에 따라 **맑음(☀️)** 과 **비(🌧️)** 상태가 전환됩니다.
-- 바람(Wind Speed)이 지속적으로 변하며, 식물의 렌더링(흔들림 등)에 영향을 줍니다.
+- 바람(Wind Speed)이 지속적으로 변하며, 식물의 흔들림 및 빗물 파티클(Particle)의 렌더링 방향에 영향을 줍니다.
 
 ---
 
@@ -131,13 +135,15 @@ src/frontend/module_game/
 ### 6.1 캔버스 직접 상호작용
 | 조작 방법         | 기능 설명                                                                                                                                                                        |
 | :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **마우스 드래그** | 카메라를 이동시켜 월드 지도를 상하좌우로 탐색합니다.                                                                                                                             |
+| **마우스 드래그** | 카메라를 패닝(Panning)하여 월드 지도를 상하좌우로 탐색합니다.                                                                                                                    |
+| **마우스 휠**     | 커서가 위치한 지점을 중심으로 화면을 줌 인(Zoom In) 하거나 줌 아웃(Zoom Out) 합니다.                                                                                             |
 | **엔티티 클릭**   | 동/식물, 지성체, 건물을 클릭하여 `selectedEntity`로 지정하고 상태 관찰 패널에 정보를 띄웁니다.                                                                                   |
 | **빈 공간 클릭**  | 드래그하지 않고 빈 땅을 클릭하면 우측 상호작용 패널에서 선택한 개체를 마우스 좌표에 즉시 소환합니다. 주변에 마을이 있다면 마을에 편입되고, 없다면 새 마을과 국가가 만들어집니다. |
+| **미니맵 조작**   | 우측 하단 미니맵 캔버스를 클릭하거나 드래그하면, 메인 카메라가 해당 월드 좌표로 즉시 이동합니다.                                                                                 |
 
 ### 6.2 신의 통제 대시보드 (`GameInteractionPanel.vue` & `GameView.vue`)
 - **창조의 권능**: 셀렉트 박스에서 원하는 개체(인간, 호랑이, 토끼, 나무, 작물)를 선택하여 화면 중앙에 즉시 강제 소환하거나 화면 클릭 소환 타입을 지정합니다.
-- **환경 통제**: 맵의 대지 비옥도를 즉시 +5000 회복시키거나, 버튼 클릭 한 번으로 날씨(맑음, 비, 안개)를 강제로 변경할 수 있습니다.
+- **환경/재난 통제**: 맵의 대지 비옥도를 즉시 회복시키거나, 날씨를 강제로 변경하고 토네이도 및 대지진(카메라 쉐이크 동반) 등의 재난을 발생시킵니다.
 - **월드 통계 및 개체 관찰(Inspector)**: 현재 월드의 세부 인구, 건물, 자연 생태계 수량을 시각적 배지로 실시간 확인하며, 클릭한 마을이나 개체의 디테일한 스탯(인벤토리, 체력, 나이, 직업, **욕구 및 감정 수치**)을 모던 테이블 뷰로 즉시 열람합니다.
 
 ### 6.3 고급 모니터링 및 시각화 UI (예정)
@@ -151,4 +157,4 @@ src/frontend/module_game/
 
 ## 7. 시스템 한계 및 확장 가능성 (Future Work)
 - **Backend 미연동**: 현재 `gameApi.js`는 선언되어 있으나 실제 백엔드 연동 없이 브라우저 메모리 기반으로 작동 중입니다. 추후 게임 상태를 영구 저장하기 위해 Database(MySQL 등) 연동 설계가 필요합니다.
-- **스레드 분리**: 연산이 많아질 경우 프론트엔드 연산량 한계를 극복하기 위해 `World.js`의 루프를 Web Worker 스레드로 넘기는 작업이 필요합니다.
+- **스레드 분리 (완료)**: 브라우저 메인 스레드의 렌더링 병목을 없애기 위해, `game.worker.js`를 통해 물리 및 AI 연산을 Web Worker로 완전히 분리했습니다. 메인 스레드는 `importState`를 통해 스냅샷을 전달받아 뷰포트 렌더링만 수행합니다.

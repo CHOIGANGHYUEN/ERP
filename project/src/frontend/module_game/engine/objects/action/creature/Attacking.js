@@ -5,7 +5,8 @@ export const ATTACKING = (creature, deltaTime, world) => {
     return
   }
   if (creature.distanceTo(creature.target) < creature.size + (creature.target.size || 0) + 5) {
-    creature.target.energy -= deltaTime * 0.1
+    // [수정] 기본 데미지에 attackPower 곱하기
+    creature.target.energy -= deltaTime * 0.1 * (creature.attackPower || 1)
     if (creature.target.energy <= 0) {
       creature.target.die(world)
       creature.state = 'WANDERING'

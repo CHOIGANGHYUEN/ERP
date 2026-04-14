@@ -1,11 +1,7 @@
 import { drawAnimalBody } from './drawAnimalBody.js'
 import { RenderUtils } from '../../../utils/RenderUtils.js'
 
-export const EATING = (animal, ctx, timestamp) => {
-  if (timestamp - animal.lastFrameTime > animal.frameInterval) {
-    animal.currentFrame = (animal.currentFrame + 1) % 8
-    animal.lastFrameTime = timestamp
-  }
+export const EATING = (animal, ctx, _timestamp) => {
   const yOffset = animal.frameOffsets[animal.currentFrame] * 1.5
   drawAnimalBody(animal, ctx, yOffset)
 

@@ -91,7 +91,7 @@ const codeService = {
       }
 
       // Delete items that were removed
-      for (const [subCode, oldItem] of existingItemsMap.entries()) {
+      for (const [_subCode, oldItem] of existingItemsMap.entries()) {
         await oldItem.destroy({ transaction: t })
       }
 

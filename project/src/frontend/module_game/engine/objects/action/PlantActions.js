@@ -1,4 +1,4 @@
-import { GROWING } from './plant/Growing'
+import { GROWING } from './plant/Growing.js'
 
 export const PlantActions = {
   GROWING: GROWING,

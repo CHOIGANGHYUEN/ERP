@@ -72,7 +72,7 @@ const userService = {
   },
 
   // Google 로그인 연동용 (authController.js 에서 호출됨)
-  async findOrCreateUser({ googleId, email, name, picture }) {
+  async findOrCreateUser({ email }) {
     let user = await User.findOne({ where: { userId: email } })
     if (!user) {
       user = await User.create({

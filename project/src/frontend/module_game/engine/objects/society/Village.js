@@ -1,4 +1,5 @@
 import { Entity } from '../../core/Entity.js'
+import { Resource } from '../environment/Resource.js'
 
 export class Village extends Entity {
   init(x, y, name) {
@@ -30,7 +31,7 @@ export class Village extends Entity {
     building.village = this
   }
 
-  update(deltaTime, _world) {
+  update(deltaTime, world) {
     // 4.3 틱 스로틀링: 무거운 마을 레벨 연산은 1초(1000ms) 단위로만 분산 갱신
     this.tickTimer += deltaTime
     if (this.tickTimer >= 1000) {
@@ -41,18 +42,64 @@ export class Village extends Entity {
 
       // 부드러운 보간(Interpolation)을 통한 세력권 확장 애니메이션 효과
       this.radius += (targetRadius - this.radius) * 0.1
+
+      // 3. 패시브 자원 생산 (AI 동선 병목 방지용 보조 수입)
+      this.creatures.forEach((c) => {
+        if (c.isDead || !c.isAdult) return
+        if (c.profession === 'FARMER' || c.profession === 'GATHERER') {
+          if (Math.random() < 0.2) this.inventory.food = (this.inventory.food || 0) + 1
+        } else if (c.profession === 'LUMBERJACK') {
+          if (Math.random() < 0.2) this.inventory.wood = (this.inventory.wood || 0) + 1
+        } else if (c.profession === 'MINER') {
+          if (Math.random() < 0.1) this.inventory.stone = (this.inventory.stone || 0) + 1
+          if (Math.random() < 0.05) this.inventory.iron = (this.inventory.iron || 0) + 1
+        } else if (c.profession === 'SCHOLAR') {
+          if (Math.random() < 0.1) this.inventory.knowledge = (this.inventory.knowledge || 0) + 1
+        }
+      })
+
+      // 4. 영토 내 떨어진 자원(Resource) 자동 수집 로직
+      const range = {
+        x: this.x - this.radius,
+        y: this.y - this.radius,
+        width: this.radius * 2,
+        height: this.radius * 2,
+      }
+      const nearbyItems = world.chunkManager.query(range)
+      nearbyItems.forEach((item) => {
+        if (item instanceof Resource && !item.isDead && this.distanceTo(item) < this.radius) {
+          this.inventory[item.type] = (this.inventory[item.type] || 0) + 1
+          // 고기, 우유, 바이오매스 등은 식량으로도 환산하여 굶주림 방지
+          if (['meat', 'milk', 'biomass'].includes(item.type)) {
+            this.inventory.food = (this.inventory.food || 0) + 1
+          }
+          item.die(world)
+        }
+      })
     }
   }
 
   render(ctx) {
-    // 2. 영토 폴리곤(세력권) 영역 반투명 색상 채우기
+    // 타일 기반 영토 렌더링
     ctx.fillStyle = this.nation ? this.nation.color + '33' : 'rgba(255, 255, 255, 0.1)'
-    ctx.beginPath()
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2)
-    ctx.fill()
 
-    ctx.strokeStyle = this.nation ? this.nation.color : 'rgba(255, 255, 255, 0.3)'
-    ctx.lineWidth = 2
-    ctx.stroke()
+    const gridSize = 32
+    const startX = Math.floor((this.x - this.radius) / gridSize) * gridSize
+    const endX = Math.ceil((this.x + this.radius) / gridSize) * gridSize
+    const startY = Math.floor((this.y - this.radius) / gridSize) * gridSize
+    const endY = Math.ceil((this.y + this.radius) / gridSize) * gridSize
+
+    for (let tx = startX; tx < endX; tx += gridSize) {
+      for (let ty = startY; ty < endY; ty += gridSize) {
+        const tileCenterX = tx + gridSize / 2
+        const tileCenterY = ty + gridSize / 2
+        const dist = Math.sqrt(
+          Math.pow(tileCenterX - this.x, 2) + Math.pow(tileCenterY - this.y, 2),
+        )
+        if (dist < this.radius) {
+          ctx.fillRect(tx, ty, gridSize, gridSize)
+        }
+      }
+    }
   }
 }

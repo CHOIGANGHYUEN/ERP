@@ -24,19 +24,22 @@ export class Building extends Entity {
     this.progress = 0
     this.upgradeTimer = 0
     this.effectTimer = 0
+
+    // 집(HOUSE) 전용 속성: 수용량 및 거주자
+    if (this.type === 'HOUSE') {
+      this.capacity = 2 * this.tier // 티어당 2명 수용
+      this.occupants = []
+    }
   }
 
   update(deltaTime, _world) {
     // 완성된 건물 효과 (알고리즘 기반 마을 발전)
     if (this.isConstructed) {
       this.effectTimer += deltaTime
-      if (this.effectTimer >= 2000) {
+      if (this.effectTimer >= 5000) {
         this.effectTimer = 0
         if (this.village && this.village.inventory) {
-          if (this.type === 'SCHOOL') {
-            this.village.inventory.knowledge =
-              (this.village.inventory.knowledge || 0) + this.tier * 2
-          } else if (this.type === 'FARM') {
+          if (this.type === 'FARM') {
             this.village.inventory.food = (this.village.inventory.food || 0) + this.tier * 3
           } else if (this.type === 'SMITHY') {
             if (this.village.inventory.iron >= 1) {
@@ -95,6 +98,11 @@ export class Building extends Entity {
     this.isConstructed = false
     this.progress = 0
     this.maxProgress *= 1.5 // 다음 티어는 건설 시간이 1.5배 더 오래 걸림
+
+    // [추가] 집 업그레이드 시 수용량 증가
+    if (this.type === 'HOUSE') {
+      this.capacity = 2 * this.tier
+    }
   }
 
   render(ctx) {

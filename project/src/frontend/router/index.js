@@ -152,7 +152,7 @@ const router = createRouter({
 })
 
 // Basic authentication guard
-router.beforeEach((to, from) => {
+router.beforeEach((to, _from) => {
   // URL 경로에서 메뉴 ID(예: SYST01)를 추출하여 로컬 스토리지에 저장 (API 요청 시 사용)
   const menuMatch = to.path.match(/\/sys\/(syst\d+)/i)
   if (menuMatch) {

@@ -51,11 +51,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import AppPageTitle from '@/frontend/common/components/AppPageTitle.vue'
 import AppCard from '@/frontend/common/components/AppCard.vue'
 import AppGrid from '@/frontend/common/components/AppGrid.vue'
 import AppButton from '@/frontend/common/components/AppButton.vue'
 import { useConfigStore } from '@/frontend/module_sys/SYST05/configStore'
+import AppPageTitle from '@/frontend/common/components/AppPageTitle.vue'
 
 const router = useRouter()
 const configStore = useConfigStore()

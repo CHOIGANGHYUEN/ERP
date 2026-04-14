@@ -1,10 +1,13 @@
 import { drawCreatureBody } from './drawCreatureBody.js'
 
-export const WANDERING = (creature, ctx, timestamp) => {
-  if (timestamp - creature.lastFrameTime > creature.frameInterval) {
-    creature.currentFrame = (creature.currentFrame + 1) % 8
-    creature.lastFrameTime = timestamp
-  }
+export const WANDERING = (creature, ctx, _timestamp) => {
   const yOffset = creature.frameOffsets[creature.currentFrame]
-  drawCreatureBody(creature, ctx, yOffset)
+
+  // Walk cycle animation
+  const frame = creature.currentFrame % 4
+  const animProps = {
+    armL: [2, 4, 2, 0][frame],
+    armR: [-2, -4, -2, 0][frame],
+  }
+  drawCreatureBody(creature, ctx, yOffset, animProps)
 }

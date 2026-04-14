@@ -1,5 +1,4 @@
 import { Entity } from '../../core/Entity.js'
-import { Rectangle } from '../../systems/QuadTree.js'
 
 export class Tornado extends Entity {
   init(x, y) {
@@ -30,12 +29,12 @@ export class Tornado extends Entity {
     this.moveToTarget(this.targetX, this.targetY, deltaTime, world, 1.5)
 
     // 주변 휩쓸기 데미지 (QuadTree 쿼리)
-    const range = new Rectangle(
-      this.x - this.size,
-      this.y - this.size,
-      this.size * 2,
-      this.size * 2,
-    )
+    const range = {
+      x: this.x - this.size,
+      y: this.y - this.size,
+      width: this.size * 2,
+      height: this.size * 2,
+    }
     const victims = world.quadTree.query(range)
     for (let v of victims) {
       if (v !== this && this.distanceTo(v) < this.size) {

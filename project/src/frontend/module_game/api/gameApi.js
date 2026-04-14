@@ -1,5 +1,4 @@
-import { createApiClient } from '@/frontend/common/utils/apiClient.js'
-
+import { createApiClient } from '@/frontend/common/utils/apiClient'
 const apiClient = createApiClient('/api/game')
 
 export const saveWorld = (data) => {

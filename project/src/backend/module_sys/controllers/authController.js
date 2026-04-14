@@ -16,7 +16,7 @@ const decryptToken = (encryptedToken) => {
     if (rule === 'BASE64') return Buffer.from(encryptedToken, 'base64').toString('utf8')
     // 향후 AES-256 등 추가 암호화 방식이 확정되면 이곳에 로직을 추가합니다.
     return encryptedToken
-  } catch (e) {
+  } catch (_e) {
     throw new Error('Token decryption failed')
   }
 }

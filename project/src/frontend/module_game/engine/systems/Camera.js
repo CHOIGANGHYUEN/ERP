@@ -9,6 +9,7 @@ export class Camera {
     this.isDragging = false
     this.lastMouseX = 0
     this.lastMouseY = 0
+    this.zoom = 1
   }
 
   handleMouseDown(e) {
@@ -19,14 +20,20 @@ export class Camera {
 
   handleMouseMove(e) {
     if (!this.isDragging) return
-    const dx = e.clientX - this.lastMouseX
-    const dy = e.clientY - this.lastMouseY
+
+    // CSS 화면 스케일 및 줌 배율에 비례하여 패닝 이동 속도 정밀 조절
+    const rect = e.target.getBoundingClientRect()
+    const scaleX = this.width / rect.width
+    const scaleY = this.height / rect.height
+
+    const dx = ((e.clientX - this.lastMouseX) * scaleX) / this.zoom
+    const dy = ((e.clientY - this.lastMouseY) * scaleY) / this.zoom
     this.lastMouseX = e.clientX
     this.lastMouseY = e.clientY
-    
+
     this.x -= dx
     this.y -= dy
-    
+
     this.clamp()
   }
 
@@ -34,8 +41,34 @@ export class Camera {
     this.isDragging = false
   }
 
+  handleWheel(e) {
+    const zoomSensitivity = 0.001
+    const delta = -e.deltaY * zoomSensitivity
+    let newZoom = this.zoom + delta
+
+    // 0.5배 ~ 3.0배 제한
+    newZoom = Math.max(0.5, Math.min(newZoom, 3.0))
+
+    if (newZoom !== this.zoom) {
+      const rect = e.target.getBoundingClientRect()
+      const mouseX = (e.clientX - rect.left) * (this.width / rect.width)
+      const mouseY = (e.clientY - rect.top) * (this.height / rect.height)
+
+      const worldX = mouseX / this.zoom + this.x
+      const worldY = mouseY / this.zoom + this.y
+
+      this.zoom = newZoom
+      this.x = worldX - mouseX / this.zoom
+      this.y = worldY - mouseY / this.zoom
+
+      this.clamp()
+    }
+  }
+
   clamp() {
-    this.x = Math.max(0, Math.min(this.x, this.mapWidth - this.width))
-    this.y = Math.max(0, Math.min(this.y, this.mapHeight - this.height))
+    const viewW = this.width / this.zoom
+    const viewH = this.height / this.zoom
+    this.x = Math.max(0, Math.min(this.x, this.mapWidth - viewW))
+    this.y = Math.max(0, Math.min(this.y, this.mapHeight - viewH))
   }
 }
