@@ -75,7 +75,54 @@ export class PathSystem {
 }
 
 /**
+ * A simple Priority Queue implementation for A* optimization
+ */
+class PriorityQueue {
+  constructor() {
+    this.nodes = [];
+  }
+  enqueue(priority, key) {
+    this.nodes.push({ priority, key });
+    this.bubbleUp();
+  }
+  dequeue() {
+    if (this.nodes.length === 0) return null;
+    if (this.nodes.length === 1) return this.nodes.pop();
+    const top = this.nodes[0];
+    this.nodes[0] = this.nodes.pop();
+    this.sinkDown();
+    return top;
+  }
+  bubbleUp() {
+    let index = this.nodes.length - 1;
+    while (index > 0) {
+      let parentIndex = Math.floor((index - 1) / 2);
+      if (this.nodes[parentIndex].priority <= this.nodes[index].priority) break;
+      [this.nodes[parentIndex], this.nodes[index]] = [this.nodes[index], this.nodes[parentIndex]];
+      index = parentIndex;
+    }
+  }
+  sinkDown() {
+    let index = 0;
+    while (true) {
+      let left = 2 * index + 1;
+      let right = 2 * index + 2;
+      let smallest = index;
+      if (left < this.nodes.length && this.nodes[left].priority < this.nodes[smallest].priority) smallest = left;
+      if (right < this.nodes.length && this.nodes[right].priority < this.nodes[smallest].priority) smallest = right;
+      if (smallest === index) break;
+      [this.nodes[smallest], this.nodes[index]] = [this.nodes[index], this.nodes[smallest]];
+      index = smallest;
+    }
+  }
+  isEmpty() {
+    return this.nodes.length === 0;
+  }
+}
+
+/**
  * A* Pathfinding with safety limit (MAX_ITERATIONS)
+ * Optimized version with Priority Queue
  */
 export function findPath(world, start, target) {
   const gridSize = 16;
@@ -91,44 +138,33 @@ export function findPath(world, start, target) {
     y: Math.floor(target.y / gridSize)
   };
 
-  const openSet = [startCoord];
+  const pq = new PriorityQueue();
   const cameFrom = new Map();
   const gScore = new Map();
-  const fScore = new Map();
-
   const posKey = (p) => `${p.x},${p.y}`;
-  gScore.set(posKey(startCoord), 0);
-  fScore.set(posKey(startCoord), heuristic(startCoord, targetCoord));
+  
+  const startKey = posKey(startCoord);
+  gScore.set(startKey, 0);
+  pq.enqueue(heuristic(startCoord, targetCoord), startCoord);
 
   let iterationCount = 0;
-  const MAX_ITERATIONS = 500; // Safety limit to prevent freezes
+  const MAX_ITERATIONS = 500; // Performance limit for real-time simulation
 
-  while (openSet.length > 0) {
+  while (!pq.isEmpty()) {
     iterationCount++;
     if (iterationCount > MAX_ITERATIONS) {
-      console.error('🚨 PathSystem 무한 루프 감지! 타겟에 도달할 수 없습니다:', target);
+      console.warn('🚨 [PathSystem] 길찾기 연산 한계치 초과 (500회)!', {
+        start: { x: start.x, y: start.y },
+        target: { x: target.x, y: target.y }
+      });
       return null;
     }
 
-    // Get node in openSet with lowest fScore
-    let current = openSet[0];
-    let lowestF = fScore.get(posKey(current));
-    let currentIndex = 0;
-
-    for (let i = 1; i < openSet.length; i++) {
-      const f = fScore.get(posKey(openSet[i]));
-      if (f < lowestF) {
-        lowestF = f;
-        current = openSet[i];
-        currentIndex = i;
-      }
-    }
+    const { key: current } = pq.dequeue();
 
     if (current.x === targetCoord.x && current.y === targetCoord.y) {
       return reconstructPath(cameFrom, current, gridSize);
     }
-
-    openSet.splice(currentIndex, 1);
 
     const neighbors = [
       { x: current.x + 1, y: current.y },
@@ -137,25 +173,25 @@ export function findPath(world, start, target) {
       { x: current.x, y: current.y - 1 }
     ];
 
+    const currentG = gScore.get(posKey(current));
+
     for (const neighbor of neighbors) {
       if (neighbor.x < 0 || neighbor.x >= cols || neighbor.y < 0 || neighbor.y >= rows) continue;
       
-      // Collision check
+      // Terrain Collision
       if (world.terrain) {
         const type = world.terrain[neighbor.y * cols + neighbor.x];
-        if (type === 2) continue; // HIGH_MOUNTAIN is blocking
+        if (type === 2) continue; // HIGH_MOUNTAIN blocking
       }
 
-      const tentativeGScore = (gScore.get(posKey(current)) || 0) + 1;
-      if (tentativeGScore < (gScore.get(posKey(neighbor)) || Infinity)) {
-        cameFrom.set(posKey(neighbor), current);
-        gScore.set(posKey(neighbor), tentativeGScore);
+      const tentativeGScore = currentG + 1;
+      const neighborKey = posKey(neighbor);
+      
+      if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
+        cameFrom.set(neighborKey, current);
+        gScore.set(neighborKey, tentativeGScore);
         const f = tentativeGScore + heuristic(neighbor, targetCoord);
-        fScore.set(posKey(neighbor), f);
-        
-        if (!openSet.some(p => p.x === neighbor.x && p.y === neighbor.y)) {
-          openSet.push(neighbor);
-        }
+        pq.enqueue(f, neighbor);
       }
     }
   }

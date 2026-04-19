@@ -5,11 +5,14 @@ import { Logger } from '../utils/Logger.js'
 
 // 워커 전역 에러 핸들러
 self.onerror = (message, source, lineno, colno, error) => {
+  const isDataCloneError = message.includes('DataCloneError') || error?.name === 'DataCloneError';
   const errorPayload = {
     type: 'ERROR_LOG',
     payload: {
-      tag: 'WorkerGlobal',
-      message: message,
+      tag: isDataCloneError ? 'WorkerCrash:Serialization' : 'WorkerGlobal',
+      message: isDataCloneError 
+        ? '⚠️ [DataCloneError] 순환 참조 혹은 직렬화 불가능한 객체가 postMessage로 전송되었습니다. Village/Creature 객체가 직접 전송되지 않았는지 확인하세요.'
+        : message,
       source: source,
       lineno: lineno,
       stack: error?.stack,

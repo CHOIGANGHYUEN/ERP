@@ -209,13 +209,22 @@ export class EntitySpawnerSystem {
     // [Optimization] O(N) some() 체크 대신 ChunkManager 공간 쿼리 사용
     const queryRange = { x: snapX - 16, y: snapY - 16, width: 32, height: 32 }
     const nearby = world.chunkManager.query(queryRange)
-    if (nearby.some(b => b._type === 'building' && Math.abs(b.x - snapX) < 32 && Math.abs(b.y - snapY) < 32)) {
-      return
-    }
-
     const b = new Building(snapX, snapY, type)
     b.occupants = []
     b.capacity = type === 'HOUSE' ? 1 + (b.tier || 1) : 0
+    
+    // [Safety] Terrain validation before push
+    if (world.terrain) {
+      const cols = Math.ceil(world.width / 16)
+      const tx = Math.floor(snapX / 16)
+      const ty = Math.floor(snapY / 16)
+      const terrainType = world.terrain[ty * cols + tx]
+      if (terrainType === 2 || terrainType >= 3) {
+        console.warn(`[EntitySpawnerSystem] ${type} 소환 위치가 산이나 바다입니다. 취소합니다.`, { snapX, snapY, terrainType })
+        return
+      }
+    }
+    
     world.buildings.push(b)
     if (village) village.addBuilding(b)
   }

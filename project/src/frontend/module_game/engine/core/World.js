@@ -246,7 +246,7 @@ export class World {
 
   spawnBuilding(x, y, type, village) {
     if (this.onProxyAction) {
-      return this.onProxyAction({ type: 'SPAWN_BUILDING', payload: { x, y, type, village } })
+      return this.onProxyAction({ type: 'SPAWN_BUILDING', payload: { x, y, type, villageId: village?.id } })
     }
     this.brain.spawner.spawnBuilding(this, x, y, type, village)
   }

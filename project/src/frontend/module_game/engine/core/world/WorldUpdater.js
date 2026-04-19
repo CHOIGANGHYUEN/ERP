@@ -11,21 +11,23 @@ export const WorldUpdater = {
       world.timeSystem.update(deltaTime)
       world.entitySystem.update(deltaTime, world)
 
-      // (A) 동적 객체만 매 프레임 갱신 (GC 최소화)
-      world.chunkManager.clear()
+      // (A) 매 프레임 모든 청크 초기화 및 재삽입 (Ghosting 및 누적 방지)
+      world.chunkManager.clearAll()
+      
+      // 동적 객체 삽입
       for (let i = 0; i < world.creatures.length; i++) world.chunkManager.insert(world.creatures[i], false)
       for (let i = 0; i < world.animals.length; i++) world.chunkManager.insert(world.animals[i], false)
       for (let i = 0; i < world.disasterSystem.tornadoes.length; i++) world.chunkManager.insert(world.disasterSystem.tornadoes[i], false)
 
-      // (B) 정적 객체는 필요할 때만 갱신 (1초마다 혹은 개체수 변동 시)
+      // 정적 객체 삽입 (매 프레임 수행하여 데이터 일관성 보장)
+      for (let i = 0; i < world.buildings.length; i++) world.chunkManager.insert(world.buildings[i], true)
+      for (let i = 0; i < world.plants.length; i++) world.chunkManager.insert(world.plants[i], true)
+      for (let i = 0; i < world.resources.length; i++) world.chunkManager.insert(world.resources[i], true)
+      for (let i = 0; i < world.mines.length; i++) world.chunkManager.insert(world.mines[i], true)
+      for (let i = 0; i < world.villages.length; i++) world.chunkManager.insert(world.villages[i], true)
+
       world.staticRefreshTimer = (world.staticRefreshTimer || 0) + deltaTime
       if (world.staticRefreshTimer > 1000 || world.needsFullChunkRefresh) {
-        world.chunkManager.clearAll() // 전체 초기화 후 다시 삽입
-        for (let i = 0; i < world.buildings.length; i++) world.chunkManager.insert(world.buildings[i], true)
-        for (let i = 0; i < world.plants.length; i++) world.chunkManager.insert(world.plants[i], true)
-        for (let i = 0; i < world.resources.length; i++) world.chunkManager.insert(world.resources[i], true)
-        for (let i = 0; i < world.mines.length; i++) world.chunkManager.insert(world.mines[i], true)
-        for (let i = 0; i < world.villages.length; i++) world.chunkManager.insert(world.villages[i], true)
         world.staticRefreshTimer = 0
         world.needsFullChunkRefresh = false
       }
