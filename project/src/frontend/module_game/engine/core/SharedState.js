@@ -12,7 +12,7 @@ export const MAX_TORNADOES = 10
 
 export const STRIDE = {
   GLOBALS: 16,
-  CREATURE: 20,
+  CREATURE: 21,
   ANIMAL: 12,
   PLANT: 12,
   RESOURCE: 8,
@@ -61,6 +61,7 @@ export const PROPS = {
     IS_IMMORTAL: 17,
     LEVEL: 18,
     EXP: 19,
+    FAMILY_ID: 20,
   },
   ANIMAL: {
     IS_ACTIVE: 0,
@@ -147,25 +148,41 @@ export const PROFESSION_MAP = {
   WARRIOR: 6,
   MINER: 7,
   LEADER: 8,
+  MERCHANT: 9,
 }
 export const STATE_MAP = {
-  WANDERING: 0,
-  GATHERING: 1,
+  WANDERING:  0,
+  GATHERING:  1,
   HARVESTING: 2,
-  BUILDING: 3,
-  STUDYING: 4,
-  RETURNING: 5,
-  ATTACKING: 6,
-  MINING: 7,
-  TRAINING: 8,
-  RESTING: 9,
-  EATING: 10,
-  HUNTING: 11,
-  GROWING: 12,
+  BUILDING:   3,
+  STUDYING:   4,
+  RETURNING:  5,
+  ATTACKING:  6,
+  MINING:     7,
+  TRAINING:   8,
+  RESTING:    9,
+  EATING:     10,
+  HUNTING:    11,
+  GROWING:    12,
+  TRADING:    13,
+  DEPOSITING: 14,  // 창고에 자원 납부 중
+  SUFFERING:  15,  // 극심한 허기/고통 (죽기 직전)
+  MATING:     16,
+  FLEEING:    17,
+  IDLE:       18,
 }
 export const WEATHER_MAP = { clear: 0, rain: 1, fog: 2 }
 export const SEASON_MAP = { SPRING: 0, SUMMER: 1, AUTUMN: 2, WINTER: 3 }
 export const PLANT_TYPE_MAP = { grass: 0, tree: 1, crop: 2 }
+
+export const TERRAIN_MAP = {
+  GRASS: 0,
+  LOW_MOUNTAIN: 1,
+  HIGH_MOUNTAIN: 2,
+  SHALLOW_SEA: 3,
+  DEEP_SEA: 4,
+  ABYSS: 5
+}
 
 // 10종 이상의 신규 동물 및 자원 타입 매핑
 export const ANIMAL_SPECIES_MAP = {
@@ -228,15 +245,17 @@ export const SEASON_REVERSE_MAP = Object.fromEntries(
 
 export function createSharedBuffers() {
   return {
-    globals: new SharedArrayBuffer(STRIDE.GLOBALS * 4), // 4 bytes per float
-    creatures: new SharedArrayBuffer(MAX_CREATURES * STRIDE.CREATURE * 4),
-    animals: new SharedArrayBuffer(MAX_ANIMALS * STRIDE.ANIMAL * 4),
-    plants: new SharedArrayBuffer(MAX_PLANTS * STRIDE.PLANT * 4),
-    resources: new SharedArrayBuffer(MAX_RESOURCES * STRIDE.RESOURCE * 4),
-    buildings: new SharedArrayBuffer(MAX_BUILDINGS * STRIDE.BUILDING * 4),
-    villages: new SharedArrayBuffer(MAX_VILLAGES * STRIDE.VILLAGE * 4),
-    mines: new SharedArrayBuffer(MAX_MINES * STRIDE.MINE * 4),
-    tornadoes: new SharedArrayBuffer(MAX_TORNADOES * STRIDE.TORNADO * 4),
+    globals: new ArrayBuffer(STRIDE.GLOBALS * 4), // 4 bytes per float
+    creatures: new ArrayBuffer(MAX_CREATURES * STRIDE.CREATURE * 4),
+    animals: new ArrayBuffer(MAX_ANIMALS * STRIDE.ANIMAL * 4),
+    plants: new ArrayBuffer(MAX_PLANTS * STRIDE.PLANT * 4),
+    resources: new ArrayBuffer(MAX_RESOURCES * STRIDE.RESOURCE * 4),
+    buildings: new ArrayBuffer(MAX_BUILDINGS * STRIDE.BUILDING * 4),
+    villages: new ArrayBuffer(MAX_VILLAGES * STRIDE.VILLAGE * 4),
+    mines: new ArrayBuffer(MAX_MINES * STRIDE.MINE * 4),
+    tornadoes: new ArrayBuffer(MAX_TORNADOES * STRIDE.TORNADO * 4),
+    paths: new ArrayBuffer(200 * 200 * 4), // 3200x3200 맵 기준 16x16 픽셀 타일 사이즈 (40,000 Float32)
+    terrain: new ArrayBuffer(200 * 200), // 3200x3200 맵 기준 16x16 타일, Int8 (40,000 bytes)
   }
 }
 

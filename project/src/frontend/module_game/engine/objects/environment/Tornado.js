@@ -38,8 +38,18 @@ export class Tornado extends Entity {
     const victims = world.quadTree.query(range)
     for (let v of victims) {
       if (v !== this && this.distanceTo(v) < this.size) {
-        if (v.energy !== undefined) v.energy -= deltaTime * 0.1
-        else if (v.progress !== undefined) v.progress -= deltaTime * 0.05 // 건물 피해
+        if (v.energy !== undefined) {
+          v.energy -= deltaTime * 0.1
+          // energy가 0 이하가 되면 사망 원인 포함 해서 die() 호출
+          if (v.energy <= 0 && !v.isDead) {
+            const dying = world.creatures?.find(c => c === v) || world.animals?.find(a => a === v)
+            if (dying && typeof dying.die === 'function') {
+              dying.die(world, '토네이도에 휘쓸려 사망')
+            }
+          }
+        } else if (v.progress !== undefined) {
+          v.progress -= deltaTime * 0.05
+        }
       }
     }
   }
@@ -47,7 +57,9 @@ export class Tornado extends Entity {
   die(world) {
     if (this.isDead) return
     super.die(world)
-    world.tornadoes = world.tornadoes.filter((t) => t !== this)
+    world.disasterSystem.tornadoes = world.disasterSystem.tornadoes.filter((t) => t !== this)
+    // 레거시 호환성
+    if (world.tornadoes) world.tornadoes = world.tornadoes.filter((t) => t !== this)
   }
 
   render(ctx) {

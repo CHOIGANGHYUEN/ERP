@@ -1,6 +1,9 @@
 import { TOKENS } from '../../di/tokens/index.js'
 import { ChunkManager } from '../systems/ChunkManager.js'
-import { createSharedBuffers, PROPS, SEASON_MAP, STRIDE, WEATHER_MAP } from './SharedState.js'
+import { TerrainSystem } from '../systems/TerrainSystem.js'
+import { createSharedBuffers } from './SharedState.js'
+import { WorldSet } from './world/WorldSet.js'
+import { Logger } from '../utils/Logger.js'
 
 export class World {
   constructor(di, canvas, isHeadless = false, sharedBuffers = null) {
@@ -27,6 +30,7 @@ export class World {
     this.entitySpawnerSystem = this.di.resolve(TOKENS.EntitySpawnerSystem)
     this.entitySystem = this.di.resolve(TOKENS.EntitySystem)
     this.renderSystem = this.di.resolve(TOKENS.RenderSystem)
+    this.pathSystem = this.di.resolve(TOKENS.PathSystem)
 
     // 카메라 시스템
     if (!this.isHeadless && canvas) {
@@ -50,6 +54,9 @@ export class World {
       this.sharedBuffers = createSharedBuffers()
       this.initSharedState(this.sharedBuffers)
     }
+    
+    // PathSystem 버퍼 연결
+    this.pathSystem.initSharedState(this)
 
     // These object arrays only exist on the worker now
     if (this.isHeadless) {
@@ -97,53 +104,64 @@ export class World {
       this.bgCanvas.height = this.height
       this.bgCtx = this.bgCanvas.getContext('2d')
       this.bgCtx.imageSmoothingEnabled = false
+
+      // 오프스크린 버퍼 (Double Buffering용)
+      this.bgBufferCanvas = document.createElement('canvas')
+      this.bgBufferCanvas.width = this.width
+      this.bgBufferCanvas.height = this.height
+      this.bgBufferCtx = this.bgBufferCanvas.getContext('2d')
+      this.bgBufferCtx.imageSmoothingEnabled = false
+
+      // 정적 지형 레이어 (수만 개의 타일을 미리 그려 보관)
+      this.bgStaticCanvas = document.createElement('canvas')
+      this.bgStaticCanvas.width = this.width
+      this.bgStaticCanvas.height = this.height
+      this.bgStaticCtx = this.bgStaticCanvas.getContext('2d')
+      this.bgStaticCtx.imageSmoothingEnabled = false
     }
     this.bgUpdateTimer = 0
     this.needsBackgroundUpdate = true
+    this.needsStaticTerrainUpdate = true // 초기 지형 렌더링 필요
     this.onProxyAction = null // Main 스레드에서 Worker로 통신하기 위한 프록시 콜백
     this.onEvent = null // Worker 스레드에서 Main으로 이벤트를 보내기 위한 브로드캐스터
 
+    // 지형 시스템
+    this.terrainSystem = new TerrainSystem(this.width, this.height, 16)
+
+    // Set 기반 뇌 주입
+    this.brain = WorldSet
+    this.brain.init(this)
+
     // 초기 생태계 구성
     if (this.isHeadless) {
-      this.initNature()
+      this.terrainSystem.generateMap(new Uint8Array(this.sharedBuffers.terrain))
+      this.brain.spawner.initNature(this)
     }
   }
 
   // [SAB] 버퍼 및 뷰 초기화
   initSharedState(buffers) {
+    this.sharedBuffers = buffers
+    this.terrain = new Uint8Array(buffers.terrain)
     this.bufferSyncSystem.initSharedState(this, buffers)
+    this.needsStaticTerrainUpdate = true // 새 데이터 연동 시 정적 렌더링 트리거
   }
 
   // 실시간 이벤트 티커(Event Ticker) 브로드캐스트
   broadcastEvent(text, color = '#f1c40f') {
-    if (this.isHeadless && this.onEvent) {
-      this.onEvent({ type: 'SYSTEM_MESSAGE', payload: { text, color } })
-    }
+    this.brain.spawner.broadcastEvent(this, text, color)
   }
 
   spawnParticle(x, y, config) {
-    if (!this.isHeadless) {
-      this.particleSystem.emit(x, y, config)
-    }
+    this.brain.spawner.spawnParticle(this, x, y, config)
   }
 
   showSpeechBubble(entityId, entityType, text, duration = 2000) {
-    if (this.isHeadless) {
-      if (this.onEvent)
-        this.onEvent({ type: 'SPEECH_BUBBLE', payload: { entityId, entityType, text, duration } })
-    } else {
-      this.interactionSystem.addBubble(entityId, entityType, text, duration)
-    }
+    this.brain.spawner.showSpeechBubble(this, entityId, entityType, text, duration)
   }
 
   addFertility(amount) {
-    if (!this.isHeadless && this.onProxyAction)
-      return this.onProxyAction({ type: 'ADD_FERTILITY', payload: { amount } })
-    this.currentFertility = Math.min(this.maxFertility, this.currentFertility + amount)
-  }
-
-  initNature() {
-    this.entitySpawnerSystem.initNature(this)
+    return this.brain.spawner.addFertility(this, amount)
   }
 
   start() {
@@ -184,95 +202,51 @@ export class World {
   }
 
   spawnCreature(x, y) {
-    this.entitySpawnerSystem.spawnCreature(this, x, y)
+    this.brain.spawner.spawnCreature(this, x, y)
   }
 
   spawnAnimal(x, y, type) {
-    this.entitySpawnerSystem.spawnAnimal(this, x, y, type)
+    this.brain.spawner.spawnAnimal(this, x, y, type)
   }
 
   spawnBuilding(x, y, type, village) {
-    this.entitySpawnerSystem.spawnBuilding(this, x, y, type, village)
+    this.brain.spawner.spawnBuilding(this, x, y, type, village)
   }
 
   spawnPlant(x, y, type) {
-    this.entitySpawnerSystem.spawnPlant(this, x, y, type)
+    this.brain.spawner.spawnPlant(this, x, y, type)
   }
 
   removePlant(plant) {
-    this.entitySpawnerSystem.removePlant(this, plant)
+    this.brain.spawner.removePlant(this, plant)
   }
 
   spawnResource(x, y, type) {
-    this.entitySpawnerSystem.spawnResource(this, x, y, type)
+    this.brain.spawner.spawnResource(this, x, y, type)
   }
 
   removeResource(resource) {
-    this.entitySpawnerSystem.removeResource(this, resource)
+    this.brain.spawner.removeResource(this, resource)
   }
 
   setWeather(type) {
-    if (!this.isHeadless && this.onProxyAction)
-      return this.onProxyAction({ type: 'SET_WEATHER', payload: { type } })
-    this.weather.weatherType = type
-    this.weather.weatherTimer = 20000
+    return this.brain.spawner.setWeather(this, type)
   }
 
   spawnTornado(x, y) {
-    if (!this.isHeadless && this.onProxyAction)
-      return this.onProxyAction({ type: 'SPAWN_TORNADO', payload: { x, y } })
-    this.disasterSystem.spawnTornado(x, y)
+    return this.brain.spawner.spawnTornado(this, x, y)
   }
 
   triggerEarthquake() {
-    if (!this.isHeadless && this.onProxyAction)
-      return this.onProxyAction({ type: 'TRIGGER_EARTHQUAKE' })
-    this.disasterSystem.triggerEarthquake()
+    return this.brain.spawner.triggerEarthquake(this)
   }
 
   loadCreatures(creaturesData) {
-    this.entitySpawnerSystem.loadCreatures(this, creaturesData)
+    this.brain.spawner.loadCreatures(this, creaturesData)
   }
 
   getEntityAt(screenX, screenY) {
-    if (!this.views) return null // [SAB] 뷰가 초기화되기 전에는 아무것도 반환하지 않음
-
-    const zoom = this.camera.zoom || 1
-    const worldX = screenX / zoom + this.camera.x
-    const worldY = screenY / zoom + this.camera.y
-
-    // [SAB] ChunkManager는 메인 스레드의 update 루프에서 버퍼 기반으로 미리 빌드됨
-    // 4.1 최적화: 클릭 반경(40x40 픽셀 영역) 내의 객체들만 O(1) 청크 탐색
-    const range = { x: worldX - 20, y: worldY - 20, width: 40, height: 40 }
-    const candidates = this.chunkManager.query(range)
-
-    for (let i = candidates.length - 1; i >= 0; i--) {
-      const entity = candidates[i]
-      // entity는 이제 { _type: 'creature', id: 123, x, y, size } 형태의 Plain Object
-      const dist = Math.sqrt(Math.pow(entity.x - worldX, 2) + Math.pow(entity.y - worldY, 2))
-      if (dist < (entity.size || 16) + 10) {
-        return entity
-      }
-    }
-
-    // [SAB] 마을 클릭 감지
-    const villageCount = this.views.globals[PROPS.GLOBALS.VILLAGE_COUNT]
-    for (let i = 0; i < villageCount; i++) {
-      const offset = i * STRIDE.VILLAGE
-      if (this.views.villages[offset + PROPS.VILLAGE.IS_ACTIVE] === 1) {
-        const vx = this.views.villages[offset + PROPS.VILLAGE.X]
-        const vy = this.views.villages[offset + PROPS.VILLAGE.Y]
-        const vRadius = this.views.villages[offset + PROPS.VILLAGE.RADIUS]
-        if (Math.sqrt(Math.pow(vx - worldX, 2) + Math.pow(vy - worldY, 2)) < vRadius) {
-          // Worker에 있는 실제 Village 객체 정보가 필요하므로, 이건 일단 보류
-          // 간단하게 하려면 ID만 반환하고, Inspector에서 상세 정보를 별도 요청해야 함
-          // 지금은 일단 클릭만 되도록
-          return { _type: 'village', id: i, x: vx, y: vy, size: vRadius }
-        }
-      }
-    }
-
-    return null
+    return this.brain.getEntityAt(this, screenX, screenY)
   }
 
   loop(timestamp) {
@@ -289,96 +263,10 @@ export class World {
   }
 
   update(deltaTime) {
-    if (this.isHeadless) {
-      // Worker: 실제 게임 로직 연산
-      this.weather.update(deltaTime)
-      this.timeSystem.update(deltaTime)
-      this.disasterSystem.update(deltaTime, this)
-
-      // Phase 3 외교/전쟁 시스템
-      // this.diplomacySystem.update(deltaTime, this)
-
-      this.chunkManager.clear()
-      const allEntities = [
-        ...this.creatures,
-        ...this.animals,
-        ...this.buildings,
-        ...this.plants,
-        ...this.resources,
-        ...this.mines,
-        ...this.disasterSystem.tornadoes,
-      ]
-      for (let i = 0; i < allEntities.length; i++) this.chunkManager.insert(allEntities[i])
-
-      this.entitySystem.update(deltaTime, this)
-      this.villageSystem.update(deltaTime, this)
-      this.buildingSystem.update(deltaTime, this)
-
-      this.bgUpdateTimer += deltaTime
-      if (this.bgUpdateTimer >= 2000) {
-        this.needsBackgroundUpdate = true
-        this.bgUpdateTimer = 0
-      }
-    } else if (this.views) {
-      // Main Thread: 렌더링 사전 작업 (QuadTree 재구성 등)
-      const globals = this.views.globals
-      this.currentFertility = globals[PROPS.GLOBALS.FERTILITY]
-      this.timeSystem.timeOfDay = globals[PROPS.GLOBALS.TIME_OF_DAY]
-      this.timeSystem.season = Object.keys(SEASON_MAP)[globals[PROPS.GLOBALS.SEASON]] || 'SPRING'
-      this.weather.weatherType =
-        Object.keys(WEATHER_MAP)[globals[PROPS.GLOBALS.WEATHER_TYPE]] || 'clear'
-      this.weather.windSpeed = globals[PROPS.GLOBALS.WIND_SPEED]
-      this.disasterSystem.earthquakeTimer = globals[PROPS.GLOBALS.EARTHQUAKE_TIMER]
-
-      this.chunkManager.clear()
-
-      const entityCounts = {
-        creature: globals[PROPS.GLOBALS.CREATURE_COUNT],
-        animal: globals[PROPS.GLOBALS.ANIMAL_COUNT],
-        plant: globals[PROPS.GLOBALS.PLANT_COUNT],
-        building: globals[PROPS.GLOBALS.BUILDING_COUNT],
-        tornado: globals[PROPS.GLOBALS.TORNADO_COUNT],
-        mine: globals[PROPS.GLOBALS.MINE_COUNT],
-        resource: globals[PROPS.GLOBALS.RESOURCE_COUNT],
-      }
-
-      for (const type in entityCounts) {
-        const count = entityCounts[type]
-        const view = this.views[`${type}s`]
-        const props = PROPS[type.toUpperCase()]
-        const stride = STRIDE[type.toUpperCase()]
-
-        // [SAB] 해당 타입에 대한 PROPS 정의가 없으면 QuadTree에 추가하지 않음 (오류 방지)
-        if (!props || !stride) continue
-
-        const propX = props.X
-        const propY = props.Y
-        const propSize = props.SIZE
-        for (let i = 0; i < count; i++) {
-          const offset = i * stride
-          if (view[offset] === 1) {
-            // IS_ACTIVE
-            this.chunkManager.insert({
-              _type: type,
-              id: i,
-              x: view[offset + propX],
-              y: view[offset + propY],
-              size: view[offset + propSize],
-            })
-          }
-        }
-      }
-
-      // 오프스크린 캔버스 업데이트 로직
-      this.bgUpdateTimer += deltaTime
-      if (this.bgUpdateTimer >= 2000) {
-        this.needsBackgroundUpdate = true
-        this.bgUpdateTimer = 0
-      }
-
-      // 파티클은 렌더링 영역(메인 스레드)에서만 처리합니다.
-      this.particleSystem.update(deltaTime)
-      this.interactionSystem.update(deltaTime)
+    try {
+      this.brain.update(this, deltaTime)
+    } catch (error) {
+      Logger.error('WorldLoop', `에러 발생으로 이번 프레임을 스킵합니다: ${error.message}`, error)
     }
   }
 

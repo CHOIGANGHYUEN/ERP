@@ -15,8 +15,10 @@ export class CreatureEmotion {
   }
 
   static update(creature, deltaTime, world) {
-    creature.needs.hunger = Math.min(100, creature.needs.hunger + (deltaTime / 1000) * 1.5)
-    creature.needs.fatigue = Math.min(100, creature.needs.fatigue + (deltaTime / 1000) * 1.0)
+    // 생물 노화 속도 변경에 따른 에코 시스템 동기화 (Atomic Modification)
+    // 맵 이동시간이 늘어났으므로 허기와 피로도 누적치를 1/10로 대폭 줄여서 업무 수행 시간을 충분히 보장합니다.
+    creature.needs.hunger = Math.min(100, creature.needs.hunger + (deltaTime / 1000) * 0.15)
+    creature.needs.fatigue = Math.min(100, creature.needs.fatigue + (deltaTime / 1000) * 0.10)
     creature.emotions.happiness = Math.max(
       0,
       100 - (creature.needs.hunger + creature.needs.fatigue) / 2,
@@ -27,8 +29,32 @@ export class CreatureEmotion {
     }
 
     if (creature.needs.hunger >= 100) {
-      creature.die(world)
-      return true // 아사 처리됨
+      // 아사 원인에 현재 행동 상태 포함
+      const stateLabel = {
+        WANDERING:  '배회 중',
+        GATHERING:  '자원 채집 중',
+        HARVESTING: '수확 중',
+        MINING:     '채광 중',
+        BUILDING:   '건설 중',
+        STUDYING:   '공부 중',
+        RETURNING:  '귀환 중',
+        ATTACKING:  '전투 중',
+        TRAINING:   '훈련 중',
+        RESTING:    '휴식 중',
+        MATING:     '짝짓기 중',
+        FLEEING:    '도망 중',
+        TRADING:    '교역 중',
+        DEPOSITING: '창고 납부 중',
+        SUFFERING:  '고통 상태',
+        IDLE:       '대기 중',
+      }[creature.state] || creature.state
+
+      // 진행 중인 태스크가 있으면 추가 정보 포함
+      const task = creature.taskQueue?.[0]
+      const taskInfo = task ? ` (작업: ${task.type})` : ''
+
+      creature.die(world, `굶주림으로 아사 — ${stateLabel}${taskInfo}, 허기 ${Math.round(creature.needs.hunger)}%`)
+      return true
     }
     return false
   }
@@ -71,7 +97,24 @@ export class CreatureEmotion {
       }
     }
 
-    // 3. 피로도가 높거나 밤 시간이 되면 집을 찾아 휴식 (Night Routine)
+    // 4. 배고픔이 심하면 식량 탐색 (SLEEP보다 우선 — 굶으면서 자는 버그 수정)
+    if (creature.needs.hunger > 60) {
+      // 4-1. 주변에 먹을 것이 있으면 바로 먹으러 감
+      if (candidates) {
+        const food = candidates.find(
+          (c) => c.type === 'food' || (c.type === 'crop' && c.size >= c.maxSize * 0.8),
+        )
+        if (food) {
+          return { type: DRIVE.EAT, payload: { food } }
+        }
+      }
+      // 4-2. 마을 창고에 식량이 있으면 귀환하여 섭취
+      if (creature.village && creature.village.inventory.food > 0) {
+        return { type: DRIVE.EAT, payload: { village: creature.village } }
+      }
+    }
+
+    // 5. 피로도가 높거나 밤 시간이 되면 집을 찾아 휴식 (Night Routine)
     const isNight =
       world.timeSystem && (world.timeSystem.timeOfDay < 5000 || world.timeSystem.timeOfDay > 19000)
     if ((creature.needs.fatigue > 80 || isNight) && creature.village) {
@@ -100,20 +143,20 @@ export class CreatureEmotion {
       return { type: DRIVE.SLEEP, payload: { village: creature.village } }
     }
 
-    // 4. 배고픔이 심하면 식량 탐색
-    if (creature.needs.hunger > 70) {
-      const food = candidates.find(
-        (c) => c.type === 'food' || (c.type === 'crop' && c.size >= c.maxSize * 0.8),
+    // (EAT 드라이브가 위로 이동되었으므로 이 블록은 hunger <= 60 상황에서만 도달)
+    if (creature.needs.hunger > 85) {
+      // 극도의 기아 상태: 주변 어떤 음식이든 찾음
+      const anyCandidates = world.chunkManager.query({ x: creature.x - 400, y: creature.y - 400, width: 800, height: 800 })
+      const food = anyCandidates.find(
+        (c) => c.type === 'food' || c.type === 'biomass' || (c.type === 'crop' && c.size >= c.maxSize * 0.5),
       )
-
-      if (food) {
-        return { type: DRIVE.EAT, payload: { food } }
-      } else if (creature.village && creature.village.inventory.food > 0) {
+      if (food) return { type: DRIVE.EAT, payload: { food } }
+      if (creature.village && creature.village.inventory.food > 0) {
         return { type: DRIVE.EAT, payload: { village: creature.village } }
       }
     }
 
-    // 5. 무작위 사회적 상호작용 (대화)
+    // 7. 무작위 사회적 상호작용 (대화)
     if (Math.random() < 0.05) {
       const neighbor = candidates.find(
         (c) =>

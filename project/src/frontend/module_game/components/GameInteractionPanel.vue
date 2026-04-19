@@ -1,21 +1,11 @@
 <template>
-  <div style="display: flex; flex-direction: column; gap: 16px">
+  <div class="interaction-panel">
     <!-- 1. 창조 및 소환 패널 -->
-    <div class="app-card">
-      <h3
-        style="
-          margin-top: 0;
-          margin-bottom: 12px;
-          font-size: 1.1rem;
-          border-bottom: 1px solid var(--app-border-color);
-          padding-bottom: 8px;
-        "
-      >
-        ✨ 창조의 권능
-      </h3>
-      <div class="modern-form" style="gap: 12px; margin-top: 16px">
+    <div class="hud-section">
+      <h3 class="section-title">✨ 창조의 권능</h3>
+      <div class="modern-form spawn-form">
         <div class="form-group">
-          <label class="form-label">소환할 개체 선택</label>
+          <label class="form-label hud-label">소환할 개체 선택</label>
           <div class="select-wrapper">
             <select v-model="localSpawnType" class="app-input modern-select">
               <option value="human">지성체 (인간)</option>
@@ -26,62 +16,30 @@
             </select>
           </div>
         </div>
-        <button class="btn btn-primary" style="width: 100%" @click="handleSpawn">
+        <button class="btn btn-primary full-width" @click="handleSpawn">
           화면 중앙에 소환하기
         </button>
       </div>
     </div>
 
     <!-- 2. 환경 제어 패널 -->
-    <div class="app-card">
-      <h3
-        style="
-          margin-top: 0;
-          margin-bottom: 12px;
-          font-size: 1.1rem;
-          border-bottom: 1px solid var(--app-border-color);
-          padding-bottom: 8px;
-        "
-      >
-        🌍 환경 통제
-      </h3>
-      <div class="modern-form" style="gap: 12px; margin-top: 16px">
+    <div class="hud-section">
+      <h3 class="section-title">🌍 환경 통제</h3>
+      <div class="modern-form control-form">
         <button class="btn btn-secondary" @click="addFertility">대지 비옥도 +5000 🌿</button>
-        <div style="display: flex; gap: 8px">
-          <button class="btn btn-secondary" style="flex: 1" @click="setWeather('clear')">
-            맑음 ☀️
-          </button>
-          <button class="btn btn-secondary" style="flex: 1" @click="setWeather('rain')">
-            비 🌧️
-          </button>
-          <button class="btn btn-secondary" style="flex: 1" @click="setWeather('fog')">
-            안개 🌫️
-          </button>
+        <div class="flex-row">
+          <button class="btn btn-secondary flex-1" @click="setWeather('clear')">맑음 ☀️</button>
+          <button class="btn btn-secondary flex-1" @click="setWeather('rain')">비 🌧️</button>
+          <button class="btn btn-secondary flex-1" @click="setWeather('fog')">안개 🌫️</button>
         </div>
       </div>
-      <div
-        class="modern-form"
-        style="
-          gap: 12px;
-          margin-top: 16px;
-          border-top: 1px solid var(--app-border-color);
-          padding-top: 16px;
-        "
-      >
-        <h4 style="margin: 0">🔥 재앙의 권능</h4>
-        <div style="display: flex; gap: 8px">
-          <button
-            class="btn btn-secondary"
-            style="flex: 1; border-color: #e74c3c; color: #e74c3c"
-            @click="spawnTornado"
-          >
+      <div class="modern-form disaster-form">
+        <h4 class="sub-title">🔥 재앙의 권능</h4>
+        <div class="flex-row">
+          <button class="btn btn-secondary flex-1 btn-tornado" @click="spawnTornado">
             🌪️ 토네이도
           </button>
-          <button
-            class="btn btn-secondary"
-            style="flex: 1; border-color: #c0392b; color: #c0392b"
-            @click="triggerEarthquake"
-          >
+          <button class="btn btn-secondary flex-1 btn-earthquake" @click="triggerEarthquake">
             🌋 대지진
           </button>
         </div>
@@ -89,45 +47,50 @@
     </div>
 
     <!-- 3. 실시간 통계 패널 -->
-    <div class="app-card">
-      <div
-        style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 12px;
-          border-bottom: 1px solid var(--app-border-color);
-          padding-bottom: 8px;
-        "
-      >
-        <h3 style="margin: 0; font-size: 1.1rem">📊 월드 통계</h3>
+    <div class="hud-section">
+      <div class="section-header">
+        <h3 class="section-title no-border">📊 월드 통계</h3>
         <button class="icon-btn" @click="fetchOverallStatus" title="새로고침">🔄</button>
       </div>
-      <div
-        v-if="overallStatus"
-        class="statistics-panel"
-        style="display: flex; flex-direction: column; gap: 4px; margin-top: 16px"
-      >
+      <div v-if="overallStatus" class="statistics-panel">
         <!-- 문명 통계 -->
         <details open>
           <summary>
-            <h4 style="display: inline; font-size: 1rem; margin: 0">
-              <span class="badge-success">{{ overallStatus.creatureCount }}</span> 명의 주민 ({{
-                overallStatus.villageCount
-              }}개 마을)
-            </h4>
+            <span class="badge-success">{{ overallStatus.creatureCount }}</span> 명의 주민 ({{
+              overallStatus.villageCount
+            }}개 마을)
           </summary>
           <ul class="stat-list">
+            <li class="divider">
+              <span>심층 상태</span>
+              <span></span>
+            </li>
+            <li>
+              <span class="indent">↳ 평균 나이</span>
+              <span>{{ overallStatus.avgAge }}살</span>
+            </li>
+            <li>
+              <span class="indent">↳ 평균 행복도</span>
+              <span>{{ overallStatus.avgHappiness }}%</span>
+            </li>
+            <li>
+              <span class="indent">↳ 평균 레벨 (최대)</span>
+              <span>Lv.{{ overallStatus.avgLevel }} (Lv.{{ overallStatus.maxLevel }})</span>
+            </li>
+            <li class="divider">
+              <span>직업 분포</span>
+              <span></span>
+            </li>
             <li v-for="(count, prof) in overallStatus.professions" :key="prof">
-              <span>{{ getProfessionName(prof) }}</span>
+              <span class="indent">↳ {{ getProfessionName(prof) }}</span>
               <span>{{ count }}명</span>
             </li>
-            <li style="border-top: 1px dashed var(--app-border-color); margin-top: 4px">
+            <li class="divider">
               <span>총 건물 수</span>
               <span>{{ overallStatus.buildingCount }}채</span>
             </li>
             <li v-for="(count, type) in overallStatus.buildingTypes" :key="type">
-              <span style="padding-left: 12px">↳ {{ getBuildingName(type) }}</span>
+              <span class="indent">↳ {{ getBuildingName(type) }}</span>
               <span>{{ count }}채</span>
             </li>
           </ul>
@@ -135,9 +98,7 @@
 
         <!-- 경제 통계 -->
         <details v-if="worldInventory" open>
-          <summary>
-            <h4 style="display: inline; font-size: 1rem; margin: 0">💰 월드 총 자산</h4>
-          </summary>
+          <summary>💰 월드 총 자산</summary>
           <ul class="stat-list">
             <li>
               <span>식량 🧺</span><span>{{ Math.floor(worldInventory.food) }}</span>
@@ -163,48 +124,42 @@
         <!-- 생태계 통계 -->
         <details>
           <summary>
-            <h4 style="display: inline; font-size: 1rem; margin: 0">
-              <span class="badge-warning">{{
-                overallStatus.animalCount + overallStatus.plantCount
-              }}</span>
-              개의 자연 생태계
-            </h4>
+            <span class="badge-warning">{{
+              overallStatus.animalCount + overallStatus.plantCount
+            }}</span>
+            개의 자연 생태계
           </summary>
           <ul class="stat-list">
             <li>
               <span>동물</span><span>{{ overallStatus.animalCount }}마리</span>
             </li>
             <li v-for="(count, type) in overallStatus.animalTypes" :key="type">
-              <span style="padding-left: 12px">↳ {{ getAnimalName(type) }}</span>
+              <span class="indent">↳ {{ getAnimalName(type) }}</span>
               <span>{{ count }}마리</span>
             </li>
-            <li style="border-top: 1px dashed var(--app-border-color); margin-top: 4px">
+            <li class="divider">
               <span>식물</span><span>{{ overallStatus.plantCount }}개</span>
             </li>
             <li v-for="(count, type) in overallStatus.plantTypes" :key="type">
-              <span style="padding-left: 12px">↳ {{ getPlantName(type) }}</span>
+              <span class="indent">↳ {{ getPlantName(type) }}</span>
               <span>{{ count }}개</span>
             </li>
           </ul>
         </details>
       </div>
-      <div v-else class="empty-state">우측 상단의 새로고침 버튼을 눌러주세요.</div>
+      <div v-else class="empty-state hud-empty">우측 상단의 새로고침 버튼을 눌러주세요.</div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
-import { PROPS, STRIDE } from '../engine/core/SharedState'
+import { PROPS, STRIDE } from '../engine/core/SharedState.js'
 
 const props = defineProps({
   world: {
     type: Object,
     default: null,
-  },
-  spawnType: {
-    type: String,
-    default: 'human',
   },
   worldInventory: {
     type: Object,
@@ -212,13 +167,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:spawnType'])
-
-const localSpawnType = computed({
-  get: () => props.spawnType,
-  set: (val) => emit('update:spawnType', val),
-})
-
+const localSpawnType = ref('human')
 const overallStatus = ref(null)
 
 onMounted(() => {
@@ -261,6 +210,8 @@ const buildingNameMap = {
   WAREHOUSE: '창고',
   MARKET: '시장',
   TAVERN: '선술집',
+  FENCE: '울타리',
+  FENCE_GATE: '울타리 문',
 }
 const getBuildingName = (type) => buildingNameMap[type] || type
 const getAnimalName = (type) => (type === 'CARNIVORE' ? '육식동물' : '초식동물')
@@ -290,6 +241,12 @@ const handleSpawn = () => {
       break
     case 'crop':
       props.world.spawnPlant(x, y, 'crop')
+      break
+    case 'fence':
+      props.world.spawnBuilding(x, y, 'FENCE', null)
+      break
+    case 'fence_gate':
+      props.world.spawnBuilding(x, y, 'FENCE_GATE', null)
       break
   }
   fetchOverallStatus()
@@ -332,8 +289,14 @@ const fetchOverallStatus = () => {
   const plantCount = globals[PROPS.GLOBALS.PLANT_COUNT]
   const villageCount = globals[PROPS.GLOBALS.VILLAGE_COUNT]
 
-  // 직업별 통계
+  // 직업 및 기타 상세 통계
   const professions = {}
+  let totalAge = 0
+  let totalLevel = 0
+  let maxLevel = 1
+  let totalHappiness = 0
+  let activeCreatureCount = 0
+
   const professionReverseMap = {
     0: 'NONE',
     1: 'GATHERER',
@@ -348,11 +311,27 @@ const fetchOverallStatus = () => {
   for (let i = 0; i < creatureCount; i++) {
     const offset = i * STRIDE.CREATURE
     if (creatures[offset + PROPS.CREATURE.IS_ACTIVE] === 1) {
+      activeCreatureCount++
       const profId = creatures[offset + PROPS.CREATURE.PROFESSION]
       const profName = professionReverseMap[profId] || 'NONE'
       professions[profName] = (professions[profName] || 0) + 1
+      
+      const age = creatures[offset + PROPS.CREATURE.AGE]
+      const level = creatures[offset + PROPS.CREATURE.LEVEL] || 1
+      const hunger = creatures[offset + PROPS.CREATURE.NEEDS_HUNGER]
+      const fatigue = creatures[offset + PROPS.CREATURE.NEEDS_FATIGUE]
+      const happiness = Math.max(0, 100 - (hunger + fatigue) / 2)
+      
+      totalAge += age
+      totalLevel += level
+      if (level > maxLevel) maxLevel = level
+      totalHappiness += happiness
     }
   }
+  
+  const avgAge = activeCreatureCount > 0 ? (totalAge / activeCreatureCount).toFixed(1) : 0
+  const avgLevel = activeCreatureCount > 0 ? (totalLevel / activeCreatureCount).toFixed(1) : 0
+  const avgHappiness = activeCreatureCount > 0 ? (totalHappiness / activeCreatureCount).toFixed(1) : 0
 
   // 건물 종류별 통계
   const buildingTypes = {}
@@ -411,8 +390,80 @@ const fetchOverallStatus = () => {
 </script>
 
 <style scoped>
+.interaction-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.hud-section {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+}
+.section-title {
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+  color: #f1c40f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+}
+.section-title.no-border {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+.sub-title {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  color: #e74c3c;
+}
+.hud-label {
+  color: #bdc3c7;
+}
+.spawn-form,
+.control-form {
+  gap: 12px;
+}
+.disaster-form {
+  gap: 12px;
+  margin-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 16px;
+}
+.flex-row {
+  display: flex;
+  gap: 8px;
+}
+.flex-1 {
+  flex: 1;
+}
+.full-width {
+  width: 100%;
+}
+.btn-tornado {
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+.btn-earthquake {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+.statistics-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .statistics-panel details {
-  border-bottom: 1px solid var(--app-border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 8px 4px;
 }
 .statistics-panel details:last-child {
@@ -422,9 +473,8 @@ const fetchOverallStatus = () => {
   cursor: pointer;
   outline: none;
   list-style-position: inside;
-}
-.statistics-panel summary::marker {
-  font-size: 0.8em;
+  font-weight: bold;
+  color: #ecf0f1;
 }
 .stat-list {
   list-style: none;
@@ -439,10 +489,21 @@ const fetchOverallStatus = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: var(--app-secondary-color);
+  color: #bdc3c7;
 }
 .stat-list li span:last-child {
   font-weight: 600;
-  color: var(--app-text-color);
+  color: #f8fafc;
+}
+.stat-list li.divider {
+  border-top: 1px dashed rgba(255, 255, 255, 0.2);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.indent {
+  padding-left: 12px;
+}
+.hud-empty {
+  color: #95a5a6;
 }
 </style>

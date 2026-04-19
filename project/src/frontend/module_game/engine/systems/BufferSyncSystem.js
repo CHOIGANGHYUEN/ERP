@@ -11,6 +11,7 @@ import {
   STRIDE,
   WEATHER_MAP,
 } from '../core/SharedState.js'
+import { FamilySystem } from '../systems/FamilySystem.js'
 
 const BUILDING_TYPE_MAP = {
   HOUSE: 0,
@@ -29,6 +30,23 @@ const BUILDING_TYPE_REVERSE_MAP = Object.fromEntries(
 )
 
 export class BufferSyncSystem {
+  constructor() {
+    // 런타임 문자열 연산 방지를 위해 프로퍼티 맵 사전 계산
+    this.propMaps = {}
+    this._precomputePropMaps()
+  }
+
+  _precomputePropMaps() {
+    const toCamel = (s) => s.toLowerCase().replace(/_(\w)/g, (m) => m[1].toUpperCase())
+    for (const type in PROPS) {
+      if (type === 'GLOBALS') continue
+      this.propMaps[type.toLowerCase()] = {}
+      for (const key in PROPS[type]) {
+        this.propMaps[type.toLowerCase()][toCamel(key)] = PROPS[type][key]
+      }
+    }
+  }
+
   initSharedState(world, buffers) {
     world.sharedBuffers = buffers
     world.views = {
@@ -41,6 +59,7 @@ export class BufferSyncSystem {
       tornadoes: new Float32Array(buffers.tornadoes),
       mines: new Float32Array(buffers.mines),
       resources: new Float32Array(buffers.resources),
+      paths: new Float32Array(buffers.paths),
     }
   }
 
@@ -98,6 +117,7 @@ export class BufferSyncSystem {
       creatures[offset + PROPS.CREATURE.IS_IMMORTAL] = c.isImmortal ? 1 : 0
       creatures[offset + PROPS.CREATURE.LEVEL] = c.level || 1
       creatures[offset + PROPS.CREATURE.EXP] = c.exp || 0
+      creatures[offset + PROPS.CREATURE.FAMILY_ID] = c.familyId || 0
     })
 
     world.animals.forEach((a, i) => {
@@ -199,6 +219,73 @@ export class BufferSyncSystem {
     })
   }
 
+  /**
+   * 고속 렌더 패스를 위한 무할당(Zero-Allocation) 동기화 메서드.
+   * 새로운 객체를 생성하지 않고 전달받은 target의 속성을 직접 수정합니다.
+   */
+  hydrate(world, target, type, id) {
+    if (!world.views || id < 0) return false
+    const view = world.views[`${type}s`]
+    if (!view) return false
+    
+    const stride = STRIDE[type.toUpperCase()]
+    const offset = id * stride
+    if (view[offset] === 0) {
+      target.isDead = true
+      return false
+    }
+
+    target.id = id
+    target._type = type
+    target.isDead = false
+
+    const propMap = this.propMaps[type]
+    for (const key in propMap) {
+      target[key] = view[offset + propMap[key]]
+    }
+
+    // 종속성 속성 및 상수 매핑 최적화
+    if (type === 'creature' || type === 'animal') {
+      target.frameOffsets = [0, -2, -4, -2, 0, 2, 4, 2]
+    }
+
+    const nr = Math.round(target.r * 255)
+    const ng = Math.round(target.g * 255)
+    const nb = Math.round(target.b * 255)
+    if (target._lastR !== nr || target._lastG !== ng || target._lastB !== nb) {
+      target.color = `rgb(${nr},${ng},${nb})`
+      target._lastR = nr; target._lastG = ng; target._lastB = nb
+    }
+
+    if (type === 'creature') {
+      target.profession = Object.keys(PROFESSION_MAP)[target.profession]
+      target.state = Object.keys(STATE_MAP)[target.state]
+      target.isAdult = target.isAdult === 1
+      target.isImmortal = target.isImmortal === 1
+      target.needs = { hunger: target.needsHunger, fatigue: target.needsFatigue }
+    } else if (type === 'animal') {
+      target.state = Object.keys(STATE_MAP)[target.state]
+      target.type = target.type === 1 ? 'CARNIVORE' : 'HERBIVORE'
+      target.species = Object.keys(ANIMAL_SPECIES_MAP)[target.species] || target.type
+    } else if (type === 'plant') {
+      target.state = Object.keys(STATE_MAP)[target.state]
+      target.type = Object.keys(PLANT_TYPE_MAP)[target.type]
+    } else if (type === 'building') {
+      target.isConstructed = target.isConstructed === 1
+      target.type = BUILDING_TYPE_REVERSE_MAP[target.type]
+    } else if (type === 'village') {
+      target.isVillage = true
+      target.name = `마을 ${id + 1}`
+      target.nation = { color: target.color, name: '국가' }
+    } else if (type === 'mine') {
+      target.type = Object.keys(MINE_TYPE_MAP)[target.type]
+    } else if (type === 'resource') {
+      target.type = Object.keys(RESOURCE_TYPE_MAP)[target.type]
+    }
+
+    return true
+  }
+
   getDataFromBuffer(world, type, id) {
     if (!world.views || id < 0) return null
     const view = world.views[`${type}s`]
@@ -230,6 +317,7 @@ export class BufferSyncSystem {
       data.exp = Math.floor(data.exp)
       data.maxExp = Math.floor(100 * Math.pow(1.5, (data.level || 1) - 1))
       data.workEfficiency = (1.0 + ((data.level || 1) - 1) * 0.2).toFixed(1) + 'x'
+      data.familyName = FamilySystem.getNameById(data.familyId || 0)
     } else if (type === 'animal') {
       data.color = `rgb(${Math.round(data.r * 255)}, ${Math.round(data.g * 255)}, ${Math.round(data.b * 255)})`
       data.state = Object.keys(STATE_MAP)[data.state]

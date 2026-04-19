@@ -4,7 +4,7 @@ import { verifyToken } from '../../common/middleware/authMiddleware.js'
 
 const router = express.Router()
 
-router.get('/', verifyToken, configController.getAllConfigs)
+router.get('/', configController.getAllConfigs)
 router.post('/', verifyToken, configController.createConfig)
 router.get('/:id', verifyToken, configController.getConfigById)
 router.put('/:id', verifyToken, configController.updateConfig)

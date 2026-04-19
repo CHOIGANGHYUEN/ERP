@@ -179,7 +179,7 @@ const mockConfigs = [
     configLevel: 2,
     ordNum: 2,
     parentConfigId: 'FORMAT',
-    configVal: 'YYYY-MM-DD HH:mm:ss',
+    configVal: 'YYYY/MM/DD HH:mm:ss',
     useYn: 1,
   },
   {
@@ -315,26 +315,29 @@ const mockConfigs = [
 ]
 
 const configService = {
-  // 초기 더미 데이터 자동 생성 메서드
+  // 초기 기본 데이터 보완 메서드 (DB에 없는 항목만 삽입, 기존 커스터마이즈 값은 보존)
   async initializeDefaultConfigs() {
-    const count = await Config.count()
-    if (count === 0) {
-      const defaultConfigs = mockConfigs.map((c) => ({
-        ...c,
-        createdBy: 'system',
-        changedBy: 'system',
-      }))
-      await Config.bulkCreate(defaultConfigs)
-      console.log('✅ 기본 시스템 설정(sysConfig) 초기 데이터가 성공적으로 생성되었습니다.')
+    let insertedCount = 0
+    for (const cfg of mockConfigs) {
+      const existing = await Config.findOne({
+        where: { langu: cfg.langu, configId: cfg.configId },
+      })
+      if (!existing) {
+        await Config.create({ ...cfg, createdBy: 'system', changedBy: 'system' })
+        insertedCount++
+      }
+    }
+    if (insertedCount > 0) {
+      console.log(`✅ 기본 시스템 설정(sysConfig) ${insertedCount}건이 초기화되었습니다.`)
     }
   },
 
   async getAllConfigs(page = 1, limit = 10, search = '') {
-    await this.initializeDefaultConfigs()
+    // initializeDefaultConfigs는 서버 시작 시 server.js에서 호출됨 (중복 호출 방지)
 
     const totalInDb = await Config.count()
     if (totalInDb === 0) {
-      // This case should not happen due to initializeDefaultConfigs, but as a fallback
+      // 서버 시작 시 초기화가 완료되지 않은 경우 fallback (비정상 상황)
       return { data: mockConfigs, total: mockConfigs.length, page: 1, limit: mockConfigs.length }
     }
 

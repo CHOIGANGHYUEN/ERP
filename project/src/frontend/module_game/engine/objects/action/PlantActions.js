@@ -1,5 +1,5 @@
 import { GROWING } from './plant/Growing.js'
 
 export const PlantActions = {
-  GROWING: GROWING,
+  GROWING: { execute: GROWING }
 }

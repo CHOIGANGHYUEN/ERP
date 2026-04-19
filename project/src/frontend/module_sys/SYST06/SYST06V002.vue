@@ -45,6 +45,9 @@
           <AppButton type="primary" @click="openSqlModal" v-if="!isNew" class="btn-sql">
             SQL DDL 생성
           </AppButton>
+          <AppButton type="secondary" @click="exportExcel" v-if="!isNew" title="현재 테이블 명세를 엑셀로 내보냅니다">
+            📥 엑셀 내보내기
+          </AppButton>
         </div>
       </div>
     </AppCard>
@@ -280,6 +283,7 @@ import {
   getUpdateSql,
   executeSqlScript,
 } from '../api/tableSpecApi.js'
+import { exportMultiSheet } from '@/frontend/common/utils/excelExport.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -525,6 +529,55 @@ const handleExecuteSql = async (editedSql) => {
     console.error('Error executing SQL:', error)
     alert(`실행 중 오류가 발생했습니다: ${error.response?.data?.error || error.message}`)
   }
+}
+
+const exportExcel = () => {
+  const tablen = tableInfo.value.tablen
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+
+  // V001과 동일한 포맷: 단일 시트에 기본정보 / 필드 / 인덱스 블록으로 배치
+  const rows = []
+
+  // [기본 정보 블록]
+  rows.push(['[기본 정보]'])
+  rows.push(['테이블 물리명', tableInfo.value.tablen])
+  rows.push(['모듈명', tableInfo.value.module])
+  rows.push(['테이블 논리명', tableInfo.value.tableNm])
+  rows.push(['설명', tableInfo.value.description])
+  rows.push([]) // 빈 줄
+
+  // [필드 명세 블록]
+  rows.push(['[필드 명세]'])
+  rows.push(['번호', '필드명(물리)', '필드명(논리)', '데이터 타입', '길이', 'NULL 허용', 'PK', 'AutoIncrement'])
+  fields.value.forEach((f, i) => {
+    rows.push([
+      i + 1,
+      f.name,
+      f.fieldNm || '',
+      f.type,
+      f.length || '',
+      f.isNull ? 'Y' : 'N',
+      f.isPk ? 'Y' : 'N',
+      f.isAutoIncrement ? 'Y' : 'N',
+    ])
+  })
+  rows.push([]) // 빈 줄
+
+  // [인덱스 명세 블록]
+  rows.push(['[인덱스 명세]'])
+  rows.push(['번호', '인덱스명', '인덱스명(논리)', '대상 필드', 'Unique'])
+  indexes.value.forEach((idx, i) => {
+    rows.push([
+      i + 1,
+      idx.name,
+      idx.indexNm || '',
+      idx.fields,
+      idx.isUnique ? 'Y' : 'N',
+    ])
+  })
+
+  const sheetName = tablen.length > 31 ? tablen.slice(0, 31) : tablen
+  exportMultiSheet([{ name: sheetName, data: rows }], `테이블명세서_${tablen}_${today}.xlsx`)
 }
 </script>
 

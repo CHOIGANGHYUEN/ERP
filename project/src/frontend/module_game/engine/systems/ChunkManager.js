@@ -1,6 +1,6 @@
 /**
- * 2D 그리드 기반 공간 분할 및 동적 로딩(Culling) 관리자
- * QuadTree를 대체하여 매 프레임 발생하는 가비지 컬렉션(GC)을 0으로 최적화합니다.
+ * 2D 그리드 기반 공간 분할 관리자 (고급 최적화 버전)
+ * 정적(Static) 객체와 동적(Dynamic) 객체를 분리하여 연산량을 획기적으로 줄입니다.
  */
 export class ChunkManager {
   constructor(worldWidth, worldHeight, chunkSize = 320) {
@@ -8,28 +8,41 @@ export class ChunkManager {
     this.cols = Math.ceil(worldWidth / chunkSize)
     this.rows = Math.ceil(worldHeight / chunkSize)
 
-    // 1차원 배열로 2D 그리드 표현
-    this.chunks = Array.from({ length: this.cols * this.rows }, () => [])
+    const totalChunks = this.cols * this.rows
+    // 정적 레이어 (건물, 나무 등 - 거의 변하지 않음)
+    this.staticChunks = Array.from({ length: totalChunks }, () => [])
+    // 동적 레이어 (주민, 동물 등 - 매 프레임 위치 변동)
+    this.dynamicChunks = Array.from({ length: totalChunks }, () => [])
   }
 
   /**
-   * 매 프레임 호출되어 청크를 비웁니다.
-   * (배열 참조를 끊지 않고 길이만 0으로 만들어 GC 부하를 원천 차단)
+   * 동적 레이어만 비웁니다. 정적 레이어는 유지됩니다.
    */
   clear() {
-    for (let i = 0; i < this.chunks.length; i++) {
-      this.chunks[i].length = 0
+    for (let i = 0; i < this.dynamicChunks.length; i++) {
+      this.dynamicChunks[i].length = 0
     }
   }
 
-  insert(entity) {
+  /**
+   * 정적 레이어까지 모두 비웁니다. (맵 초기화 시 사용)
+   */
+  clearAll() {
+    this.clear()
+    for (let i = 0; i < this.staticChunks.length; i++) {
+      this.staticChunks[i].length = 0
+    }
+  }
+
+  insert(entity, isStatic = false) {
     if (entity.x === undefined || entity.y === undefined) return
 
     const col = Math.floor(entity.x / this.chunkSize)
     const row = Math.floor(entity.y / this.chunkSize)
 
     if (col >= 0 && col < this.cols && row >= 0 && row < this.rows) {
-      this.chunks[row * this.cols + col].push(entity)
+      const targetChunks = isStatic ? this.staticChunks : this.dynamicChunks
+      targetChunks[row * this.cols + col].push(entity)
     }
   }
 
@@ -41,11 +54,15 @@ export class ChunkManager {
     const endRow = Math.min(this.rows - 1, Math.floor((range.y + range.height) / this.chunkSize))
 
     for (let r = startRow; r <= endRow; r++) {
+      const rowOffset = r * this.cols
       for (let c = startCol; c <= endCol; c++) {
-        const chunk = this.chunks[r * this.cols + c]
-        for (let i = 0; i < chunk.length; i++) {
-          result.push(chunk[i])
-        }
+        const idx = rowOffset + c
+        // 정적 객체 추가
+        const sChunk = this.staticChunks[idx]
+        for (let i = 0; i < sChunk.length; i++) result.push(sChunk[i])
+        // 동적 객체 추가
+        const dChunk = this.dynamicChunks[idx]
+        for (let i = 0; i < dChunk.length; i++) result.push(dChunk[i])
       }
     }
     return result

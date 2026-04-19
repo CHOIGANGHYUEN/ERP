@@ -1,7 +1,7 @@
 import { PlantEmotion } from '../../emotions/PlantEmotion.js'
 
 export const GROWING = (plant, deltaTime, world) => {
-  plant.age += deltaTime
+  plant.age += deltaTime / 10 // 생물 노화 속도 10배 느리게 동기화
   PlantEmotion.update(plant, deltaTime, world)
 
   // 감정 모듈에서 활력이 충만할 때만 비옥도 소모하며 성장

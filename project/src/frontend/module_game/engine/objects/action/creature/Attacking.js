@@ -8,7 +8,7 @@ export const ATTACKING = (creature, deltaTime, world) => {
     // [수정] 기본 데미지에 attackPower 곱하기
     creature.target.energy -= deltaTime * 0.1 * (creature.attackPower || 1)
     if (creature.target.energy <= 0) {
-      creature.target.die(world)
+      creature.target.die(world, '전투 중 피격당해 사망')
       creature.state = 'WANDERING'
       creature.target = null
     }

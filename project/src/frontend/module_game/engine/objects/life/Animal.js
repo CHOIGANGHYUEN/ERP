@@ -1,39 +1,41 @@
 import { Entity } from '../../core/Entity.js'
-import { AnimalActions } from '../action/AnimalActions.js'
-import { AnimalRenders } from '../renders/AnimalRenders.js'
-import { AnimalEmotion } from '../emotions/AnimalEmotion.js'
-import { AnimalBehaviors } from '../behavior/AnimalBehaviors.js'
-
+import { AnimalSet } from '../sets/AnimalSet.js'
 export class Animal extends Entity {
   init(x, y, type) {
     super.init(x, y)
-    this.type = type // 'HERBIVORE' (e.g. Rabbit) or 'CARNIVORE' (e.g. Tiger)
-    this.size = type === 'CARNIVORE' ? 14 : 10
+    this.type = type // 'HERBIVORE' or 'CARNIVORE'
     this.targetX = x
     this.targetY = y
     this.speed = type === 'CARNIVORE' ? 2.0 : 1.5
-    this.state = 'WANDERING' // WANDERING, HUNTING, EATING
+    this.state = 'WANDERING'
     this.target = null
     this.energy = 100
+    this.age = 0
+    this.baseSize = type === 'CARNIVORE' ? 14 : 10
+    this.size = this.baseSize * 0.5 // 어릴 때는 작게 시작
 
     this.currentFrame = 0
     this.frameInterval = 100
     this.lastFrameTime = 0
-    this.frameOffsets = [0, -2, -4, -2, 0, 2, 4, 2]
+    this.frameOffsets = [0, -2, -4, -2, 0] // 5프레임 사이클
 
-    this.color = type === 'CARNIVORE' ? '#e67e22' : '#ecf0f1' // Orange for carnivore, white for herbivore
+    this.color = type === 'CARNIVORE' ? '#e67e22' : '#ecf0f1'
+    this.resourceTimer = 0
 
-    AnimalEmotion.init(this)
+    this.resourceTimer = 0
+
+    this.brain.init(this)
   }
+
+  get brain() { return AnimalSet }
 
   update(deltaTime, world) {
     if (this.isDead) return
-    AnimalEmotion.update(this, deltaTime)
 
-    // [SAB 수정] 애니메이션 프레임 업데이트 로직을 렌더러가 아닌 워커의 update 루프로 이동
+    // [SAB 수정] 애니메이션 프레임 업데이트 로직
     this.lastFrameTime += deltaTime
     if (this.lastFrameTime >= this.frameInterval) {
-      this.currentFrame = (this.currentFrame + 1) % 8
+      this.currentFrame = (this.currentFrame + 1) % 5
       this.lastFrameTime = 0
     }
 
@@ -42,27 +44,37 @@ export class Animal extends Entity {
       return
     }
 
-    // 동물의 두뇌 AI (0.5초마다 판단)
-    this.aiTickTimer = (this.aiTickTimer || 0) - deltaTime
-    if (this.aiTickTimer <= 0) {
-      this.aiTickTimer = 500 + Math.random() * 500
-      const searchRange = { x: this.x - 200, y: this.y - 200, width: 400, height: 400 }
-      const candidates = world.chunkManager.query(searchRange)
+    // 수명 시스템 제거 및 고정 크기 적용
+    this.size = this.baseSize || (this.type === 'CARNIVORE' ? 14 : 10)
+    const growthRatio = 1.0
 
-      const drive = AnimalEmotion.evaluateSurvivalNeeds(this, candidates)
-      if (drive) {
-        const behavior = AnimalBehaviors[drive.action]
-        if (behavior) behavior(this, drive.target, world)
-      } else if (this.state === 'WANDERING' || this.state === 'IDLE') {
-        if (Math.random() < 0.05) this.wander(world)
+    // 가축화 보상(자원 생성 & 감성적 효과)
+    if (this.type === 'HERBIVORE') {
+      this.resourceTimer += deltaTime
+      if (this.resourceTimer > 10000) { // 10초 주기
+        this.resourceTimer = 0
+        // 주민이 근처에 있다면 주민의 피로/허기를 조금 줄여주거나 자원을 드랍
+        const nearbyCreatures = world.creatures.filter(c => !c.isDead && c.distanceTo(this) < 100)
+        let hasFarmer = false
+        for (const c of nearbyCreatures) {
+           // 근처 주민 감성 증가 (피로 감소, 동물 구경)
+           c.needsFatigue = Math.max(0, c.needsFatigue - 5)
+           if (c.profession === 'FARMER') hasFarmer = true
+        }
+        
+        // 농부가 곁에 있거나 어른(크기>=1)으로 다 자랐으면 우유나 고기 자원 약간 생성
+        if (hasFarmer && growthRatio >= 0.8) {
+           world.spawnResource(
+              this.x + (Math.random() - 0.5) * 20,
+              this.y + (Math.random() - 0.5) * 20,
+              Math.random() > 0.5 ? 'milk' : 'meat'
+           )
+        }
       }
     }
 
-    // 상태(State) 기반 전략 행동 실행 (Strategy Pattern)
-    const action = AnimalActions[this.state]
-    if (action) {
-      action(this, deltaTime, world)
-    }
+    // 동물의 두뇌 AI 및 상태 전략 모두 Set에 위임
+    this.brain.update(this, deltaTime, world)
   }
 
   wander(_world) {
@@ -76,13 +88,19 @@ export class Animal extends Entity {
     super.die(world)
     world.animals = world.animals.filter((a) => a !== this)
     if (world.animalPool) world.animalPool.push(this) // 4.2 최적화: 죽은 동물을 풀에 반납
-    world.spawnResource(this.x, this.y, 'biomass')
+    
+    // 사냥 보상으로 식량 대량 드랍 (육식 5개, 초식 3개)
+    const dropAmount = this.type === 'CARNIVORE' ? 5 : 3
+    for (let i = 0; i < dropAmount; i++) {
+      world.spawnResource(
+        this.x + (Math.random() - 0.5) * 30,
+        this.y + (Math.random() - 0.5) * 30,
+        'food'
+      )
+    }
   }
 
-  render(ctx, timestamp) {
-    const renderAction = AnimalRenders[this.state]
-    if (renderAction) {
-      renderAction(this, ctx, timestamp)
-    }
+  render(ctx, timestamp, world) {
+    this.brain.draw(this, ctx, timestamp, world)
   }
 }

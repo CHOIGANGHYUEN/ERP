@@ -17,7 +17,8 @@ export const WARRIOR = (creature, world, _candidates) => {
     if (t.isDead) continue
     const dist = creature.distanceTo(t)
 
-    if (t.type === 'CARNIVORE') {
+    // 육식동물, 초식동물 모두 사냥의 대상 (위협 및 식량 확보)
+    if (t.type === 'CARNIVORE' || t.type === 'HERBIVORE') {
       if (dist < searchRadius && dist < minThreatDist) {
         closestThreat = t
         minThreatDist = dist

@@ -6,8 +6,8 @@ export class TimeSystem {
   }
 
   update(deltaTime) {
-    // 시간 및 계절 업데이트 (1초 IRL = 1시간 1000 tick)
-    this.timeOfDay += deltaTime
+    // 시간 및 계절 업데이트 (1초 IRL = 250 tick, 하루 24000 = 96초 IRL)
+    this.timeOfDay += deltaTime * 0.25
     if (this.timeOfDay >= 24000) {
       this.timeOfDay -= 24000
       this.days++

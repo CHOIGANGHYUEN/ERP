@@ -1,3 +1,6 @@
+import { MoveTask } from '../../tasks/MoveTask.js'
+import { BuildTask } from '../../tasks/BuildTask.js'
+
 export const BUILDER = (creature, world, _candidates) => {
   if (!creature.village) return creature.wander(world)
   let targetBuilding = creature.village.buildings.find((b) => !b.isConstructed)
@@ -53,7 +56,7 @@ export const BUILDER = (creature, world, _candidates) => {
       creature.wander(world)
     }
   } else {
-    creature.target = targetBuilding
-    creature.state = 'BUILDING'
+    creature.taskQueue.push(new MoveTask(targetBuilding))
+    creature.taskQueue.push(new BuildTask(targetBuilding))
   }
 }

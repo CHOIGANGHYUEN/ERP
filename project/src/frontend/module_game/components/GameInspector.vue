@@ -1,55 +1,66 @@
 <template>
-  <div>
-    <h4
-      style="
-        margin: 0 0 12px 0;
-        color: var(--app-text-color);
-        border-bottom: 1px solid var(--app-border-color);
-        padding-bottom: 8px;
-        font-size: 1.1rem;
-      "
-    >
-      🔍 개체 관찰 (Inspector)
-    </h4>
+  <div class="inspector-panel">
+    <h4 class="inspector-title">🔍 개체 관찰 (Inspector)</h4>
 
     <template v-if="entityData.isVillage">
       <!-- 마을 정보 -->
-      <div class="app-grid" style="font-size: 0.95rem; gap: 12px">
-        <div class="app-grid-item"><strong>마을 이름:</strong> {{ entityData.name }}</div>
-        <div class="app-grid-item" v-if="entityData.nation">
+      <div class="app-grid inspector-grid">
+        <div class="app-grid-item"><strong>이름:</strong> {{ entityData.name }}</div>
+        <div class="app-grid-item nation-name" v-if="entityData.nation">
           <strong>국가:</strong>
-          <span :style="{ color: entityData.nation.color, fontWeight: 'bold' }">{{
-            entityData.nation.name
-          }}</span>
+          <span :style="{ color: entityData.nation.color }">{{ entityData.nation.name }}</span>
         </div>
         <div class="app-grid-item"><strong>인구:</strong> {{ entityData.population }}명</div>
         <div class="app-grid-item"><strong>건물:</strong> {{ entityData.buildings }}채</div>
-        <div class="app-grid-item" style="color: #2ecc71">
+        <div class="app-grid-item res-food">
           <strong>식량 🧺:</strong>
           {{ Math.floor(entityData.inventory.food || entityData.inventory.biomass || 0) }}
         </div>
-        <div class="app-grid-item" style="color: #e67e22">
+        <div class="app-grid-item res-wood">
           <strong>목재 🪓:</strong> {{ Math.floor(entityData.inventory.wood || 0) }}
         </div>
-        <div class="app-grid-item" style="color: #bdc3c7">
+        <div class="app-grid-item res-stone">
           <strong>석재 🪨:</strong> {{ Math.floor(entityData.inventory.stone || 0) }}
         </div>
-        <div class="app-grid-item" style="color: #e67e22">
+        <div class="app-grid-item res-iron">
           <strong>철광 ⛏️:</strong> {{ Math.floor(entityData.inventory.iron || 0) }}
         </div>
-        <div class="app-grid-item" style="color: #f1c40f">
+        <div class="app-grid-item res-gold">
           <strong>금 💰:</strong> {{ Math.floor(entityData.inventory.gold || 0) }}
         </div>
-        <div class="app-grid-item" style="color: #3498db">
+        <div class="app-grid-item res-know">
           <strong>지식 💡:</strong> {{ Math.floor(entityData.inventory.knowledge || 0) }}
         </div>
+        <!-- 국가 자원 표시 -->
+        <template v-if="entityData.nation && entityData.nation.inventory">
+          <div class="app-grid-item full-span" style="margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 8px;">
+            <strong :style="{ color: entityData.nation.color }">👑 {{ entityData.nation.name }} 총 자산</strong>
+          </div>
+          <div class="app-grid-item res-food">
+            <strong>식량 🧺:</strong> {{ Math.floor(entityData.nation.inventory.food || 0) }}
+          </div>
+          <div class="app-grid-item res-wood">
+            <strong>목재 🪓:</strong> {{ Math.floor(entityData.nation.inventory.wood || 0) }}
+          </div>
+          <div class="app-grid-item res-stone">
+            <strong>석재 🪨:</strong> {{ Math.floor(entityData.nation.inventory.stone || 0) }}
+          </div>
+          <div class="app-grid-item res-iron">
+            <strong>철광 ⛏️:</strong> {{ Math.floor(entityData.nation.inventory.iron || 0) }}
+          </div>
+          <div class="app-grid-item res-gold">
+            <strong>금 💰:</strong> {{ Math.floor(entityData.nation.inventory.gold || 0) }}
+          </div>
+          <div class="app-grid-item res-know">
+            <strong>지식 💡:</strong> {{ Math.floor(entityData.nation.inventory.knowledge || 0) }}
+          </div>
+        </template>
         <div
-          class="app-grid-item"
-          style="grid-column: span 2"
+          class="app-grid-item full-span"
           v-if="entityData.nation && entityData.nation.diplomacy"
         >
-          <strong>🤝 외교 관계:</strong>
-          <ul style="padding-left: 20px; margin: 4px 0 0 0; font-size: 0.9rem">
+          <strong> 외교 관계:</strong>
+          <ul class="diplomacy-list">
             <li v-for="(rel, name) in entityData.nation.diplomacy" :key="name">
               {{ name }}:
               <span :class="`badge-${getRelationClass(rel.status)}`">{{
@@ -64,7 +75,7 @@
 
     <template v-else>
       <!-- 개체 정보 -->
-      <div class="app-grid" style="font-size: 0.95rem; gap: 12px">
+      <div class="app-grid inspector-grid">
         <div class="app-grid-item">
           <strong>종류:</strong>
           <span class="badge-primary">{{ getEntityTypeName(entityData) }}</span>
@@ -72,11 +83,27 @@
         <div class="app-grid-item" v-if="entityData.village">
           <strong>소속 마을:</strong> {{ entityData.village.name }}
         </div>
+        <div class="app-grid-item" v-if="entityData.familyName">
+          <strong>👨‍👩‍👧 가문:</strong>
+          <span class="badge-primary">{{ entityData.familyName }}씨</span>
+        </div>
         <div class="app-grid-item" v-if="entityData.age !== undefined">
           <strong>나이:</strong> {{ Math.floor(entityData.age) }}살
         </div>
         <div class="app-grid-item" v-if="entityData.profession">
           <strong>직업:</strong> {{ getProfessionName(entityData.profession) }}
+        </div>
+        <div class="app-grid-item" v-if="entityData.level !== undefined">
+          <strong>레벨:</strong> <span class="badge-success">Lv.{{ entityData.level }}</span>
+        </div>
+        <div class="app-grid-item" v-if="entityData.exp !== undefined">
+          <strong>경험치:</strong> {{ entityData.exp }} / {{ entityData.maxExp }}
+        </div>
+        <div class="app-grid-item" v-if="entityData.attackPower !== undefined">
+          <strong>공격력:</strong> {{ (entityData.attackPower).toFixed(1) }}
+        </div>
+        <div class="app-grid-item" v-if="entityData.workEfficiency !== undefined">
+          <strong>작업 효율:</strong> {{ entityData.workEfficiency }}
         </div>
         <div
           class="app-grid-item"
@@ -86,9 +113,9 @@
         </div>
         <div class="app-grid-item" v-if="entityData.energy !== undefined">
           <strong>체력:</strong>
-          <span :class="entityData.energy > 50 ? 'badge-success' : 'badge-danger'">
-            {{ Math.floor(entityData.energy) }}
-          </span>
+          <span :class="entityData.energy > 50 ? 'badge-success' : 'badge-danger'">{{
+            Math.floor(entityData.energy)
+          }}</span>
         </div>
         <div class="app-grid-item" v-if="entityData.state">
           <strong>상태:</strong> {{ entityData.state }}
@@ -98,39 +125,62 @@
         </div>
         <!-- 욕구 및 감정 패널 -->
         <div
-          class="app-grid-item"
+          class="app-grid-item full-span"
           v-if="entityData.needs && Object.keys(entityData.needs).length > 0"
-          style="grid-column: span 2"
         >
           <strong>🔥 욕구 (Needs):</strong>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px">
+          <div class="badge-container">
             <span
               v-for="(val, key) in entityData.needs"
               :key="key"
-              class="badge-warning"
-              style="background: #e67e22; font-size: 0.8rem; padding: 2px 6px"
+              class="badge-warning small-badge"
             >
               {{ translateKey(key) }}: {{ Math.floor(val) }}%
             </span>
           </div>
         </div>
         <div
-          class="app-grid-item"
+          class="app-grid-item full-span"
           v-if="entityData.emotions && Object.keys(entityData.emotions).length > 0"
-          style="grid-column: span 2"
         >
           <strong>💖 감정 (Emotions):</strong>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px">
+          <div class="badge-container">
             <span
               v-for="(val, key) in entityData.emotions"
               :key="key"
-              class="badge-primary"
-              style="background: #9b59b6; font-size: 0.8rem; padding: 2px 6px"
+              class="badge-primary small-badge bg-purple"
             >
               {{ translateKey(key) }}: {{ Math.floor(val) }}%
             </span>
           </div>
         </div>
+        
+        <!-- 인벤토리 패널 -->
+        <div class="app-grid-item full-span" v-if="entityData.inventory && Object.keys(entityData.inventory).some(k => entityData.inventory[k] > 0)">
+          <strong>🎒 개별 인벤토리:</strong>
+          <div class="badge-container">
+            <span class="badge-success small-badge" v-if="entityData.inventory.food > 0">식량: {{ Math.floor(entityData.inventory.food) }}</span>
+            <span class="badge-success small-badge" v-if="entityData.inventory.biomass > 0">생물량: {{ Math.floor(entityData.inventory.biomass) }}</span>
+            <span class="badge-warning small-badge" v-if="entityData.inventory.wood > 0">목재: {{ Math.floor(entityData.inventory.wood) }}</span>
+            <span class="badge-secondary small-badge" v-if="entityData.inventory.stone > 0">석재: {{ Math.floor(entityData.inventory.stone) }}</span>
+            <span class="res-iron small-badge" style="background:#55280b; padding:2px 4px; border-radius:4px" v-if="entityData.inventory.iron > 0">철광: {{ Math.floor(entityData.inventory.iron) }}</span>
+            <span class="res-gold small-badge" style="background:#55500b; padding:2px 4px; border-radius:4px" v-if="entityData.inventory.gold > 0">금: {{ Math.floor(entityData.inventory.gold) }}</span>
+          </div>
+        </div>
+        
+        <!-- Task Queue 패널 -->
+        <div class="app-grid-item full-span" v-if="entityData.taskQueue !== undefined">
+          <strong>📝 업무 지시 큐 (Task Queue):</strong>
+          <ul class="task-queue-list">
+            <li v-for="(task, idx) in entityData.taskQueue" :key="idx" :class="{ 'current-task': idx === 0 }">
+              <span class="queue-num">{{ idx + 1 }}</span>
+              <span class="queue-type">{{ translateKey(task.type) }}</span> - 
+              <span :class="statusClass(task.status)">{{ translateKey(task.status) }}</span>
+            </li>
+            <li v-if="entityData.taskQueue.length === 0" style="color:#aaa;">대기 중... (업무 대기)</li>
+          </ul>
+        </div>
+
       </div>
     </template>
   </div>
@@ -185,6 +235,7 @@ const getProfessionName = (prof) => {
     MINER: '광부 ⛏️',
     WARRIOR: '전사 ⚔️',
     LEADER: '마을 촌장 👑',
+    MERCHANT: '상인 💰',
   }
   return map[prof] || prof
 }
@@ -199,8 +250,24 @@ const translateKey = (key) => {
     fear: '공포',
     aggression: '공격성',
     vitality: '활력',
+    MOVE: '목적지로 이동',
+    HARVEST: '수확/채집/채광',
+    DEPOSIT: '창고 납품',
+    SLEEP: '수면/휴식',
+    EAT: '식사',
+    PENDING: '대기 중',
+    RUNNING: '실행 중',
+    COMPLETED: '완료됨',
+    FAILED: '취소/실패',
   }
   return dict[key] || key
+}
+
+const statusClass = (status) => {
+  if (status === 'RUNNING') return 'res-wood'
+  if (status === 'COMPLETED') return 'res-food'
+  if (status === 'FAILED') return 'res-iron'
+  return 'res-stone'
 }
 
 const getRelationName = (status) => {
@@ -213,3 +280,93 @@ const getRelationClass = (status) => {
   return map[status] || 'secondary'
 }
 </script>
+
+<style scoped>
+.inspector-panel {
+  padding: 16px;
+  color: #f8fafc;
+}
+.inspector-title {
+  margin: 0 0 16px 0;
+  color: #3498db;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+  font-size: 1.15rem;
+}
+.inspector-grid {
+  font-size: 0.95rem;
+  gap: 12px;
+}
+.nation-name span {
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.full-span {
+  grid-column: 1 / -1;
+}
+.res-food {
+  color: #2ecc71;
+}
+.res-wood {
+  color: #e67e22;
+}
+.res-stone {
+  color: #bdc3c7;
+}
+.res-iron {
+  color: #d35400;
+}
+.res-gold {
+  color: #f1c40f;
+}
+.res-know {
+  color: #3498db;
+}
+.diplomacy-list {
+  padding-left: 20px;
+  margin: 6px 0 0 0;
+  font-size: 0.9rem;
+}
+.badge-container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.small-badge {
+  font-size: 0.8rem;
+  padding: 3px 6px;
+}
+.bg-purple {
+  background-color: #9b59b6 !important;
+}
+.task-queue-list {
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.task-queue-list li {
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  margin-bottom: 4px;
+  border-radius: 4px;
+}
+.current-task {
+  border-left: 3px solid #2ecc71;
+  background: rgba(46, 204, 113, 0.1) !important;
+}
+.queue-num {
+  display: inline-block;
+  background: #34495e;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  text-align: center;
+  line-height: 18px;
+  margin-right: 6px;
+  font-size: 0.75rem;
+}
+.queue-type {
+  font-weight: bold;
+}
+</style>

@@ -1,3 +1,5 @@
+import { Logger } from '../../engine/utils/Logger.js'
+
 export class DIContainer {
   constructor() {
     this.dependencies = new Map()
@@ -25,7 +27,9 @@ export class DIContainer {
    */
   resolve(token, ...args) {
     if (!this.dependencies.has(token)) {
-      throw new Error(`[DI Error] Dependency not found for token: ${token.toString()}`)
+      const errorMsg = `Dependency not found for token: ${token.toString()}`
+      Logger.error('DIContainer', errorMsg)
+      throw new Error(`[DI Error] ${errorMsg}`)
     }
 
     const dep = this.dependencies.get(token)

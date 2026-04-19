@@ -9,27 +9,64 @@ import { Mine } from '../objects/environment/Mine.js'
 import { MAX_CREATURES } from '../core/SharedState.js'
 
 export class EntitySpawnerSystem {
+  getSafeLandPosition(world, preferTerrainType = -1) {
+    let x, y
+    let attempts = 0
+    let bestX = 0, bestY = 0
+    let bestScore = -1
+
+    while (attempts < 50) {
+      x = Math.random() * world.width
+      y = Math.random() * world.height
+      attempts++
+
+      if (!world.terrain) return { x, y }
+
+      const cols = Math.ceil(world.width / 16)
+      const tx = Math.floor(x / 16)
+      const ty = Math.floor(y / 16)
+      if (tx >= 0 && tx < cols && ty >= 0 && ty < Math.ceil(world.height / 16)) {
+        const type = world.terrain[ty * cols + tx]
+
+        // 3 이상은 바다, 2는 대산맥 (이곳은 무조건 제외)
+        if (type >= 3 || type === 2) continue
+
+        // 우선순위가 있는 경우 (예: 광물은 1번(낮은 산) 강하게 선호)
+        if (preferTerrainType !== -1) {
+          if (type === preferTerrainType) return { x, y }
+          // 조건 불만족시 일단 점수가 높은 차선책 갱신
+          bestX = x
+          bestY = y
+        } else {
+          return { x, y }
+        }
+      }
+    }
+    // 50번 못찾으면 차선책 반환 또는 중앙
+    return (bestX !== 0 || bestY !== 0) ? { x: bestX, y: bestY } : { x: world.width / 2, y: world.height / 2 }
+  }
+
   initNature(world) {
-    for (let i = 0; i < 100; i++)
-      world.spawnPlant(Math.random() * world.width, Math.random() * world.height, 'grass')
-    for (let i = 0; i < 30; i++)
-      world.spawnPlant(Math.random() * world.width, Math.random() * world.height, 'tree')
+    for (let i = 0; i < 100; i++) {
+      const pos = this.getSafeLandPosition(world, 0)
+      world.spawnPlant(pos.x, pos.y, 'grass')
+    }
+    for (let i = 0; i < 30; i++) {
+      const pos = this.getSafeLandPosition(world, 0)
+      world.spawnPlant(pos.x, pos.y, 'tree')
+    }
 
     const herbivores = ['RABBIT', 'DEER', 'SHEEP', 'COW', 'BOAR', 'ELEPHANT', 'MAMMOTH']
-    for (let i = 0; i < 20; i++)
-      world.spawnAnimal(
-        Math.random() * world.width,
-        Math.random() * world.height,
-        herbivores[Math.floor(Math.random() * herbivores.length)],
-      )
+    for (let i = 0; i < 20; i++) {
+      const pos = this.getSafeLandPosition(world, 0)
+      world.spawnAnimal(pos.x, pos.y, herbivores[Math.floor(Math.random() * herbivores.length)])
+    }
 
     const carnivores = ['WOLF', 'BEAR', 'FOX', 'TIGER', 'LION']
-    for (let i = 0; i < 8; i++)
-      world.spawnAnimal(
-        Math.random() * world.width,
-        Math.random() * world.height,
-        carnivores[Math.floor(Math.random() * carnivores.length)],
-      )
+    for (let i = 0; i < 8; i++) {
+      const pos = this.getSafeLandPosition(world, 0)
+      world.spawnAnimal(pos.x, pos.y, carnivores[Math.floor(Math.random() * carnivores.length)])
+    }
 
     const _mineTypes = [
       'stone',
@@ -57,7 +94,9 @@ export class EntitySpawnerSystem {
       else if (rand > 0.35) mType = 'copper'
       else if (rand > 0.2) mType = 'iron'
       else if (rand > 0.1) mType = 'coal'
-      world.mines.push(new Mine(Math.random() * world.width, Math.random() * world.height, mType))
+      
+      const pos = this.getSafeLandPosition(world, 1) // 1: 낮은산(LOW_MOUNTAIN)
+      world.mines.push(new Mine(pos.x, pos.y, mType))
     }
   }
 
@@ -148,7 +187,7 @@ export class EntitySpawnerSystem {
         : type
     if (SPECIES_PROPS[animal.species]) {
       animal.color = SPECIES_PROPS[animal.species].color
-      animal.size = SPECIES_PROPS[animal.species].size
+      animal.baseSize = SPECIES_PROPS[animal.species].size
     }
     world.animals.push(animal)
   }

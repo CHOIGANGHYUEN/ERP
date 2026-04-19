@@ -16,4 +16,6 @@ export const TOKENS = {
   BuildingSystem: Symbol('BuildingSystem'),
   BufferSyncSystem: Symbol('BufferSyncSystem'),
   EntitySpawnerSystem: Symbol('EntitySpawnerSystem'),
+  FamilySystem: Symbol('FamilySystem'),
+  PathSystem: Symbol('PathSystem'),
 }

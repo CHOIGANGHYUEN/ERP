@@ -1,3 +1,5 @@
+import { FamilySystem } from '../../../systems/FamilySystem.js'
+
 export const MATING = (creature, deltaTime, world) => {
   const partner = creature.target
   // 파트너가 없거나, 죽었거나, 더 이상 짝짓기 상태가 아니면 배회로 전환
@@ -29,6 +31,23 @@ export const MATING = (creature, deltaTime, world) => {
           creature.x + (Math.random() - 0.5) * 30,
           creature.y + (Math.random() - 0.5) * 30,
         )
+
+        // [가문 계승] 신규 크리쳐 생성 직후 마지막으로 소환된 크리쳐에게 성씨 계승
+        // world.spawnCreature는 내부적으로 배열 끝에 추가하므로 마지막 원소가 자식
+        const child = world.creatures[world.creatures.length - 1]
+        if (child) {
+          FamilySystem.inheritFamily(creature, partner, child)
+          // 이벤트 알림
+          const idx = world.creatures.indexOf(creature)
+          if (idx !== -1) {
+            world.showSpeechBubble(
+              idx,
+              'creature',
+              `👶 ${child.familyName}씨 탄생!`,
+              3000,
+            )
+          }
+        }
       }
 
       // 둘 다 배회 상태로 복귀

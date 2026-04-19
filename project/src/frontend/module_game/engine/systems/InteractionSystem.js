@@ -5,6 +5,7 @@
 export class InteractionSystem {
   constructor() {
     this.bubbles = []
+    this.entityMap = new Map() // [Optimization] 매 프레임 Map 생성을 피하기 위해 재사용
   }
 
   addBubble(entityId, entityType, text, duration = 2000) {
@@ -15,7 +16,17 @@ export class InteractionSystem {
     this.bubbles.push({ entityId, entityType, text, lifeTime: duration, maxLife: duration })
   }
 
-  update(deltaTime) {
+  update(deltaTime, world) {
+    if (world && world.spatialProxies) {
+      // 말풍선을 위한 빠른 맵핑 (O(N) -> O(1)) - 기존 Map 재사용 (Zero-Allocation)
+      this.entityMap.clear()
+      // 현재 씬의 유효한 개체들을 맵에 캐싱
+      for (let i = 0; i < world.spatialProxies.length; i++) {
+        const p = world.spatialProxies[i]
+        this.entityMap.set(`${p._type}_${p.id}`, p)
+      }
+    }
+
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       this.bubbles[i].lifeTime -= deltaTime
       if (this.bubbles[i].lifeTime <= 0) {
@@ -24,7 +35,7 @@ export class InteractionSystem {
     }
   }
 
-  render(ctx, drawables) {
+  render(ctx, _drawables) {
     if (this.bubbles.length === 0) return
 
     ctx.save()
@@ -33,8 +44,8 @@ export class InteractionSystem {
     ctx.font = 'bold 12px "Pretendard", sans-serif'
 
     this.bubbles.forEach((b) => {
-      // 화면(Culling 뷰포트 내)에 렌더링 중인 개체만 말풍선 표시
-      const entity = drawables.find((e) => e.id === b.entityId && e._type === b.entityType)
+      // [Optimization] .find() 대신 ID 맵에서 고속 조회
+      const entity = this.entityMap ? this.entityMap.get(`${b.entityType}_${b.entityId}`) : null
       if (!entity) return
 
       const alpha = Math.min(1, b.lifeTime / 300) // 마지막 300ms 동안 서서히 페이드아웃

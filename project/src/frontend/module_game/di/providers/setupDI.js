@@ -16,6 +16,7 @@ import { BufferSyncSystem } from '../../engine/systems/BufferSyncSystem.js'
 import { EntitySpawnerSystem } from '../../engine/systems/EntitySpawnerSystem.js'
 import { EntitySystem } from '../../engine/systems/EntitySystem.js'
 import { RenderSystem } from '../../engine/systems/RenderSystem.js'
+import { PathSystem } from '../../engine/systems/PathSystem.js'
 
 /**
  * 시스템 전역 의존성 주입 컨테이너를 설정하고 반환합니다.
@@ -41,6 +42,7 @@ export function setupDI() {
   container.register(TOKENS.EntitySpawnerSystem, EntitySpawnerSystem)
   container.register(TOKENS.EntitySystem, EntitySystem)
   container.register(TOKENS.RenderSystem, RenderSystem)
+  container.register(TOKENS.PathSystem, PathSystem)
 
   return container
 }

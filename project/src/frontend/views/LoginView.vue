@@ -37,7 +37,7 @@ onMounted(() => {
       window.google.accounts.id.renderButton(document.getElementById('google-login-btn'), {
         theme: 'outline',
         size: 'large',
-        width: '100%',
+        width: 360,
       })
     }
   }, 100)

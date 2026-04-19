@@ -1,0 +1,54 @@
+import { ref } from 'vue'
+
+export function useGameTools(getWorldInstance) {
+  const activeTool = ref(null)
+  
+  const showToolMenu = ref(false)
+  const showTopUI = ref(true)
+  const showInspectorPanel = ref(true)
+  const showInteractionPanel = ref(true)
+  const showLogsPanel = ref(true)
+  const showMinimapPanel = ref(true)
+
+  const toggleTool = (toolName) => {
+    if (activeTool.value === toolName) {
+      activeTool.value = null
+    } else {
+      activeTool.value = toolName
+    }
+  }
+
+  const handleAction = (action) => {
+    const worldInstance = getWorldInstance()
+    if (!worldInstance) return
+    switch (action) {
+      case 'earthquake':
+        worldInstance.triggerEarthquake()
+        break
+      case 'fertility':
+        worldInstance.addFertility(5000)
+        break
+      case 'weather_clear':
+        worldInstance.setWeather('clear')
+        break
+      case 'weather_rain':
+        worldInstance.setWeather('rain')
+        break
+      case 'weather_fog':
+        worldInstance.setWeather('fog')
+        break
+    }
+  }
+
+  return {
+    activeTool,
+    showToolMenu,
+    showTopUI,
+    showInspectorPanel,
+    showInteractionPanel,
+    showLogsPanel,
+    showMinimapPanel,
+    toggleTool,
+    handleAction
+  }
+}

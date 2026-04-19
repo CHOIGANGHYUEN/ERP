@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') })
+dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true })
 
 import { apiLogger } from './common/middleware/apiLogger.js'
 import authRoutes from './module_sys/routes/authRoutes.js'
@@ -24,6 +24,7 @@ import logUserRoutes from './module_sys/routes/logUserRoutes.js'
 import plantRoutes from './module_sys/routes/plantRoutes.js'
 import unitRoutes from './module_sys/routes/unitRoutes.js'
 import gameRoutes from './module_game/routes/gameRoutes.js'
+import configService from './module_sys/services/configService.js'
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -62,6 +63,20 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend is running' })
 })
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`)
+  // DB 연결 후 기본 시스템 설정 확인 및 누락분 보완
+  configService.initializeDefaultConfigs().catch((err) => {
+    console.error('⚠️ 기본 시스템 설정 초기화 실패:', err.message)
+  })
+})
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Error: Port ${PORT} is already in use. The server could not start.`)
+    process.exit(1)
+  } else {
+    console.error('Server error:', err)
+    process.exit(1)
+  }
 })

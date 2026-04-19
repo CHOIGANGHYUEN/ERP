@@ -9,6 +9,38 @@ import { Village } from '../objects/society/Village.js'
 import { PROPS, STRIDE } from '../core/SharedState.js'
 
 export class RenderSystem {
+  constructor() {
+    // 렌더링용 플라이웨이트 껍데기 객체 (GC 최소화)
+    this.renderProxies = {
+      creature: Object.create(Creature.prototype),
+      plant: Object.create(Plant.prototype),
+      animal: Object.create(Animal.prototype),
+      building: Object.create(Building.prototype),
+      village: Object.create(Village.prototype),
+      tornado: Object.create(Tornado.prototype),
+      resource: Object.create(Resource.prototype),
+      mine: Object.create(Mine.prototype),
+    }
+
+    // [Performance Optimization] 프레임당 가비지 생성을 방지하기 위한 정적 버킷 및 풀 (Zero-GC)
+    this.buckets = []
+    this.arrayPool = []
+    this.poolIdx = 0
+  }
+
+  // 풀에서 배열을 꺼내고, 필요 시 새로 생성
+  _getArrayFromPool() {
+    if (this.poolIdx < this.arrayPool.length) {
+      const arr = this.arrayPool[this.poolIdx++]
+      arr.length = 0 // 기존 내용 비움
+      return arr
+    }
+    const newArr = []
+    this.arrayPool.push(newArr)
+    this.poolIdx++
+    return newArr
+  }
+
   render(world, timestamp) {
     if (world.isHeadless || !world.views) return
 
@@ -21,34 +53,90 @@ export class RenderSystem {
     world.ctx.translate(-world.camera.x, -world.camera.y)
     world.disasterSystem.applyCameraShake(world.ctx)
 
+    // ── 0. 정적 지형 레이어 업데이트 (수만 개의 타일 사전 렌더링) ─────────────────
+    if (world.needsStaticTerrainUpdate && world.terrain) {
+      const sCtx = world.bgStaticCtx
+      sCtx.clearRect(0, 0, world.width, world.height)
+      
+      const tileSize = 16
+      const cols = world.width / tileSize
+      const colors = [
+        '#27ae60', // 0: GRASS
+        '#7f8c8d', // 1: LOW_MOUNTAIN
+        '#bdc3c7', // 2: HIGH_MOUNTAIN
+        '#3498db', // 3: SHALLOW_SEA
+        '#2980b9', // 4: DEEP_SEA
+        '#2c3e50', // 5: ABYSS
+      ]
+
+      for (let i = 0; i < world.terrain.length; i++) {
+        const type = world.terrain[i]
+        sCtx.fillStyle = colors[type] || colors[0]
+        const tx = (i % cols) * tileSize
+        const ty = Math.floor(i / cols) * tileSize
+        sCtx.fillRect(tx, ty, tileSize, tileSize)
+      }
+      world.needsStaticTerrainUpdate = false
+    }
+
+    // ── 1. 동적 배경 업데이트 (길, 건물 등 자주 변하는 요소) ───────────────
     if (world.needsBackgroundUpdate) {
       const villageView = world.views.villages
       const villageCount = world.views.globals[PROPS.GLOBALS.VILLAGE_COUNT]
       const buildingView = world.views.buildings
       const buildingCount = world.views.globals[PROPS.GLOBALS.BUILDING_COUNT]
+      const ctx = world.bgBufferCtx
 
-      world.bgCtx.clearRect(0, 0, world.width, world.height)
+      ctx.clearRect(0, 0, world.width, world.height)
+
+      // (A) 사전 렌더링된 정적 지형 복사 (가장 빠름)
+      ctx.drawImage(world.bgStaticCanvas, 0, 0)
+
+      // (B) Desire Path (자연생성된 길) 그리기 - 2중 루프로 연산 최적화
+      if (world.pathSystem && world.pathSystem.paths) {
+        const paths = world.pathSystem.paths
+        const gridSize = world.pathSystem.gridSize
+        const pCols = world.pathSystem.cols
+        const pRows = world.pathSystem.rows
+        
+        for (let r = 0; r < pRows; r++) {
+          const rowOffset = r * pCols
+          const ty = r * gridSize
+          for (let c = 0; c < pCols; c++) {
+            const traffic = paths[rowOffset + c]
+            if (traffic > 100) {
+              const tx = c * gridSize
+              ctx.fillStyle = traffic > 500 
+                ? `rgba(120, 100, 80, ${Math.min(0.8, traffic / 1000)})` 
+                : `rgba(160, 120, 60, ${Math.min(0.5, traffic / 500)})`
+              ctx.fillRect(tx, ty, gridSize, gridSize)
+            }
+          }
+        }
+      }
 
       for (let i = 0; i < villageCount; i++) {
         const offset = i * STRIDE.VILLAGE
         if (villageView[offset + PROPS.VILLAGE.IS_ACTIVE] === 1) {
-          const vData = world.getDataFromBuffer(world._type || 'village', i)
-          const v = new Village(vData.x, vData.y)
-          Object.assign(v, vData)
-          v.nation = { color: vData.color }
-          v.render(world.bgCtx)
+          const v = this.renderProxies.village
+          world.bufferSyncSystem.hydrate(world, v, 'village', i)
+          v.nation = { color: v.color, name: '국가' }
+          v.render(ctx)
         }
       }
 
       for (let i = 0; i < buildingCount; i++) {
         const offset = i * STRIDE.BUILDING
         if (buildingView[offset + PROPS.BUILDING.IS_CONSTRUCTED] === 1) {
-          const bData = world.getDataFromBuffer(world._type || 'building', i)
-          const b = new Building(bData.x, bData.y, bData.type)
-          Object.assign(b, bData)
-          b.render(world.bgCtx)
+          const b = this.renderProxies.building
+          world.bufferSyncSystem.hydrate(world, b, 'building', i)
+          b.render(ctx)
         }
       }
+
+      // 버퍼 내용을 실제 배경 캔버스로 복사
+      world.bgCtx.clearRect(0, 0, world.width, world.height)
+      world.bgCtx.drawImage(world.bgBufferCanvas, 0, 0)
       world.needsBackgroundUpdate = false
     }
 
@@ -61,30 +149,45 @@ export class RenderSystem {
       height: world.camera.height / zoom + 100,
     }
     const drawables = world.chunkManager.query(viewRange)
-    drawables.sort((a, b) => a.y - b.y)
+    
+    // [Nuclear Optimization] O(N log N) 정렬 대신 O(N) Y-버킷 정렬 도입 (Zero-Allocation 버전)
+    this.poolIdx = 0 
+    let minY = 99999, maxY = -99999
 
+    for (let i = 0; i < drawables.length; i++) {
+      const obj = drawables[i]
+      const yKey = Math.floor(obj.y)
+      if (!this.buckets[yKey] || this.buckets[yKey]._frame !== timestamp) {
+          this.buckets[yKey] = this._getArrayFromPool()
+          this.buckets[yKey]._frame = timestamp 
+      }
+      this.buckets[yKey].push(obj)
+      if (yKey < minY) minY = yKey
+      if (yKey > maxY) maxY = yKey
+    }
+
+    // 그림자 선 렌더링 (모든 엔티티 통합)
     world.lightingSystem.renderShadows(world.ctx, drawables, world.timeSystem.timeOfDay)
 
-    drawables.forEach((obj) => {
-      const data = world.getDataFromBuffer(obj._type, obj.id)
-      if (!data || data.isDead) return
-      const Cls = {
-        creature: Creature,
-        plant: Plant,
-        animal: Animal,
-        building: Building,
-        tornado: Tornado,
-        mine: Mine,
-        resource: Resource,
-      }[obj._type]
-      if (Cls) {
-        const instance = Object.create(Cls.prototype)
-        Object.assign(instance, data)
-        if (obj._type === 'building' && instance.isConstructed) return
-        if (obj._type === 'plant') instance.render(world.ctx, timestamp, world.weather.windSpeed)
-        else instance.render(world.ctx, timestamp)
+    // 버킷 순회하며 렌더링 (minY ~ maxY 범위로 최적화)
+    if (drawables.length > 0) {
+      for (let y = minY; y <= maxY; y++) {
+        const bucket = this.buckets[y]
+        if (!bucket || bucket._frame !== timestamp) continue
+        for (let i = 0; i < bucket.length; i++) {
+          const obj = bucket[i]
+          const instance = this.renderProxies[obj._type]
+          if (instance) {
+            const success = world.bufferSyncSystem.hydrate(world, instance, obj._type, obj.id)
+            if (!success || instance.isDead) continue
+
+            if (obj._type === 'building' && instance.isConstructed) continue
+            if (obj._type === 'plant') instance.render(world.ctx, timestamp, world.weather.windSpeed)
+            else instance.render(world.ctx, timestamp, world)
+          }
+        }
       }
-    })
+    }
 
     // ... selection ring, particles, UI render lines ...
     world.particleSystem.render(world.ctx)

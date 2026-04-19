@@ -6,49 +6,84 @@ export class LightingSystem {
   constructor(worldWidth, worldHeight) {
     this.worldWidth = worldWidth
     this.worldHeight = worldHeight
+    
     // 조명 오버레이 합성을 위한 오프스크린 캔버스 (Worker 환경 DOM 접근 불가 방어코드)
+    this.lightCanvas = null
+    this.lightCtx = null
+    this.shadowTexture = null
+    this.lightStamp = null
+
     if (typeof document !== 'undefined') {
       this.lightCanvas = document.createElement('canvas')
       this.lightCtx = this.lightCanvas.getContext('2d')
-    } else if (typeof OffscreenCanvas !== 'undefined') {
-      this.lightCanvas = new OffscreenCanvas(worldWidth, worldHeight)
-      this.lightCtx = this.lightCanvas.getContext('2d')
+      
+      // [Nuclear Optimization] 그림자 및 조명 텍스처 미리 생성 (Shadow & Light Stamping)
+      this._createShadowTexture()
+      this._createLightStamp()
     }
+  }
+
+  _createShadowTexture() {
+    const size = 64
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')
+    
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2)
+    grad.addColorStop(0, 'rgba(0,0,0,1)')
+    grad.addColorStop(0.4, 'rgba(0,0,0,0.6)')
+    grad.addColorStop(1, 'rgba(0,0,0,0)')
+    
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, size, size)
+    this.shadowTexture = canvas
+  }
+
+  _createLightStamp() {
+    const size = 128
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')
+    
+    // 부드러운 빛 확산 효과
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2)
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1)')
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)')
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, size, size)
+    this.lightStamp = canvas
   }
 
   /**
    * 시간에 따른 동적 그림자 렌더링
    */
   renderShadows(ctx, entities, timeOfDay) {
-    // 시간(0~24000)에 따른 태양의 고도 계산 (6000=오전 6시, 18000=오후 6시)
-    let shadowOpacity = 0
-    let shadowOffsetX = 0
+    if (timeOfDay < 4000 || timeOfDay > 20000 || !this.shadowTexture) return
 
-    if (timeOfDay > 4000 && timeOfDay < 20000) {
-      const sunPos = (timeOfDay - 12000) / 6000 // -1 (아침) ~ 0 (정오) ~ 1 (저녁)
-      shadowOpacity = 1 - Math.abs(sunPos) * 0.8
-      shadowOffsetX = sunPos * 20
-    } else {
-      return // 밤에는 태양 그림자 없음
-    }
+    // 시간(0~24000)에 따른 태양의 고도 및 그림자 길이 계산
+    const sunPos = (timeOfDay - 12000) / 6000 // -1 (아침) ~ 0 (정오) ~ 1 (저녁)
+    const shadowOpacity = Math.max(0.1, 0.4 * (1 - Math.abs(sunPos) * 0.5))
+    const shadowOffsetX = sunPos * 15
+    const shadowLength = 1.0 + Math.abs(sunPos) * 1.5 // 저녁엔 그림자가 길어짐
 
     ctx.save()
-    ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity * 0.4})`
-
+    ctx.globalAlpha = shadowOpacity
+    
     entities.forEach((ent) => {
-      if (!ent.size) return
-      ctx.beginPath()
-      ctx.ellipse(
-        ent.x + shadowOffsetX,
-        ent.y + ent.size / 2,
-        ent.size,
-        ent.size / 2,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
+      const s = ent.size || 16
+      const sw = s * shadowLength
+      const sh = s * 0.3
+      const x = ent.x + shadowOffsetX
+      const y = ent.y + s / 4
+      
+      // [Nuclear Optimization] createRadialGradient 대신 미리 그려진 텍스처 복사 (Shadow Stamping)
+      ctx.drawImage(this.shadowTexture, x - sw, y - sh, sw * 2, sh * 2)
     })
+    
     ctx.restore()
   }
 
@@ -86,45 +121,24 @@ export class LightingSystem {
     }
 
     // 2. 계절 및 날씨 베이스 틴트 컬러 적용
-    let r = 0,
-      g = 0,
-      b = 0,
-      a = darkness
+    let r = 0, g = 0, b = 0, a = darkness
     switch (season) {
-      case 'SUMMER':
-        r = 255
-        g = 230
-        b = 150
-        a = Math.max(a, 0.05)
-        break
-      case 'AUTUMN':
-        r = 255
-        g = 150
-        b = 50
-        a = Math.max(a, 0.08)
-        break
-      case 'WINTER':
-        r = 150
-        g = 200
-        b = 255
-        a = Math.max(a, 0.12)
-        break
+      case 'SUMMER': r = 255; g = 230; b = 150; a = Math.max(a, 0.05); break
+      case 'AUTUMN': r = 255; g = 150; b = 50; a = Math.max(a, 0.08); break
+      case 'WINTER': r = 150; g = 200; b = 255; a = Math.max(a, 0.12); break
     }
 
     if (weatherType === 'rain') {
-      r = 30
-      g = 40
-      b = 60
-      a = Math.max(a, 0.3) // 비오는 날 어두운 푸른 틴트
+      r = 30; g = 40; b = 60; a = Math.max(a, 0.3)
     }
 
     lCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`
     lCtx.fillRect(0, 0, canvasWidth, canvasHeight)
 
     // 3. 밤일 경우 광원(Light Source) 펀칭 처리
-    if (darkness > 0.1 && drawables && camera) {
+    if (darkness > 0.1 && drawables && camera && this.lightStamp) {
       const zoom = camera.zoom || 1
-      lCtx.globalCompositeOperation = 'destination-out' // 그려지는 영역의 불투명도를 깎아냄
+      lCtx.globalCompositeOperation = 'destination-out'
 
       drawables.forEach((ent) => {
         // 건물(집) 등 빛을 발산하는 객체 주위 반경을 계산하여 밝혀줌
@@ -133,18 +147,17 @@ export class LightingSystem {
           const screenY = (ent.y - camera.y) * zoom
           const radius = (ent.size || 32) * zoom * 2.5
 
-          const grad = lCtx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius)
-          grad.addColorStop(0, 'rgba(255, 255, 255, 1)')
-          grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)')
-          grad.addColorStop(1, 'rgba(255, 255, 255, 0)')
-
-          lCtx.fillStyle = grad
-          lCtx.beginPath()
-          lCtx.arc(screenX, screenY, radius, 0, Math.PI * 2)
-          lCtx.fill()
+          // [Zero-Allocation] createRadialGradient 대신 미리 생성된 스탬프 사용
+          lCtx.drawImage(
+            this.lightStamp,
+            screenX - radius,
+            screenY - radius,
+            radius * 2,
+            radius * 2
+          )
         }
       })
-      lCtx.globalCompositeOperation = 'source-over' // 원래대로 복구
+      lCtx.globalCompositeOperation = 'source-over'
     }
 
     // 최종 완성된 조명/틴트 레이어를 메인 캔버스에 합성

@@ -1,10 +1,6 @@
 import { Entity } from '../../core/Entity.js'
-import { JobAssigner } from '../behavior/JobAssigner.js'
-import { JobBehaviors } from '../behavior/JobBehaviors.js'
-import { CreatureActions } from '../action/CreatureActions.js'
-import { CreatureRenders } from '../renders/CreatureRenders.js'
-import { CreatureEmotion, DRIVE } from '../emotions/CreatureEmotion.js'
-import { SurvivalBehaviors } from '../behavior/SurvivalBehaviors.js'
+import { CreatureSet } from '../sets/CreatureSet.js'
+import { FamilySystem } from '../../systems/FamilySystem.js'
 
 export class Creature extends Entity {
   init(x, y) {
@@ -28,12 +24,15 @@ export class Creature extends Entity {
     this.currentFrame = 0
     this.frameInterval = 125
     this.lastFrameTime = 0
-    this.frameOffsets = [0, -2, -4, -2, 0, 2, 4, 2]
+    this.frameOffsets = [0, -2, -4, -2, 0] // 5프레임 사이클
 
     const colors = ['#e74c3c', '#3498db', '#9b59b6', '#e67e22']
     this.color = colors[Math.floor(Math.random() * colors.length)]
 
     this.inventory = { wood: 0, biomass: 0, food: 0, stone: 0, iron: 0, gold: 0 }
+    
+    // 업무 스케줄러 큐
+    this.taskQueue = []
     this.poopTimer = 5000 + Math.random() * 10000 // 5~15초마다 배변
     this.aiTickTimer = Math.random() * 1000 // 4.3 최적화: 개체별 AI 연산 분산 타이머
 
@@ -46,71 +45,40 @@ export class Creature extends Entity {
     this.maxExp = 100
     this.workEfficiency = 1.0 // 작업 및 채집/공격 속도 배율
 
-    CreatureEmotion.init(this)
+    // 가문(Family) 시스템
+    this.familyName = ''
+    this.familyId = 0
+    this.tradeTimer = 0 // MERCHANT 교역 타이머
+
+    this.tradeTimer = 0 // MERCHANT 교역 타이머
+
+    this.tradeTimer = 0 // MERCHANT 교역 타이머
+
+    this.brain.init(this)
+    FamilySystem.assignFamily(this)
   }
+
+  get brain() { return CreatureSet }
 
   update(deltaTime, world) {
     if (this.isDead) return
-    if (CreatureEmotion.update(this, deltaTime, world)) return
 
-    // [SAB 수정] 애니메이션 프레임 업데이트 로직을 렌더러가 아닌 워커의 update 루프로 이동
+    // [SAB 수정] 애니메이션 프레임 업데이트 로직
     this.lastFrameTime += deltaTime
     if (this.lastFrameTime >= this.frameInterval) {
-      this.currentFrame = (this.currentFrame + 1) % 8
+      this.currentFrame = (this.currentFrame + 1) % 5
       this.lastFrameTime = 0
     }
 
-    // 1초 = 1살 (Age increment)
-    this.age += deltaTime / 1000
+    // 수명 시스템 제거 (연산 부하 절감)
+    if (!this.isAdult) {
+      this.isAdult = true
+      this.brain.assigner.assignProfession(this, world)
+    }
 
     // 자연 회복
     if (this.state !== 'ATTACKING' && this.state !== 'FLEEING') {
       this.energy = Math.min(this.maxEnergy, this.energy + deltaTime * 0.002)
-    }
-
-    // Grow up and choose a profession (Algorithmic job assignment based on environmental needs)
-    if (this.age >= 4 && !this.isAdult) {
-      this.isAdult = true
-      JobAssigner.assignProfession(this, world)
-      this.findHome(world)
-    }
-
-    // 집이 없거나 부서진 상태에서 성인일 경우 지속적으로 집 찾기 시도
-    if (this.isAdult && !this.home && this.village) {
-      this.findHome(world)
-    }
-
-    // AI 연산 분산 타이머 (생존 욕구 및 직업 행동 주기적 판단)
-    this.aiTickTimer -= deltaTime
-    if (this.aiTickTimer <= 0) {
-      this.aiTickTimer = 500 + Math.random() * 500
-
-      // 마을 내 식량 자동 섭취 (아사 및 자원 부족 늪 해결)
-      if (this.village && this.needs.hunger > 50 && this.village.inventory.food > 0) {
-        if (this.distanceTo(this.village) < this.village.radius) {
-          this.village.inventory.food--
-          CreatureEmotion.fulfillHunger(this)
-        }
-      }
-
-      // 1. 감정/욕구 평가 모듈 호출하여 충동(DRIVE) 확인
-      const survivalDrive = CreatureEmotion.evaluateSurvivalNeeds(this, world)
-
-      if (survivalDrive && survivalDrive.type !== DRIVE.NONE) {
-        // 2. 행동(Behavior) 모듈로 위임하여 목표 타겟 및 상태(State) 설정
-        const behavior = SurvivalBehaviors[survivalDrive.type]
-        if (behavior) behavior(this, survivalDrive.payload, world)
-      } else if (this.state === 'WANDERING' || this.state === 'IDLE') {
-        // 3. 생존 행동이 발동되지 않았다면 직업 기반 일거리 탐색
-        if (this.isAdult && Math.random() < 0.1) this.assignProfession(world)
-        this.findWork(world)
-      }
-    }
-
-    // Death by old age (over 80)
-    if (this.age >= 80 && Math.random() < 0.001 * (deltaTime / 16)) {
-      this.die(world)
-      return
     }
 
     // 짝짓기 쿨다운 감소
@@ -120,7 +88,7 @@ export class Creature extends Entity {
     this.poopTimer -= deltaTime
     if (this.poopTimer <= 0) {
       this.poopTimer = 5000 + Math.random() * 10000
-      world.addFertility(200) // 배변으로 비옥도 회복
+      world.addFertility(200)
     }
 
     if (!this.isAdult) {
@@ -133,17 +101,13 @@ export class Creature extends Entity {
       return
     }
 
-    // 상태(State) 기반 전략 행동 실행 (Strategy Pattern)
-    const action = CreatureActions[this.state]
-    if (action) {
-      let effectiveDeltaTime = deltaTime
-      // 전투나 작업 중일 때 경험치를 획득하고, 레벨에 따른 작업 속도(효율)를 적용합니다.
-      if (['GATHERING', 'HARVESTING', 'MINING', 'BUILDING', 'ATTACKING'].includes(this.state)) {
-        this.gainExp(deltaTime * 0.05, world)
-        effectiveDeltaTime *= this.workEfficiency
-      }
-      action(this, effectiveDeltaTime, world)
+    // 상태(State) 기반 렌더링 보정 (경험치 흭득)
+    if (['GATHERING', 'HARVESTING', 'MINING', 'BUILDING', 'ATTACKING'].includes(this.state)) {
+      this.gainExp(deltaTime * 0.05, world)
     }
+
+    // Brain 세트에 핵심 스케줄링 및 행동 렌더 로직 위임
+    this.brain.update(this, deltaTime, world)
   }
 
   gainExp(amount, world) {
@@ -163,28 +127,16 @@ export class Creature extends Entity {
     }
   }
 
+  // [Optimization] 전수 조사(O(N)) 방식에서 마을 캐시 활용 방식(O(1))으로 변경
   findHome(_world) {
     if (!this.village || this.home) return
 
-    const availableHouses = this.village.buildings.filter(
-      (b) => b.type === 'HOUSE' && b.isConstructed && b.occupants.length < b.capacity,
-    )
-
-    if (availableHouses.length > 0) {
-      // 가장 가까운 집 찾기
-      let closestHouse = null
-      let minDistance = Infinity
-      for (const house of availableHouses) {
-        const dist = this.distanceTo(house)
-        if (dist < minDistance) {
-          minDistance = dist
-          closestHouse = house
-        }
-      }
-      if (closestHouse) {
-        this.home = closestHouse
-        // `occupants`는 Building 객체에 직접 추가/제거
-        if (!closestHouse.occupants.includes(this)) closestHouse.occupants.push(this)
+    // 마을이 관리하는 빈 집 캐시에서 즉시 할당
+    if (this.village.availableHouses && this.village.availableHouses.length > 0) {
+      const house = this.village.availableHouses.pop() // 목록에서 하나 꺼냄
+      if (house) {
+        this.home = house
+        if (!house.occupants.includes(this)) house.occupants.push(this)
       }
     }
   }
@@ -195,54 +147,69 @@ export class Creature extends Entity {
   }
 
   assignProfession(world) {
-    JobAssigner.assignProfession(this, world)
+    this.brain.assigner.assignProfession(this, world)
   }
 
+  // Creature 단일 개체의 findWork는 삭제되거나 우회할 수 있지만
+  // 혹시 직접 스크립트되는 곳을 위해 감쌉니다.
   findWork(world) {
-    // 4.1 최적화: ChunkManager를 이용해 주변 반경(800x800) 내의 실제 인스턴스 탐색
-    const searchRange = { x: this.x - 400, y: this.y - 400, width: 800, height: 800 }
-    const candidates = world.chunkManager.query(searchRange)
-
-    const behavior = JobBehaviors[this.profession]
-    if (behavior) {
-      behavior(this, world, candidates)
-    } else {
-      this.wander(world)
-    }
+    // 이제 Brain이 자동으로 실행하므로 빈자리로 두거나 유지
   }
 
   wander(world, customRadius = null) {
-    const radius = customRadius || (this.village ? this.village.radius : 150)
-    if (this.village && Math.random() < 0.8) {
-      // 마을 세력권 내부 배회
-      this.targetX = this.village.x + (Math.random() - 0.5) * radius * 1.5
-      this.targetY = this.village.y + (Math.random() - 0.5) * radius * 1.5
+    // 지그재그 버그 수정: 배회 중에 새로운 일거리가 없다면, 아직 배회 목적지에 도착하지 않은 상태에서 목적지를 랜덤하게 덮어쓰지 않음
+    if (this.state === 'WANDERING' && this.targetX != null && this.distanceTo({ x: this.targetX, y: this.targetY }) > 20) {
+      return
+    }
+
+    // 능동적 탐색을 위해 배회 반경을 평소보다 1.5 ~ 2배 넓게 설정
+    const radius = customRadius || (this.village ? this.village.radius * 2.0 : 300)
+    if (this.village && Math.random() < 0.7) {
+      // 마을 세력권 밖으로도 과감히 나설 수 있게 확장
+      this.targetX = this.village.x + (Math.random() - 0.5) * radius * 2.0
+      this.targetY = this.village.y + (Math.random() - 0.5) * radius * 2.0
     } else {
-      this.targetX = this.x + (Math.random() - 0.5) * 150
-      this.targetY = this.y + (Math.random() - 0.5) * 150
+      this.targetX = this.x + (Math.random() - 0.5) * radius
+      this.targetY = this.y + (Math.random() - 0.5) * radius
     }
     this.state = 'WANDERING'
   }
 
-  die(world) {
+  die(world, reason = '알 수 없는 이유') {
     if (this.isDead) return
     super.die(world)
-    if (this.village) {
-      this.village.removeCreature(this)
+
+    // ── 상세 사망 로그 ──────────────────────────────────────────────
+    const namePrefix  = this.familyName ? `${this.familyName}씨 ` : ''
+    const safeId      = this.id !== undefined ? this.id : '?'
+    const hunger      = Math.round(this.needs?.hunger  ?? 0)
+    const fatigue     = Math.round(this.needs?.fatigue ?? 0)
+    const lvl         = this.level || 1
+    const age         = Math.floor(this.age)
+    const villageName = this.village?.name || '무소속'
+
+    const logMsg = [
+      `[${this.profession}] ${namePrefix}주민 ${safeId}번 사망`,
+      `원인: ${reason}`,
+      `나이: ${age}세 | Lv.${lvl} | 마을: ${villageName}`,
+      `허기: ${hunger}% | 피로: ${fatigue}%`,
+    ].join(' / ')
+
+    if (world.broadcastEvent) {
+      world.broadcastEvent(logMsg, '#e74c3c')
     }
-    // 사망 시 집에서 퇴거 처리
-    if (this.home && this.home.occupants) {
+
+    if (this.village)  this.village.removeCreature(this)
+    if (this.home?.occupants) {
       this.home.occupants = this.home.occupants.filter((o) => o !== this)
     }
     world.creatures = world.creatures.filter((c) => c !== this)
-    if (world.creaturePool) world.creaturePool.push(this) // 4.2 최적화: 죽은 개체를 오브젝트 풀에 반납
+    if (world.creaturePool) world.creaturePool.push(this)
     world.spawnResource(this.x, this.y, 'biomass')
   }
 
-  render(ctx, timestamp) {
-    const renderAction = CreatureRenders[this.state]
-    if (renderAction) {
-      renderAction(this, ctx, timestamp)
-    }
+
+  render(ctx, timestamp, world) {
+    this.brain.draw(this, ctx, timestamp, world)
   }
 }

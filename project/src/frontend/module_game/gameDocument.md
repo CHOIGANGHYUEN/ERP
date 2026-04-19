@@ -1,160 +1,77 @@
-# 🌍 월드박스 미니게임 명세서 (WorldBox Minigame Specification)
+# 🌍 Antigravity 시뮬레이션 엔진 v2.0 기술 명세서 (Harness & Architecture)
 
-## 1. 개요 (Overview)
-본 문서에서는 현재 프론트엔드 단독(Mock 버전)으로 구축된 2D 시뮬레이션 기반의 미니게임 작동 원리, 아키텍처 및 세부 명세를 정의합니다. HTML5 Canvas API를 활용한 자체 렌더링 엔진으로 구동되며, Vue 3 프레임워크와 전역 CSS(`main.css`) 디자인 시스템을 통해 메인 시스템(ERP)과 이질감 없는 통합된 UI/UX를 제공합니다.
-
----
-
-## 2. 폴더 구조 (Folder Structure)
-게임 모듈은 뷰/UI 컴포넌트와 순수 JS 게임 엔진으로 철저히 분리되어 관리됩니다.
-```text
-src/frontend/module_game/
-├── api/                      # 백엔드/스토리지 연동 API 호출 모듈 (gameApi.js)
-├── components/               # Vue 컴포넌트 (GameInteractionPanel.vue 등)
-├── engine/                   # 🎮 순수 JavaScript 2D 캔버스 게임 엔진
-│   ├── core/                 # 엔진 코어 및 베이스 객체
-│   │   ├── Entity.js         # 모든 객체의 최상위 추상 클래스
-│   │   └── World.js          # 게임 루프(Loop) 및 메인 렌더링 컨트롤러
-│   ├── objects/              # 도메인별로 분리된 게임 내 렌더링 개체들
-│   │   ├── action/           # 상태(State)별 행동(Action) 패턴 모듈
-│   │   │   ├── CreatureActions.js # 지성체 Action 팩토리
-│   │   │   ├── AnimalActions.js   # 동물 Action 팩토리
-│   │   │   ├── PlantActions.js    # 식물 Action 팩토리
-│   │   │   ├── creature/          # 지성체 전용 행동 (Wandering, Gathering 등)
-│   │   │   ├── animal/            # 동물 전용 행동 (Wandering, Eating, Hunting)
-│   │   │   └── plant/             # 식물 전용 행동 (Growing)
-│   │   ├── emotions/         # 개체별 욕구(Needs) 및 감정(Emotions) 통제 모듈
-│   │   │   ├── CreatureEmotion.js
-│   │   │   ├── AnimalEmotion.js
-│   │   │   └── PlantEmotion.js
-│   │   ├── environment/
-│   │   ├── job/              # 직업 배정 알고리즘 및 직업별 탐색(Behavior) 패턴
-│   │   │   ├── JobAssigner.js # 마을 상황에 맞춘 중앙 통제 직업 배정기
-│   │   │   ├── JobIcons.js    # 직업별 렌더링 아이콘 딕셔너리
-│   │   │   ├── JobBehaviors.js # 모든 직업 행동을 묶어주는 팩토리 인덱스
-│   │   │   └── behavior/      # 직업별 타겟 탐색 상세 로직
-│   │   │       ├── Builder.js # 건축가 탐색 로직
-│   │   │       ├── Farmer.js  # 농부 탐색 로직
-│   │   │       └── ...        # Gatherer, Lumberjack, Miner, Scholar, Warrior, Leader
-│   │   ├── renders/          # 개체별 8프레임 애니메이션 및 렌더링 분할 모듈
-│   │   │   ├── CreatureRenders.js
-│   │   │   ├── AnimalRenders.js
-│   │   │   └── PlantRenders.js
-│   │   │   ├── creature/          # 지성체 상태별 렌더링 (Wandering, Attacking 등)
-│   │   │   ├── animal/            # 동물 상태별 렌더링
-│   │   │   └── plant/             # 식물 상태별 렌더링
-│   │   ├── life/
-│   │   │   ├── Animal.js     # 동물 (초식/육식동물)
-│   │   │   ├── Creature.js   # 지성체 (인간 및 직업군 FSM 적용)
-│   │   │   └── Plant.js      # 식물 (풀, 나무, 농작물)
-│   │   └── society/
-│   │       ├── Building.js   # 건물 (집, 학교 등 티어 시스템 포함)
-│   │       ├── Nation.js     # 국가 시스템
-│   │       └── Village.js    # 마을 영토 확장 및 관리 시스템
-│   ├── systems/              # 물리, 환경, 카메라 등 논리 시스템
-│   │   ├── Camera.js         # 마우스 드래그 패닝, 휠 줌(Zoom) 및 Culling Box 시스템
-│   │   ├── QuadTree.js       # 공간 분할 알고리즘 (충돌 및 탐색 최적화)
-│   │   ├── TimeSystem.js     # 시간(낮/밤), 날짜, 계절 연산 및 조명 오버레이 시스템
-│   │   ├── DisasterSystem.js # 지진(카메라 쉐이크), 토네이도 등 자연재해 통제 연산
-│   │   ├── DiplomacySystem.js# [예정] 국가 간 적대/동맹 및 전쟁/외교 연산 시스템
-│   │   └── WeatherSystem.js  # 날씨(비, 안개) 파티클 및 환경 제어 시스템
-│   ├── utils/                # 렌더링 및 공통 유틸리티
-│   │   └── RenderUtils.js    # 그림자, 상태바 등 공통 그리기 함수
-│   └── worker/               # 멀티스레딩 워커 모듈
-│       └── game.worker.js    # 백그라운드 물리/AI 연산 전담 워커 스레드
-├── gameDocument.md           # 게임 기획 및 아키텍처 명세서 (본 문서)
-├── gameTodo.md               # 프론트엔드 게임 개발 로드맵
-└── GameView.vue              # 게임 메인 뷰 화면 (메인 렌더링, 미니맵, Worker 동기화 컨트롤러)
-```
+요청하신 사항에 따라, 테스트 하네스(Test Harness) 구조의 기존 명세와 최신 고성능 엔진 아키텍처(Phase 10: Zero-Allocation)를 통합하여 재정리했습니다.
 
 ---
 
-## 3. 개발 표준 및 준수 규칙 (Development Standards)
-이 미니게임을 확장하거나 유지보수할 때 반드시 지켜야 할 프론트엔드 규칙입니다.
+## 1. 🏗️ 엔진 아키텍처 개요 (Dual-Thread Design)
 
-1. **모던 UI/UX 준수 (`main.css`)**: 상태 표시 패널이나 조작계는 반드시 프로젝트 전역의 모던 UI 클래스(`.app-card`, `.app-grid`, `.modern-form`, `.badge-success` 등)를 사용하여 ERP 시스템과 세련된 통일감을 주어야 합니다.
-2. **프론트엔드-엔진 분리**: `engine/core/World.js`와 `objects` 내부의 로직은 순수 JS로만 작성되어야 하며, Vue 의존성을 엔진 내부에 주입해서는 안 됩니다.
-3. **API 중앙화**: Vue 컴포넌트 내에서 직접 `fetch`나 `axios`를 호출하지 않고 반드시 `api/gameApi.js`를 거쳐 통신해야 합니다.
-4. **성능 중심 코딩 (60FPS 보장)**: 개체 수가 늘어나도 프레임 드랍이 없도록 맵 전체 배열 순회(`O(N^2)`)를 절대 금지하며, 반드시 **QuadTree**나 **오브젝트 풀링**을 통해 자원을 관리해야 합니다.
+본 엔진은 메인 스레드의 렌더링 병목을 방지하기 위해 물리 연산과 시각 처리가 분리된 **멀티스레드 아키텍처**를 채택하고 있습니다.
 
----
-
-## 4. 핵심 시스템 아키텍처 (Core Systems)
-
-### 4.1 월드 엔진 및 최적화 (`World.js`)
-- **루프 시스템**: `requestAnimationFrame`을 이용한 실시간 `update`/`render` 분리 구조.
-- **QuadTree (공간 분할)**: 3200x3200 맵의 모든 개체 충돌 및 자원 탐색 연산 부하를 `O(N)`에서 `O(Log N)`으로 줄이기 위해 매 프레임 공간을 4분할하여 검색합니다.
-- **Object Pooling (오브젝트 풀링)**: 생성/소멸이 잦은 생명체, 동물, 자원의 가비지 컬렉터(GC) 부하를 막기 위해 죽은 객체를 재사용(Reset)합니다.
-- **Offscreen Canvas (사전 렌더링)**: 고정된 마을 영토와 완공된 건물은 보이지 않는 `bgCanvas`에 1회만 그려두고 메인 캔버스에 복사(`drawImage`)하여 Draw Call을 획기적으로 줄입니다.
-- **Tick Throttling (틱 분산)**: 무거운 AI 행동 연산이나 영토 확장 로직은 매 프레임이 아닌 1초 등 특정 주기 타이머에 맞춰 분산 처리됩니다.
-- **System 모듈화 지향**: `World.js`가 너무 많은 역할을 짊어지는 God Object가 되는 것을 방지하기 위해 날씨, 시간(TimeSystem), 재난(DisasterSystem) 로직을 전담 모듈로 완전히 분리 완료했습니다.
-- **픽셀 렌더링 최적화 (Pixel-Perfect Rendering)**: 줌 인/아웃 시 그래픽 뭉개짐(Anti-aliasing)을 방지하고 크리스프(Crisp)한 픽셀 아트 스타일을 유지하기 위해 캔버스 API의 `imageSmoothingEnabled = false` 속성과 CSS의 `image-rendering: pixelated`를 결합하여 적용했습니다.
-
-### 4.2 카메라 및 뷰포트 시스템 (`Camera.js` & Minimap)
-- **이동 및 줌(Zoom)**: 플레이어는 마우스 **드래그(패닝)**를 통해 3200x3200 크기의 월드를 자유롭게 탐색할 수 있으며, **마우스 휠**을 조작해 마우스 커서 지점을 향해 부드럽게 확대/축소(0.5배 ~ 3.0배)할 수 있습니다.
-- **미니맵 (Minimap)**: 우측 하단의 작은 캔버스(256x144)를 통해 월드 전체의 지형, 마을 세력권, 생명체 분포, 그리고 현재 카메라의 뷰포트(흰색 테두리)를 실시간으로 조감하고, 클릭/드래그하여 즉시 이동할 수 있습니다.
-- 최적화를 위해 카메라 뷰포트 영역(화면 + 여분 마진 50px) 내에 존재하는 엔티티들만 캔버스에 렌더링하는 Culling 로직이 적용되어 있습니다.
-
-### 4.3 날씨 시스템 (`WeatherSystem.js`)
-- 실시간 시간 변화(deltaTime)에 따라 **맑음(☀️)** 과 **비(🌧️)** 상태가 전환됩니다.
-- 바람(Wind Speed)이 지속적으로 변하며, 식물의 흔들림 및 빗물 파티클(Particle)의 렌더링 방향에 영향을 줍니다.
+- **Main Thread (UI & Rendering)**: 사용자 입력, 카메라 제어, `RenderSystem`을 통한 고속 비트맵 출력 담당.
+- **Worker Thread (Logic & Physics)**: `SharedArrayBuffer` 기반으로 개체 AI, 길 찾기, 물리 연산을 실시간 병렬 처리.
 
 ---
 
-## 5. 개체 및 생태계 명세 (Entities & Ecosystem)
+## 2. ⚠️ 테스트 케이스 최우선 제약 사항 (Atomic Modification)
 
-게임 내 모든 개체들은 독립적으로 업데이트되며, 다음과 같이 분류됩니다.
+시스템 무결성 검증을 위한 절대적인 전제조건입니다. 모든 객체는 **ECS (Entity-Component-System) 혹은 Trait 패턴**을 강제합니다.
 
-### 5.1 지성체 (Creature) 및 문명
-- **개체 특징**: 나이(age), 체력/에너지(energy), 상태(state), 직업(profession) 등의 기본 속성과 **욕구(Needs)** 및 **감정(Emotions)** 수치를 지닙니다.
-- **욕구 및 감정 시스템**: 허기(Hunger)와 피로(Fatigue)에 따라 행복도(Happiness)가 결정되며, 특정 수치를 넘으면 일(행동)을 멈추고 생존을 위한 행동(식사, 귀환)을 최우선으로 수행합니다.
-- **상태 및 직업 모듈화 (Strategy Pattern)**: 개체의 방대한 행동 및 직업 할당 로직은 `Creature.js` 내부에 하드코딩하지 않고, `action/CreatureActions.js`와 `job/JobBehaviors.js` 모듈로 완벽히 분리되어 전략 패턴으로 주입됩니다.
-- **렌더링 분할**: 8프레임 애니메이션 및 상태별 UI(체력바, 이펙트) 출력 로직은 `renders/CreatureRenders.js`로 위임하여 관리됩니다.
-- **직업군 특수 행동**: 
-  - **농부**: 비옥도를 소모해 씨앗을 뿌리고 작물을 수확.
-  - **벌목꾼**: 다 자란 나무만 찾아 베고 목재 반환.
-  - **건축가**: 자원이 모이면 공사 부지로 이동해 진행도(Progress)를 올림.
-  - **전사**: 마을 외곽을 순찰하며 육식동물 및 적 조우 시 타격(Attacking).
-  - **촌장 (LEADER)**: 주기적으로 인구 비율과 마을의 니즈를 계산하여 주민들의 직업을 강제로 재배정(`JobAssigner`).
-- **마을 (Village)**: 지성체가 소환/생성되면 가장 가까운 마을 반경(Radius: 400) 내에 있을 시 해당 마을에 소속됩니다. 근처에 마을이 없다면 새로운 마을을 창설합니다.
-- **자원 인벤토리**: 마을 단위로 식량(food, biomass), 목재(wood), 지식(knowledge) 등의 자원을 축적하고 관리합니다.
-- **국가 (Nation)**: 여러 마을은 하나의 국가에 속하며 고유한 색상(Color)을 공유합니다.
+- **원자적 동기화 수정 (Atomic Modification)**: 아래 5가지 폴더는 하나의 통제 단위(Set)로 수정되어야 합니다.
+    1. `life/`: 개체 베이스 데이터 및 타이머
+    2. `emotions/`: 욕구 및 감정 트리거 판단
+    3. `action/`: 상태머신 기반 Task 주입
+    4. `renders/`: 상태별 프레임 애니메이션 및 출력 로직
+    5. `sets/`: 위 요소를 단일 뇌(Brain) 형태로 번들링하여 의존성을 주입하는 팩토리 계층
 
-### 5.2 동/식물 및 자원
-- **동물 (Animal)**: 초식동물(HERBIVORE)과 육식동물(CARNIVORE)로 나뉘어 먹이사슬을 형성합니다.
-  - 허기(Hunger) 욕구와 공포(Fear), 공격성(Aggression) 감정 시스템을 통해 포식자를 능동적으로 피하거나 사냥감을 추적합니다.
-  - 동물의 탐색 및 섭취/사냥 행동 역시 `action/AnimalActions.js` 계열 모듈로 완벽히 분리되어 있으며, QuadTree 기반의 반경 탐색을 통해 O(N)의 병목을 없앴습니다.
-- **식물 (Plant)**: 풀(grass), 나무(tree), 농작물(crop)이 존재하며, 월드의 비옥도(Fertility)에 영향을 받습니다.
-  - 수분(Moisture) 욕구와 활력(Vitality) 감정을 지니며, 날씨(비) 변화에 따라 성장 및 번식 의지가 동적으로 변합니다.
-- **건물 (Building)**: 그리드(Grid) 시스템 기반으로 겹치지 않게 지어지며, 자원 보유량에 따라 스스로 다음 단계로 업그레이드를 지시하는 티어(Tier) 시스템을 가집니다.
+- **대상 시스템**: `Life Set` (Creature, Animal, Plant), `Society Set` (Village, Building), `World Set` (Engine Loop)
 
 ---
 
-## 6. 사용자 상호작용 (God Mode Interactions)
+## 3. 테스트 하네스 구성 (Test Harness Elements)
 
-### 6.1 캔버스 직접 상호작용
-| 조작 방법         | 기능 설명                                                                                                                                                                        |
-| :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **마우스 드래그** | 카메라를 패닝(Panning)하여 월드 지도를 상하좌우로 탐색합니다.                                                                                                                    |
-| **마우스 휠**     | 커서가 위치한 지점을 중심으로 화면을 줌 인(Zoom In) 하거나 줌 아웃(Zoom Out) 합니다.                                                                                             |
-| **엔티티 클릭**   | 동/식물, 지성체, 건물을 클릭하여 `selectedEntity`로 지정하고 상태 관찰 패널에 정보를 띄웁니다.                                                                                   |
-| **빈 공간 클릭**  | 드래그하지 않고 빈 땅을 클릭하면 우측 상호작용 패널에서 선택한 개체를 마우스 좌표에 즉시 소환합니다. 주변에 마을이 있다면 마을에 편입되고, 없다면 새 마을과 국가가 만들어집니다. |
-| **미니맵 조작**   | 우측 하단 미니맵 캔버스를 클릭하거나 드래그하면, 메인 카메라가 해당 월드 좌표로 즉시 이동합니다.                                                                                 |
+### 3.1 테스트 드라이버 (Test Driver)
+- **`GameView.vue`**: 메인 엔트리로, 캔버스 및 백그라운드 Worker 간의 상태 동기화 관리.
+- **`World.js`**: `requestAnimationFrame` 루프를 통제하는 코어 컨트롤러.
 
-### 6.2 신의 통제 대시보드 (`GameInteractionPanel.vue` & `GameView.vue`)
-- **창조의 권능**: 셀렉트 박스에서 원하는 개체(인간, 호랑이, 토끼, 나무, 작물)를 선택하여 화면 중앙에 즉시 강제 소환하거나 화면 클릭 소환 타입을 지정합니다.
-- **환경/재난 통제**: 맵의 대지 비옥도를 즉시 회복시키거나, 날씨를 강제로 변경하고 토네이도 및 대지진(카메라 쉐이크 동반) 등의 재난을 발생시킵니다.
-- **월드 통계 및 개체 관찰(Inspector)**: 현재 월드의 세부 인구, 건물, 자연 생태계 수량을 시각적 배지로 실시간 확인하며, 클릭한 마을이나 개체의 디테일한 스탯(인벤토리, 체력, 나이, 직업, **욕구 및 감정 수치**)을 모던 테이블 뷰로 즉시 열람합니다.
-
-### 6.3 고급 모니터링 및 시각화 UI (예정)
-향후 확장될 다채로운 게임 요소(유전자, 전염병, 시대 발전, 신앙 등)를 직관적으로 추적하기 위한 UI 시스템입니다.
-- **실시간 이벤트 티커(Event Ticker)**: 문명 발전, 재해 발생, 전쟁 선포 등의 중요 글로벌 이벤트를 토스트 알림 및 타임라인 로그로 모니터링.
-- **심층 인스펙터(Deep Inspector)**: 개체의 무작위 특성(Traits) 및 유전자, 감염 여부를 뱃지 형태로 상세 열람.
-- **문명/신앙 대시보드**: 국가별 시대(Age) 진척도와 신앙 분포도를 파이 차트/프로그레스 바를 통해 종합적으로 시각화.
-- **데이터 오버레이(Data Overlays)**: 미니맵을 통해 세력권, 감염 분포, 생물군계 온도 등을 토글하여 시각적으로 분석.
+### 3.2 테스트 스텁 및 목 오브젝트 (Test Stub & Mock)
+- **`api/gameApi.js`**: 백엔드 통신 전까지 브라우저 메모리 기반으로 동작하는 스텁.
+- **Offscreen Canvas**: 정적 지형 및 완공된 건물은 사전 렌더링 후 `drawImage`로 복사하여 Draw Call 부하 최소화.
+- **Object Pooling**: 빈번하게 생성/소멸되는 생명체의 GC 부하 방지를 위해 메모리 재사용 풀 운용.
 
 ---
 
-## 7. 시스템 한계 및 확장 가능성 (Future Work)
-- **Backend 미연동**: 현재 `gameApi.js`는 선언되어 있으나 실제 백엔드 연동 없이 브라우저 메모리 기반으로 작동 중입니다. 추후 게임 상태를 영구 저장하기 위해 Database(MySQL 등) 연동 설계가 필요합니다.
-- **스레드 분리 (완료)**: 브라우저 메인 스레드의 렌더링 병목을 없애기 위해, `game.worker.js`를 통해 물리 및 AI 연산을 Web Worker로 완전히 분리했습니다. 메인 스레드는 `importState`를 통해 스냅샷을 전달받아 뷰포트 렌더링만 수행합니다.
+## 4. ⚡ 고성능 최적화 및 런타임 제어 (Performance Optimization)
+
+정상적인 60FPS 달성을 위한 핵심 기술 명세입니다.
+
+- **Y-버킷 정렬 (Y-Bucket Sort)**: $O(N \log N)$ 정렬 대신 $O(N)$ 시간 복잡도의 Y-좌표 기반 버킷 정렬 도입. (Array Pool 기반 재사용)
+- **비트맵 스탬핑 (Bitmap Stamping)**: 무거운 벡터 그라데이션 연산을 대신하여 전용 텍스처를 찍어내는 방식(Shadow/Light Stamp)으로 전환.
+- **쿼드트리 공간 분할 (`QuadTree.js`)**: 3200x3200 월드의 탐색 부하를 $O(\log N)$으로 최적화하여 맵 전체 순회 차단.
+- **제로-할당 프록시 (Zero-Allocation Proxy)**: 렌더링 루프 시 신규 객체 생성을 금지하고 `spatialProxies` 풀을 통해 데이터만 동기화.
+
+---
+
+## 5. 테스트 슈트 (Test Suite)
+
+상호작용 검증이 필요한 기능별 유스케이스 그룹입니다.
+
+- **창조 및 상호작용 슈트**: 드래그 패닝, 마우스 휠 타겟 줌 모니터링, 개체 소환 및 건축 상호작용.
+- **환경 통제 슈트**: 실시간 지형 업데이트, 날씨 및 재난 강제 발생 트리거 테스트.
+- **상태 시각화 (Inspector) 슈트**: 클릭 시 직업, 욕구, 감정 스탯 등이 패널에 정확히 동기화되어 출력되는지 검증.
+
+---
+
+## 6. 핵심 하위 컴포넌트 명세 (Component System Elements)
+
+- **논리적 의사결정 (Behavior)**: `evaluator`가 감정과 주변 상황을 종합해 `DRIVE`를 반환하고, `injectors`가 이를 `TaskQueue`에 주입.
+- **액션 유지 (State Transition)**: `stateExecutors`를 통해 이동/충돌 처리 수행. (Wall-Sliding 지형 우회 알고리즘 준수)
+- **시각화 (Render Pipelines)**: 상태 전이에 따른 Sprite 프레임 연산 및 말풍선(InteractionSystem) 출력.
+
+---
+
+## 🛡️ 부록: 엔진 기여를 위한 코딩 표준 (Dev Standards)
+
+1. **프레임 루프 내 할당 금지**: `render()` 및 `update()` 루프 내부에서 `[]`, `{}`, `new Map()` 등의 할당을 금지하고 재사용 필드를 활용하십시오.
+2. **워커 환경 격리**: Worker 스크립트 내에서 DOM API(`document`, `canvas` 등) 접근 시 ReferenceError가 발생하므로, 환경 체크(`typeof document`)를 반드시 수행하십시오.
+3. **불변 상태 준수**: `SharedArrayBuffer` 데이터는 `SharedState.js`에 정의된 `STRIDE`와 `PROPS` 오프셋을 통해서만 접근하십시오.

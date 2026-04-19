@@ -16,11 +16,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      // [SAB] SharedArrayBuffer를 사용하기 위해 COOP, COEP 헤더를 설정합니다.
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      host: 'localhost',
+      port: 5173,
+      strictPort: true,
       proxy: {
         '/api': {
           target: env.VITE_API_BASE_URL || 'http://localhost:3000',
@@ -29,10 +27,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
     },
   }
 })

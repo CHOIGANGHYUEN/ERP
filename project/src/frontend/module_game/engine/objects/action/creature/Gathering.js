@@ -21,8 +21,14 @@ export const GATHERING = (creature, deltaTime, world) => {
     world.removeResource(creature.target)
 
     if (creature.village) {
-      creature.state = 'RETURNING'
-      creature.target = creature.village
+      const currentLoad = Object.values(creature.inventory).reduce((a, b) => a + b, 0)
+      if (currentLoad >= 5) {
+        creature.state = 'RETURNING'
+        creature.target = creature.village
+      } else {
+        creature.state = 'WANDERING'
+        creature.target = null
+      }
     } else {
       creature.state = 'WANDERING'
       creature.target = null

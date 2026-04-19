@@ -1,3 +1,7 @@
+import { MoveTask } from '../../tasks/MoveTask.js'
+import { HarvestTask } from '../../tasks/HarvestTask.js'
+import { DepositTask } from '../../tasks/DepositTask.js'
+
 export const GATHERER = (creature, world, candidates) => {
   let closestRes = null,
     minResDist = Infinity
@@ -20,12 +24,16 @@ export const GATHERER = (creature, world, candidates) => {
     }
   }
 
-  if (closestRes) {
-    creature.target = closestRes
-    creature.state = 'GATHERING'
-  } else if (closestGrass) {
-    creature.target = closestGrass
-    creature.state = 'HARVESTING'
+  let targetToMined = closestRes || closestGrass
+
+  if (targetToMined) {
+    creature.taskQueue.push(new MoveTask(targetToMined))
+    creature.taskQueue.push(new HarvestTask(targetToMined))
+    
+    if (creature.village) {
+      creature.taskQueue.push(new MoveTask(creature.village, creature.village.radius))
+      creature.taskQueue.push(new DepositTask(creature.village))
+    }
   } else {
     creature.wander(world)
   }
