@@ -27,7 +27,7 @@ export function useGameWorker(gameCanvas) {
   // shallowRef와 markRaw를 사용하여 Vue의 Deep Reactivity 추적(병목의 원인)을 방지합니다.
   const selectedEntityData = shallowRef(null)
   const worldInventory = shallowRef(null)
-  const chatLogs = ref([])
+  const chatLogs = shallowRef([])
   const saveResolve = ref(null)
 
   const getWorldInstance = () => worldInstance
@@ -143,22 +143,28 @@ export function useGameWorker(gameCanvas) {
         if (isBubble) {
           worldInstance.showSpeechBubble(payload.entityId, payload.entityType, payload.text, payload.duration)
         }
-        chatLogs.value.push({
+        
+        const newLog = {
           time: timeStr,
           sender: isBubble ? (payload.entityType === 'creature' ? `주민 ${payload.entityId || ''}` : '시스템') : '시스템 알림',
           text: payload.text,
           color: payload.color || (isBubble ? '#ecf0f1' : '#f1c40f'),
-        })
-        if (chatLogs.value.length > 100) chatLogs.value.shift()
+        }
+        const updatedLogs = [...chatLogs.value, newLog]
+        if (updatedLogs.length > 100) updatedLogs.shift()
+        chatLogs.value = updatedLogs
+
       } else if (type === 'ERROR_LOG') {
         const timeStr = payload.time || new Date().toLocaleTimeString()
-        chatLogs.value.push({
+        const newLog = {
           time: timeStr,
           sender: `⚠️ ERROR [${payload.tag}]`,
           text: payload.message,
           color: '#e74c3c' // 빨간색 에러 표시
-        })
-        if (chatLogs.value.length > 100) chatLogs.value.shift()
+        }
+        const updatedLogs = [...chatLogs.value, newLog]
+        if (updatedLogs.length > 100) updatedLogs.shift()
+        chatLogs.value = updatedLogs
         console.error(`[Worker Error - ${payload.tag}]`, payload.message, payload.stack)
       } else if (type === 'WORLD_SAVE_DATA') {
         if (saveResolve.value) {
