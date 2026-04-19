@@ -101,6 +101,7 @@ export class EntitySpawnerSystem {
   }
 
   spawnCreature(world, x, y) {
+    console.log(`🐣 [Spawner] spawnCreature 시작 (isHeadless: ${world.isHeadless})`, { x, y });
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_CREATURE', payload: { x, y } })
     let creature
@@ -122,13 +123,22 @@ export class EntitySpawnerSystem {
     }
 
     if (!joinedVillage) {
+      console.log('🆕 [Spawner] 새로운 마을 생성을 시작합니다...');
       const newVillage = new Village(x, y, `마을 ${world.villages.length + 1}`)
+      console.log(`🆕 [Spawner] 새로운 마을 생성 완료: ${newVillage.name}`);
       world.villages.push(newVillage)
       newVillage.addCreature(creature)
 
       let assignedNation = null
       for (const nation of world.nations) {
-        const closestVillageDist = Math.min(...nation.villages.map((v) => v.distanceTo(newVillage)))
+        if (nation.villages.length === 0) continue
+        
+        // [Hardening] 스프레드 연산자(...) 대신 reduce를 사용하여 콜스택 초과 방지 (Stack Overflow 방어)
+        const closestVillageDist = nation.villages.reduce((minDist, v) => {
+          const dist = v.distanceTo(newVillage)
+          return dist < minDist ? dist : minDist
+        }, Infinity)
+
         if (closestVillageDist < 500) {
           assignedNation = nation
           break

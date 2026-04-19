@@ -4,6 +4,7 @@ import { FamilySystem } from '../../systems/FamilySystem.js'
 
 export class Creature extends Entity {
   init(x, y) {
+    console.log('🧬 [Creature] init 시작:', { x, y });
     super.init(x, y)
     this.size = 16
     this.targetX = x

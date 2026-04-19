@@ -25,6 +25,9 @@ export class BuildTask extends BaseTask {
       
       if (this.target.progress >= (this.target.maxProgress || 100)) {
         this.target.isConstructed = true
+        if (this.target.village) {
+          this.target.village.updateBuildingStatus(true)
+        }
         this.status = 'COMPLETED'
       }
     } else {

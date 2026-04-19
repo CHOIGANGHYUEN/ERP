@@ -231,7 +231,8 @@ export class World {
   }
 
   spawnCreature(x, y) {
-    if (this.onProxyAction) {
+    if (!this.isHeadless && this.onProxyAction) {
+      console.log('📡 [Proxy] SPAWN_CREATURE 요청 전송 (Main -> Worker)');
       return this.onProxyAction({ type: 'SPAWN_CREATURE', payload: { x, y } })
     }
     this.brain.spawner.spawnCreature(this, x, y)

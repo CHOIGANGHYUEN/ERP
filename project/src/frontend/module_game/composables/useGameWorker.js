@@ -1,4 +1,4 @@
-import { ref, onBeforeUnmount } from 'vue'
+import { ref, onBeforeUnmount, markRaw, shallowRef } from 'vue'
 import { World } from '../engine/core/World.js'
 import { setupDI } from '../di/providers/setupDI.js'
 
@@ -23,8 +23,10 @@ export function useGameWorker(gameCanvas) {
   const mapWidth = ref(0)
   const mapHeight = ref(0)
 
-  const selectedEntityData = ref(null)
-  const worldInventory = ref(null)
+  // [Optimization] 시뮬레이션 데이터(개체, 마을 등)는 구조가 크고 양방향 참조가 있을 수 있으므로 
+  // shallowRef와 markRaw를 사용하여 Vue의 Deep Reactivity 추적(병목의 원인)을 방지합니다.
+  const selectedEntityData = shallowRef(null)
+  const worldInventory = shallowRef(null)
   const chatLogs = ref([])
   const saveResolve = ref(null)
 
@@ -49,7 +51,7 @@ export function useGameWorker(gameCanvas) {
       const preservedInventory = selectedEntityData.value.inventory
       const preservedNation = selectedEntityData.value.nation
 
-      selectedEntityData.value = {
+      selectedEntityData.value = markRaw({
         ...selectedEntityData.value,
         ...bufferedData,
         name: preservedName || bufferedData.name,
@@ -58,10 +60,10 @@ export function useGameWorker(gameCanvas) {
             ? preservedInventory
             : bufferedData.inventory,
         nation: preservedNation || bufferedData.nation,
-      }
+      })
       worldInstance.onProxyAction({ type: 'GET_VILLAGE_DETAILS', payload: { id: ent.id } })
     } else {
-      selectedEntityData.value = bufferedData
+      selectedEntityData.value = markRaw(bufferedData)
       if (bufferedData.isVillage) {
         worldInstance.onProxyAction({ type: 'GET_VILLAGE_DETAILS', payload: { id: ent.id } })
       }
@@ -115,7 +117,7 @@ export function useGameWorker(gameCanvas) {
         }
       } else if (type === 'VILLAGE_DETAILS') {
         if (selectedEntityData.value && selectedEntityData.value.id === payload.id) {
-          selectedEntityData.value = { ...selectedEntityData.value, ...payload }
+          selectedEntityData.value = markRaw({ ...selectedEntityData.value, ...payload })
           if (payload.nation) {
             worldInstance.onProxyAction({
               type: 'GET_NATION_DETAILS',
@@ -125,14 +127,14 @@ export function useGameWorker(gameCanvas) {
         }
       } else if (type === 'ENTITY_DETAILS') {
         if (selectedEntityData.value && selectedEntityData.value.id === payload.id) {
-          selectedEntityData.value = { ...selectedEntityData.value, ...payload }
+          selectedEntityData.value = markRaw({ ...selectedEntityData.value, ...payload })
         }
       } else if (type === 'NATION_DETAILS') {
         if (selectedEntityData.value?.nation?.id === payload.id) {
-          selectedEntityData.value = { ...selectedEntityData.value, nation: { ...selectedEntityData.value.nation, ...payload } }
+          selectedEntityData.value = markRaw({ ...selectedEntityData.value, nation: { ...selectedEntityData.value.nation, ...payload } })
         }
       } else if (type === 'WORLD_INVENTORY_DETAILS') {
-        worldInventory.value = payload
+        worldInventory.value = markRaw(payload)
       } else if (type === 'SPEECH_BUBBLE' || type === 'SYSTEM_MESSAGE') {
         const timeStr = new Date().toLocaleTimeString('ko-KR', {
           hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
