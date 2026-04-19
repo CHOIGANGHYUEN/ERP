@@ -203,8 +203,16 @@ export class Creature extends Entity {
     if (this.home?.occupants) {
       this.home.occupants = this.home.occupants.filter((o) => o !== this)
     }
-    world.creatures = world.creatures.filter((c) => c !== this)
-    if (world.creaturePool) world.creaturePool.push(this)
+    
+    // [Optimization] filter 전수조사 대신 swap-and-pop 사용
+    const idx = world.creatures.indexOf(this)
+    if (idx !== -1) {
+      this.isActive = false
+      world.creatures[idx] = world.creatures[world.creatures.length - 1]
+      world.creatures.pop()
+      if (world.creaturePool) world.creaturePool.push(this)
+    }
+    
     world.spawnResource(this.x, this.y, 'biomass')
   }
 

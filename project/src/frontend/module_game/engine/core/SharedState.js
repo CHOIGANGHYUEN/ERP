@@ -39,6 +39,7 @@ export const PROPS = {
     EARTHQUAKE_TIMER: 12,
     WEATHER_TYPE: 13,
     WIND_SPEED: 14,
+    RENDER_BUFFER_INDEX: 15, // 0 or 1
   },
   CREATURE: {
     IS_ACTIVE: 0, // 1 for active, 0 for inactive
@@ -244,18 +245,36 @@ export const SEASON_REVERSE_MAP = Object.fromEntries(
 )
 
 export function createSharedBuffers() {
+  const isSharedSupported = typeof SharedArrayBuffer !== 'undefined'
+  const BufferType = isSharedSupported ? SharedArrayBuffer : ArrayBuffer
+
   return {
-    globals: new ArrayBuffer(STRIDE.GLOBALS * 4), // 4 bytes per float
-    creatures: new ArrayBuffer(MAX_CREATURES * STRIDE.CREATURE * 4),
-    animals: new ArrayBuffer(MAX_ANIMALS * STRIDE.ANIMAL * 4),
-    plants: new ArrayBuffer(MAX_PLANTS * STRIDE.PLANT * 4),
-    resources: new ArrayBuffer(MAX_RESOURCES * STRIDE.RESOURCE * 4),
-    buildings: new ArrayBuffer(MAX_BUILDINGS * STRIDE.BUILDING * 4),
-    villages: new ArrayBuffer(MAX_VILLAGES * STRIDE.VILLAGE * 4),
-    mines: new ArrayBuffer(MAX_MINES * STRIDE.MINE * 4),
-    tornadoes: new ArrayBuffer(MAX_TORNADOES * STRIDE.TORNADO * 4),
-    paths: new ArrayBuffer(200 * 200 * 4), // 3200x3200 맵 기준 16x16 픽셀 타일 사이즈 (40,000 Float32)
-    terrain: new ArrayBuffer(200 * 200), // 3200x3200 맵 기준 16x16 타일, Int8 (40,000 bytes)
+    globals: new BufferType(STRIDE.GLOBALS * 4), 
+    // Double sets of entity buffers to prevent flickering
+    sets: [
+      {
+        creatures: new BufferType(MAX_CREATURES * STRIDE.CREATURE * 4),
+        animals: new BufferType(MAX_ANIMALS * STRIDE.ANIMAL * 4),
+        plants: new BufferType(MAX_PLANTS * STRIDE.PLANT * 4),
+        resources: new BufferType(MAX_RESOURCES * STRIDE.RESOURCE * 4),
+        buildings: new BufferType(MAX_BUILDINGS * STRIDE.BUILDING * 4),
+        villages: new BufferType(MAX_VILLAGES * STRIDE.VILLAGE * 4),
+        mines: new BufferType(MAX_MINES * STRIDE.MINE * 4),
+        tornadoes: new BufferType(MAX_TORNADOES * STRIDE.TORNADO * 4),
+      },
+      {
+        creatures: new BufferType(MAX_CREATURES * STRIDE.CREATURE * 4),
+        animals: new BufferType(MAX_ANIMALS * STRIDE.ANIMAL * 4),
+        plants: new BufferType(MAX_PLANTS * STRIDE.PLANT * 4),
+        resources: new BufferType(MAX_RESOURCES * STRIDE.RESOURCE * 4),
+        buildings: new BufferType(MAX_BUILDINGS * STRIDE.BUILDING * 4),
+        villages: new BufferType(MAX_VILLAGES * STRIDE.VILLAGE * 4),
+        mines: new BufferType(MAX_MINES * STRIDE.MINE * 4),
+        tornadoes: new BufferType(MAX_TORNADOES * STRIDE.TORNADO * 4),
+      }
+    ],
+    paths: new BufferType(200 * 200 * 4),
+    terrain: new BufferType(200 * 200),
   }
 }
 

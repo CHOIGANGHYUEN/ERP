@@ -218,11 +218,26 @@ export class EntitySpawnerSystem {
       x < world.width - 10 &&
       y > 10 &&
       y < world.height - 10
-    )
-      world.plants.push(new Plant(x, y, type))
+    ) {
+      let plant
+      if (world.plantPool && world.plantPool.length > 0) {
+        plant = world.plantPool.pop()
+        plant.reset(x, y, type)
+      } else {
+        plant = new Plant(x, y, type)
+      }
+      world.plants.push(plant)
+    }
   }
   removePlant(world, plant) {
-    world.plants = world.plants.filter((p) => p !== plant)
+    const idx = world.plants.indexOf(plant)
+    if (idx !== -1) {
+      plant.isActive = false
+      world.plants[idx] = world.plants[world.plants.length - 1]
+      world.plants.pop()
+      if (!world.plantPool) world.plantPool = []
+      world.plantPool.push(plant)
+    }
   }
 
   spawnResource(world, x, y, type) {
@@ -252,8 +267,13 @@ export class EntitySpawnerSystem {
     world.resources.push(resource)
   }
   removeResource(world, resource) {
-    world.resources = world.resources.filter((r) => r !== resource)
-    world.resourcePool.push(resource)
+    const idx = world.resources.indexOf(resource)
+    if (idx !== -1) {
+      resource.isActive = false
+      world.resources[idx] = world.resources[world.resources.length - 1]
+      world.resources.pop()
+      world.resourcePool.push(resource)
+    }
   }
 
   loadCreatures(world, creaturesData) {

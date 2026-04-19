@@ -12,6 +12,7 @@ export class Entity {
     this.x = x
     this.y = y
     this.isDead = false
+    this.isActive = true
     this.size = 10
     this.color = '#ffffff'
   }

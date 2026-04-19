@@ -51,22 +51,41 @@ export class BufferSyncSystem {
     world.sharedBuffers = buffers
     world.views = {
       globals: new Float32Array(buffers.globals),
-      creatures: new Float32Array(buffers.creatures),
-      animals: new Float32Array(buffers.animals),
-      plants: new Float32Array(buffers.plants),
-      buildings: new Float32Array(buffers.buildings),
-      villages: new Float32Array(buffers.villages),
-      tornadoes: new Float32Array(buffers.tornadoes),
-      mines: new Float32Array(buffers.mines),
-      resources: new Float32Array(buffers.resources),
+      sets: [
+        {
+          creatures: new Float32Array(buffers.sets[0].creatures),
+          animals: new Float32Array(buffers.sets[0].animals),
+          plants: new Float32Array(buffers.sets[0].plants),
+          buildings: new Float32Array(buffers.sets[0].buildings),
+          villages: new Float32Array(buffers.sets[0].villages),
+          tornadoes: new Float32Array(buffers.sets[0].tornadoes),
+          mines: new Float32Array(buffers.sets[0].mines),
+          resources: new Float32Array(buffers.sets[0].resources),
+        },
+        {
+          creatures: new Float32Array(buffers.sets[1].creatures),
+          animals: new Float32Array(buffers.sets[1].animals),
+          plants: new Float32Array(buffers.sets[1].plants),
+          buildings: new Float32Array(buffers.sets[1].buildings),
+          villages: new Float32Array(buffers.sets[1].villages),
+          tornadoes: new Float32Array(buffers.sets[1].tornadoes),
+          mines: new Float32Array(buffers.sets[1].mines),
+          resources: new Float32Array(buffers.sets[1].resources),
+        }
+      ],
       paths: new Float32Array(buffers.paths),
+      terrain: new Uint8Array(buffers.terrain),
     }
   }
 
   syncToSharedBuffer(world) {
     if (!world.isHeadless || !world.views) return
+    const globals = world.views.globals
+    const renderIndex = globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+    const writeIndex = renderIndex === 0 ? 1 : 0
+    const backBuffer = world.views.sets[writeIndex]
+
     const {
-      globals,
       creatures,
       animals,
       plants,
@@ -75,23 +94,7 @@ export class BufferSyncSystem {
       tornadoes,
       mines,
       resources,
-    } = world.views
-
-    globals[PROPS.GLOBALS.CREATURE_COUNT] = world.creatures.length
-    globals[PROPS.GLOBALS.ANIMAL_COUNT] = world.animals.length
-    globals[PROPS.GLOBALS.PLANT_COUNT] = world.plants.length
-    globals[PROPS.GLOBALS.RESOURCE_COUNT] = world.resources.length
-    globals[PROPS.GLOBALS.BUILDING_COUNT] = world.buildings.length
-    globals[PROPS.GLOBALS.VILLAGE_COUNT] = world.villages.length
-    globals[PROPS.GLOBALS.TORNADO_COUNT] = world.disasterSystem.tornadoes.length
-    globals[PROPS.GLOBALS.MINE_COUNT] = world.mines.length
-    globals[PROPS.GLOBALS.FERTILITY] = world.currentFertility
-    globals[PROPS.GLOBALS.TIME_OF_DAY] = world.timeSystem.timeOfDay
-    globals[PROPS.GLOBALS.SEASON] = SEASON_MAP[world.timeSystem.season]
-    globals[PROPS.GLOBALS.DAYS] = world.timeSystem.days
-    globals[PROPS.GLOBALS.EARTHQUAKE_TIMER] = world.disasterSystem.earthquakeTimer
-    globals[PROPS.GLOBALS.WEATHER_TYPE] = WEATHER_MAP[world.weather.weatherType]
-    globals[PROPS.GLOBALS.WIND_SPEED] = world.weather.windSpeed
+    } = backBuffer
 
     world.creatures.forEach((c, i) => {
       const offset = i * STRIDE.CREATURE
@@ -217,6 +220,25 @@ export class BufferSyncSystem {
       resources[offset + PROPS.RESOURCE.B] = color.b
       resources[offset + PROPS.RESOURCE.TYPE] = RESOURCE_TYPE_MAP[r.type] || 0
     })
+
+    // [Atomic Swap] 모든 작업이 끝난 후에만 가용한 버퍼 인덱스를 교체
+    globals[PROPS.GLOBALS.CREATURE_COUNT] = world.creatures.length
+    globals[PROPS.GLOBALS.ANIMAL_COUNT] = world.animals.length
+    globals[PROPS.GLOBALS.PLANT_COUNT] = world.plants.length
+    globals[PROPS.GLOBALS.RESOURCE_COUNT] = world.resources.length
+    globals[PROPS.GLOBALS.BUILDING_COUNT] = world.buildings.length
+    globals[PROPS.GLOBALS.VILLAGE_COUNT] = world.villages.length
+    globals[PROPS.GLOBALS.TORNADO_COUNT] = world.disasterSystem.tornadoes.length
+    globals[PROPS.GLOBALS.MINE_COUNT] = world.mines.length
+    globals[PROPS.GLOBALS.FERTILITY] = world.currentFertility
+    globals[PROPS.GLOBALS.TIME_OF_DAY] = world.timeSystem.timeOfDay
+    globals[PROPS.GLOBALS.SEASON] = SEASON_MAP[world.timeSystem.season]
+    globals[PROPS.GLOBALS.DAYS] = world.timeSystem.days
+    globals[PROPS.GLOBALS.EARTHQUAKE_TIMER] = world.disasterSystem.earthquakeTimer
+    globals[PROPS.GLOBALS.WEATHER_TYPE] = WEATHER_MAP[world.weather.weatherType]
+    globals[PROPS.GLOBALS.WIND_SPEED] = world.weather.windSpeed
+
+    globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX] = writeIndex
   }
 
   /**
@@ -225,7 +247,8 @@ export class BufferSyncSystem {
    */
   hydrate(world, target, type, id) {
     if (!world.views || id < 0) return false
-    const view = world.views[`${type}s`]
+    const frontIndex = world.views.globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+    const view = world.views.sets[frontIndex][`${type}s`]
     if (!view) return false
     
     const stride = STRIDE[type.toUpperCase()]
@@ -287,8 +310,9 @@ export class BufferSyncSystem {
   }
 
   getDataFromBuffer(world, type, id) {
-    if (!world.views || id < 0) return null
-    const view = world.views[`${type}s`]
+    if (!world.views || id < 0) return false
+    const frontIndex = world.views.globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+    const view = world.views.sets[frontIndex][`${type}s`]
     if (!view) return null
     const stride = STRIDE[type.toUpperCase()]
     const offset = id * stride

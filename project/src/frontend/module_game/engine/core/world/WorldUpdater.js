@@ -4,9 +4,12 @@ export const WorldUpdater = {
   update: (world, deltaTime) => {
     if (world.isHeadless) {
       // Worker: 실제 게임 로직 연산
-      world.weather.update(deltaTime)
+      // [Optimization] Tick 밸런싱: 모든 시스템을 매 프레임 업데이트하지 않고 분산 처리
+      world.tick = (world.tick || 0) + 1
+      
+      // 매 프레임 필수 업데이트
       world.timeSystem.update(deltaTime)
-      world.disasterSystem.update(deltaTime, world)
+      world.entitySystem.update(deltaTime, world)
 
       // (A) 동적 객체만 매 프레임 갱신 (GC 최소화)
       world.chunkManager.clear()
@@ -27,9 +30,24 @@ export const WorldUpdater = {
         world.needsFullChunkRefresh = false
       }
 
-      world.entitySystem.update(deltaTime, world)
-      world.villageSystem.update(deltaTime, world)
-      world.buildingSystem.update(deltaTime, world)
+      // 10틱마다 업데이트 (약 160ms)
+      if (world.tick % 10 === 0) {
+        world.weather.update(deltaTime * 10)
+      }
+
+      // 20틱마다 업데이트 (약 320ms)
+      if (world.tick % 20 === 0) {
+        world.villageSystem.update(deltaTime * 20, world)
+        world.buildingSystem.update(deltaTime * 20, world)
+      }
+
+      // 60틱마다 업데이트 (약 1초) - 외교 등 무거운 연산
+      if (world.tick % 60 === 0) {
+        if (world.diplomacySystem) world.diplomacySystem.update(deltaTime * 60, world)
+        world.disasterSystem.update(deltaTime * 60, world)
+      }
+
+      // 길찾기 감쇄는 자체적으로 분산 처리가 되어 있으므로 매 프레임 호출 (내부에서 쪼개짐)
       world.pathSystem.update(deltaTime, world)
 
       world.bgUpdateTimer += deltaTime
@@ -80,10 +98,24 @@ export const WorldUpdater = {
       if (!world.spatialProxies) world.spatialProxies = []
       let proxyIdx = 0
 
+      const frontIndex = globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+      const currentSet = world.views.sets[frontIndex]
+
+      // [Optimization/BugFix] 방어적 렌더링: 버퍼 교체 시점에 데이터가 비어있으면 렌더링 건너뜀 (깜빡임 방지)
+      const totalCount = 
+        entityCounts.creature + entityCounts.animal + entityCounts.plant + 
+        entityCounts.building + entityCounts.resource
+      
+      if (totalCount === 0 && (world._lastTotalCount || 0) > 0) {
+        // 데이터가 아직 준비되지 않은 것으로 간주하고 이전 프레임의 청크매니저 유지
+        return
+      }
+      world._lastTotalCount = totalCount
+
       for (const type in entityCounts) {
         const count = entityCounts[type]
         const viewName = pluralMap[type] || `${type}s`
-        const view = world.views[viewName]
+        const view = currentSet[viewName]
         const props = PROPS[type.toUpperCase()]
         const stride = STRIDE[type.toUpperCase()]
 

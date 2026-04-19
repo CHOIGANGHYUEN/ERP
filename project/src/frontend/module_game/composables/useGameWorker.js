@@ -85,13 +85,16 @@ export function useGameWorker(gameCanvas) {
     gameWorker.onmessage = (e) => {
       const { type, payload } = e.data
       if (type === 'INIT_BUFFERS') {
+        // [SAB] 초기 버퍼 참조 동기화
+        if (payload) worldInstance.initSharedState(payload)
         worldInstance.start()
       } else if (type === 'SYNC') {
-        const oldBuffers = worldInstance.sharedBuffers
-        worldInstance.initSharedState(payload)
-        if (oldBuffers) {
-          const transferList = Object.values(oldBuffers)
-          gameWorker.postMessage({ type: 'RETURN_BUFFERS', payload: oldBuffers }, transferList)
+        // [SAB] Zero-copy 환경에서는 payload가 null이므로 무시
+        // 만약 Transferable 구조라면 전달된 버퍼로 상태 초기화
+        if (payload) {
+          worldInstance.initSharedState(payload)
+          // 구버퍼를 워커로 반환 (Double buffering 지원 시)
+          gameWorker.postMessage({ type: 'RETURN_BUFFERS', payload })
         }
       } else if (type === 'VILLAGE_DETAILS') {
         if (selectedEntityData.value && selectedEntityData.value.id === payload.id) {
@@ -144,7 +147,7 @@ export function useGameWorker(gameCanvas) {
     gameWorker.postMessage({ type: 'INIT' })
 
     popInterval = setInterval(() => {
-      if (worldInstance && worldInstance.views) {
+      if (worldInstance && worldInstance.views && worldInstance.views.globals) {
         const globals = worldInstance.views.globals
         population.value = globals[INDEX_CREATURE_COUNT]
         fertility.value = globals[INDEX_FERTILITY]

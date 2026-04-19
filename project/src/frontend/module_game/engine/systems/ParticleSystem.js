@@ -41,7 +41,9 @@ export class ParticleSystem {
       p.life -= deltaTime
       if (p.life <= 0) {
         this.pool.push(p)
-        this.particles.splice(i, 1)
+        // [Optimization] splice 대신 swap-and-pop 사용
+        this.particles[i] = this.particles[this.particles.length - 1]
+        this.particles.pop()
       }
     }
   }

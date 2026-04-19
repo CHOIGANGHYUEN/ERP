@@ -36,50 +36,33 @@ Logger.onWorkerError = (msg) => self.postMessage(msg)
 
 let world = null
 const di = setupDI()
-let availableBufferSets = []
+let sharedBuffers = null
 
 self.onmessage = (e) => {
   const { type, payload } = e.data
 
   if (type === 'INIT') {
-    availableBufferSets.push(createSharedBuffers())
-    availableBufferSets.push(createSharedBuffers()) // Double buffering
-
+    sharedBuffers = payload || createSharedBuffers()
+    
     // DOM 연산 없는 헤드리스 모드로 월드 초기화
-    world = new World(di, null, true, availableBufferSets[0])
+    world = new World(di, null, true, sharedBuffers)
 
     // 워커에서 발생하는 논리 이벤트를 메인 스레드로 전달하는 프록시
     world.onEvent = (msg) => self.postMessage(msg)
 
-    // 메인 스레드에 초기화 완료 알림
-    self.postMessage({ type: 'INIT_BUFFERS', payload: null })
+    // 메인 스레드에 초기화 완료 알림 및 버퍼 전달
+    self.postMessage({ type: 'INIT_BUFFERS', payload: sharedBuffers })
 
     world.startLogic((_state) => {
-      // 가용한 버퍼가 없으면(메인 스레드가 아직 처리를 못했으면) 동기화 생략
-      if (!world.views || availableBufferSets.length === 0) return
-
-      // 상태를 현재 버퍼에 동기화
+      // 상태를 공유 버퍼에 동기화 (Zero-copy)
       world.syncToSharedBuffer()
 
-      // [Transferable] 메인 스레드로 소유권 이전
-      const currentBufferSet = availableBufferSets.shift()
-      const transferList = Object.values(currentBufferSet)
-      
-      self.postMessage({ type: 'SYNC', payload: currentBufferSet }, transferList)
-
-      // 다음 프레임을 위한 버퍼 준비
-      if (availableBufferSets.length > 0) {
-        world.initSharedState(availableBufferSets[0])
-      } else {
-        world.views = null // 돌려받을 때까지 버퍼 없음
-      }
+      // 메인 스레드에 동기화 완료 알림 (데이터는 이미 SAB에 있음)
+      self.postMessage({ type: 'SYNC', payload: null })
     })
   } else if (type === 'RETURN_BUFFERS') {
-    // [Transferable] 메인 스레드에서 사용 완료된 버퍼를 돌려받음
-    availableBufferSets.push(payload)
-    if (!world.views) {
-      world.initSharedState(payload)
-    }
+    // SharedArrayBuffer 사용 시 버퍼를 돌려받을 필요가 없으므로 무시하거나 로그만 남김
+    // availableBufferSets.push(payload)
   } else if (world) {
     // UI 클릭 등으로 인한 상호작용 프록시 처리
     if (type === 'SPAWN_CREATURE') {

@@ -55,23 +55,37 @@ export class SpriteManager {
     const sx = frameIndex * sprite.frameWidth
     const sy = anim.row * sprite.frameHeight
 
-    ctx.save()
-    ctx.translate(x, y)
-    if (flipX) ctx.scale(-1, 1)
+    if (flipX) {
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.scale(-1, 1)
+      ctx.drawImage(
+        img,
+        sx,
+        sy,
+        sprite.frameWidth,
+        sprite.frameHeight,
+        -width / 2,
+        -height / 2,
+        width,
+        height,
+      )
+      ctx.restore()
+    } else {
+      // [Optimization] save/restore/translate 대신 직접 좌표 계산하여 호출
+      ctx.drawImage(
+        img,
+        sx,
+        sy,
+        sprite.frameWidth,
+        sprite.frameHeight,
+        x - width / 2,
+        y - height / 2,
+        width,
+        height,
+      )
+    }
 
-    ctx.drawImage(
-      img,
-      sx,
-      sy,
-      sprite.frameWidth,
-      sprite.frameHeight,
-      -width / 2,
-      -height / 2,
-      width,
-      height,
-    )
-
-    ctx.restore()
     return true
   }
 }

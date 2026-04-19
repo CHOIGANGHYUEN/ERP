@@ -86,8 +86,13 @@ export class Animal extends Entity {
   die(world) {
     if (this.isDead) return
     super.die(world)
-    world.animals = world.animals.filter((a) => a !== this)
-    if (world.animalPool) world.animalPool.push(this) // 4.2 최적화: 죽은 동물을 풀에 반납
+    const idx = world.animals.indexOf(this)
+    if (idx !== -1) {
+      this.isActive = false
+      world.animals[idx] = world.animals[world.animals.length - 1]
+      world.animals.pop()
+      if (world.animalPool) world.animalPool.push(this) // 4.2 최적화: 죽은 동물을 풀에 반납
+    }
     
     // 사냥 보상으로 식량 대량 드랍 (육식 5개, 초식 3개)
     const dropAmount = this.type === 'CARNIVORE' ? 5 : 3

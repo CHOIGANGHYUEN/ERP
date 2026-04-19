@@ -81,10 +81,14 @@ export class RenderSystem {
 
     // ── 1. 동적 배경 업데이트 (길, 건물 등 자주 변하는 요소) ───────────────
     if (world.needsBackgroundUpdate) {
-      const villageView = world.views.villages
-      const villageCount = world.views.globals[PROPS.GLOBALS.VILLAGE_COUNT]
-      const buildingView = world.views.buildings
-      const buildingCount = world.views.globals[PROPS.GLOBALS.BUILDING_COUNT]
+      const globals = world.views.globals
+      const frontIndex = globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+      const currentSet = world.views.sets[frontIndex]
+
+      const villageView = currentSet.villages
+      const villageCount = globals[PROPS.GLOBALS.VILLAGE_COUNT]
+      const buildingView = currentSet.buildings
+      const buildingCount = globals[PROPS.GLOBALS.BUILDING_COUNT]
       const ctx = world.bgBufferCtx
 
       ctx.clearRect(0, 0, world.width, world.height)
