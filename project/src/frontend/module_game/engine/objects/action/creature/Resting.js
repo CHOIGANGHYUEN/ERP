@@ -2,16 +2,21 @@ import { CreatureEmotion } from '../../emotions/CreatureEmotion.js'
 
 export const RESTING = (creature, deltaTime, world) => {
   const house = creature.target
+  // [Bugfix] target이 집이 아니거나 occupants 속성이 아예 없는 경우를 대비한 안전망
+  if (house && !house.occupants) {
+    house.occupants = []
+  }
+
   // 목표가 집이 아니거나, 집이 파괴되었거나, 꽉 찼으면 배회 상태로 전환
   if (
     !house ||
     house.isDead ||
     !house.isConstructed ||
-    (house.occupants.length >= house.capacity && !house.occupants.includes(creature))
+    (house.occupants.length >= (house.capacity || 0) && !house.occupants.includes(creature))
   ) {
     creature.state = 'WANDERING'
     creature.target = null
-    if (house && house.occupants.includes(creature)) {
+    if (house && house.occupants && house.occupants.includes(creature)) {
       house.occupants = house.occupants.filter((o) => o !== creature)
     }
     return

@@ -51,6 +51,7 @@ export class BufferSyncSystem {
     world.sharedBuffers = buffers
     world.views = {
       globals: new Float32Array(buffers.globals),
+      globalsInt32: new Int32Array(buffers.globals), // [SAB] Atomic 연산을 위한 Int32 뷰 추가
       sets: [
         {
           creatures: new Float32Array(buffers.sets[0].creatures),
@@ -238,17 +239,25 @@ export class BufferSyncSystem {
     globals[PROPS.GLOBALS.WEATHER_TYPE] = WEATHER_MAP[world.weather.weatherType]
     globals[PROPS.GLOBALS.WIND_SPEED] = world.weather.windSpeed
 
-    globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX] = writeIndex
+    // [Atomic Swap] Atomics.store를 사용하여 메모리 가시성 보장 (Memory Barrier)
+    Atomics.store(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX, writeIndex)
   }
 
   /**
    * 고속 렌더 패스를 위한 무할당(Zero-Allocation) 동기화 메서드.
    * 새로운 객체를 생성하지 않고 전달받은 target의 속성을 직접 수정합니다.
    */
-  hydrate(world, target, type, id) {
+   hydrate(world, target, type, id) {
     if (!world.views || id < 0) return false
-    const frontIndex = world.views.globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
-    const view = world.views.sets[frontIndex][`${type}s`]
+    
+    // [Atomic Load] Atomics.load를 사용하여 메모리 가시성 보장 및 데이터 레이스 방지
+    const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+    if (frontIndex !== 0 && frontIndex !== 1) return false // 인덱스 유효성 검사
+
+    const set = world.views.sets[frontIndex]
+    if (!set) return false
+    
+    const view = set[`${type}s`]
     if (!view) return false
     
     const stride = STRIDE[type.toUpperCase()]
@@ -311,8 +320,15 @@ export class BufferSyncSystem {
 
   getDataFromBuffer(world, type, id) {
     if (!world.views || id < 0) return false
-    const frontIndex = world.views.globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
-    const view = world.views.sets[frontIndex][`${type}s`]
+    
+    // [Atomic Load] 데이터 원자성 보장
+    const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+    if (frontIndex !== 0 && frontIndex !== 1) return null
+
+    const set = world.views.sets[frontIndex]
+    if (!set) return null
+    
+    const view = set[`${type}s`]
     if (!view) return null
     const stride = STRIDE[type.toUpperCase()]
     const offset = id * stride

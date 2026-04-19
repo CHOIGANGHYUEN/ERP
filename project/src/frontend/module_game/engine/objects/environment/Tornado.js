@@ -57,9 +57,7 @@ export class Tornado extends Entity {
   die(world) {
     if (this.isDead) return
     super.die(world)
-    world.disasterSystem.tornadoes = world.disasterSystem.tornadoes.filter((t) => t !== this)
-    // 레거시 호환성
-    if (world.tornadoes) world.tornadoes = world.tornadoes.filter((t) => t !== this)
+    // DisasterSystem.update의 역순 루프에서 isDead를 감지해 자동으로 Swap-and-Pop 제거함
   }
 
   render(ctx) {

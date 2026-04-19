@@ -200,8 +200,14 @@ export class EntitySpawnerSystem {
       })
     const snapX = Math.floor(x / 32) * 32 + 16,
       snapY = Math.floor(y / 32) * 32 + 16
-    if (world.buildings.some((b) => Math.abs(b.x - snapX) < 32 && Math.abs(b.y - snapY) < 32))
+    
+    // [Optimization] O(N) some() 체크 대신 ChunkManager 공간 쿼리 사용
+    const queryRange = { x: snapX - 16, y: snapY - 16, width: 32, height: 32 }
+    const nearby = world.chunkManager.query(queryRange)
+    if (nearby.some(b => b._type === 'building' && Math.abs(b.x - snapX) < 32 && Math.abs(b.y - snapY) < 32)) {
       return
+    }
+
     const b = new Building(snapX, snapY, type)
     b.occupants = []
     b.capacity = type === 'HOUSE' ? 1 + (b.tier || 1) : 0

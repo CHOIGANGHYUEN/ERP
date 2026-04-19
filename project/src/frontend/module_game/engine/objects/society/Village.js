@@ -27,7 +27,12 @@ export class Village extends Entity {
   }
 
   removeCreature(creature) {
-    this.creatures = this.creatures.filter((c) => c !== creature)
+    const idx = this.creatures.indexOf(creature)
+    if (idx !== -1) {
+      // Swap-and-Pop Optimization (O(1))
+      this.creatures[idx] = this.creatures[this.creatures.length - 1]
+      this.creatures.pop()
+    }
     creature.village = null
   }
 

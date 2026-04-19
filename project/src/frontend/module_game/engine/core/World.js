@@ -161,6 +161,9 @@ export class World {
   }
 
   addFertility(amount) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'ADD_FERTILITY', payload: { amount } })
+    }
     return this.brain.spawner.addFertility(this, amount)
   }
 
@@ -184,14 +187,18 @@ export class World {
 
     const logicLoop = () => {
       if (!this.isRunning) return
-      const now = performance.now()
-      const dt = Math.min(now - this.lastTime, 100)
-      this.lastTime = now
+      try {
+        const now = performance.now()
+        const dt = Math.min(now - this.lastTime, 100)
+        this.lastTime = now
 
-      this.update(dt)
-      if (onSync) onSync() // [SAB] onSync는 이제 신호만 보냄
-
-      setTimeout(logicLoop, 16) // 약 60FPS 유지
+        this.update(dt)
+        if (onSync) onSync() // [SAB] onSync는 이제 신호만 보냄
+      } catch (error) {
+        Logger.error('LogicLoop', `워커 로직 루프 에러: ${error.message}`, error)
+      } finally {
+        setTimeout(logicLoop, 16) // 약 60FPS 유지 (에러 발생해도 루프는 지속)
+      }
     }
     logicLoop()
   }
@@ -202,18 +209,30 @@ export class World {
   }
 
   spawnCreature(x, y) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SPAWN_CREATURE', payload: { x, y } })
+    }
     this.brain.spawner.spawnCreature(this, x, y)
   }
 
   spawnAnimal(x, y, type) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SPAWN_ANIMAL', payload: { x, y, type } })
+    }
     this.brain.spawner.spawnAnimal(this, x, y, type)
   }
 
   spawnBuilding(x, y, type, village) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SPAWN_BUILDING', payload: { x, y, type, village } })
+    }
     this.brain.spawner.spawnBuilding(this, x, y, type, village)
   }
 
   spawnPlant(x, y, type) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SPAWN_PLANT', payload: { x, y, type } })
+    }
     this.brain.spawner.spawnPlant(this, x, y, type)
   }
 
@@ -222,6 +241,9 @@ export class World {
   }
 
   spawnResource(x, y, type) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SPAWN_RESOURCE', payload: { x, y, type } })
+    }
     this.brain.spawner.spawnResource(this, x, y, type)
   }
 
@@ -230,14 +252,23 @@ export class World {
   }
 
   setWeather(type) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SET_WEATHER', payload: { type } })
+    }
     return this.brain.spawner.setWeather(this, type)
   }
 
   spawnTornado(x, y) {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'SPAWN_TORNADO', payload: { x, y } })
+    }
     return this.brain.spawner.spawnTornado(this, x, y)
   }
 
   triggerEarthquake() {
+    if (this.onProxyAction) {
+      return this.onProxyAction({ type: 'TRIGGER_EARTHQUAKE' })
+    }
     return this.brain.spawner.triggerEarthquake(this)
   }
 
@@ -251,15 +282,19 @@ export class World {
 
   loop(timestamp) {
     if (!this.isRunning) return
-    const deltaTime = timestamp - this.lastTime
-    this.lastTime = timestamp
+    try {
+      const deltaTime = timestamp - this.lastTime
+      this.lastTime = timestamp
 
-    const dt = Math.min(deltaTime, 100)
+      const dt = Math.min(deltaTime, 100)
 
-    this.update(dt)
-    this.render(timestamp)
-
-    this.animationId = requestAnimationFrame((t) => this.loop(t))
+      this.update(dt)
+      this.render(timestamp)
+    } catch (error) {
+      Logger.error('MainLoop', `메인 렌더 루프 에러: ${error.message}`, error)
+    } finally {
+      this.animationId = requestAnimationFrame((t) => this.loop(t))
+    }
   }
 
   update(deltaTime) {

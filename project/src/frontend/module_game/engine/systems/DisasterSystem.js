@@ -10,15 +10,31 @@ export class DisasterSystem {
     // 지진 업데이트 및 파괴 연산
     if (this.earthquakeTimer > 0) {
       this.earthquakeTimer -= deltaTime
-      if (Math.random() < 0.1) {
-        world.buildings.forEach((b) => {
-          if (b.isConstructed && Math.random() < 0.05) b.isConstructed = false // 지진으로 파괴 (재건축 필요)
-        })
+      
+      // [Optimization] 모든 건물을 매 프레임 순회(O(N))하는 대신, 무작위 샘플링 검사로 부하 분산
+      const buildingCount = world.buildings.length
+      if (buildingCount > 0) {
+        const samplesPerFrame = Math.min(buildingCount, 10) // 프레임당 최대 10개만 검사
+        for (let i = 0; i < samplesPerFrame; i++) {
+          const b = world.buildings[Math.floor(Math.random() * buildingCount)]
+          if (b && b.isConstructed && Math.random() < 0.01) {
+             b.isConstructed = false // 지진 대미지로 파손
+          }
+        }
       }
     }
 
-    // 토네이도 업데이트
-    this.tornadoes.forEach((t) => t.update(deltaTime, world))
+    // [Optimization] 토네이도 업데이트 (역순 루프로 안전한 제거 지원)
+    for (let i = this.tornadoes.length - 1; i >= 0; i--) {
+      const t = this.tornadoes[i]
+      t.update(deltaTime, world)
+      
+      // 토네이도 수명 종료 시 Swap-and-Pop 제거
+      if (t.isDead) {
+        this.tornadoes[i] = this.tornadoes[this.tornadoes.length - 1]
+        this.tornadoes.pop()
+      }
+    }
   }
 
   spawnTornado(x, y) {

@@ -93,39 +93,49 @@ const drawMinimap = () => {
   const scaleX = w / props.mapWidth
   const scaleY = h / props.mapHeight
 
-  // [SAB] Read from shared buffer
   const views = props.world.views
-  if (!views) return
+  if (!views || !views.globals) return
 
-  const villageView = views.villages
-  const villageCount = views.globals[PROPS.GLOBALS.VILLAGE_COUNT]
-  for (let i = 0; i < villageCount; i++) {
-    const offset = i * STRIDE.VILLAGE
-    if (villageView[offset + PROPS.VILLAGE.IS_ACTIVE] !== 1) continue
-    const x = villageView[offset + PROPS.VILLAGE.X]
-    const y = villageView[offset + PROPS.VILLAGE.Y]
-    const radius = villageView[offset + PROPS.VILLAGE.RADIUS]
-    const r = villageView[offset + PROPS.VILLAGE.R] * 255
-    const g = villageView[offset + PROPS.VILLAGE.G] * 255
-    const b = villageView[offset + PROPS.VILLAGE.B] * 255
-    ctx.beginPath()
-    ctx.arc(x * scaleX, y * scaleY, (radius || 40) * scaleX, 0, Math.PI * 2)
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`
-    ctx.fill()
+  // [Atomic Load] 메모리 가시성 보장을 위해 Atomics.load 사용
+  const frontIndex = Atomics.load(views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+  const currentSet = views.sets[frontIndex]
+  if (!currentSet) return
+
+  // [Bugfix] villageView가 존재하는지(초기화되었는지) 확인 후 순회
+  const villageView = currentSet.villages
+  if (villageView) {
+    const villageCount = views.globals[PROPS.GLOBALS.VILLAGE_COUNT] || 0
+    for (let i = 0; i < villageCount; i++) {
+      const offset = i * STRIDE.VILLAGE
+      if (villageView[offset + PROPS.VILLAGE.IS_ACTIVE] !== 1) continue
+      const x = villageView[offset + PROPS.VILLAGE.X]
+      const y = villageView[offset + PROPS.VILLAGE.Y]
+      const radius = villageView[offset + PROPS.VILLAGE.RADIUS]
+      const r = villageView[offset + PROPS.VILLAGE.R] * 255
+      const g = villageView[offset + PROPS.VILLAGE.G] * 255
+      const b = villageView[offset + PROPS.VILLAGE.B] * 255
+      ctx.beginPath()
+      ctx.arc(x * scaleX, y * scaleY, (radius || 40) * scaleX, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`
+      ctx.fill()
+    }
   }
 
+  // [Bugfix] creatureView가 존재하는지 확인 후 순회
   ctx.fillStyle = 'rgba(255, 0, 0, 0.6)'
-  const creatureView = views.creatures
-  const creatureCount = views.globals[PROPS.GLOBALS.CREATURE_COUNT]
-  for (let i = 0; i < creatureCount; i++) {
-    const offset = i * STRIDE.CREATURE
-    if (creatureView[offset + PROPS.CREATURE.IS_ACTIVE] !== 1) continue
-    ctx.fillRect(
-      creatureView[offset + PROPS.CREATURE.X] * scaleX,
-      creatureView[offset + PROPS.CREATURE.Y] * scaleY,
-      1,
-      1,
-    )
+  const creatureView = currentSet.creatures
+  if (creatureView) {
+    const creatureCount = views.globals[PROPS.GLOBALS.CREATURE_COUNT] || 0
+    for (let i = 0; i < creatureCount; i++) {
+      const offset = i * STRIDE.CREATURE
+      if (creatureView[offset + PROPS.CREATURE.IS_ACTIVE] !== 1) continue
+      ctx.fillRect(
+        creatureView[offset + PROPS.CREATURE.X] * scaleX,
+        creatureView[offset + PROPS.CREATURE.Y] * scaleY,
+        1,
+        1,
+      )
+    }
   }
 
   const zoom = props.world.camera.zoom || 1

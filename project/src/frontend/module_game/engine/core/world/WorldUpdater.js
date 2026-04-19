@@ -66,8 +66,6 @@ export const WorldUpdater = {
       world.weather.windSpeed = globals[PROPS.GLOBALS.WIND_SPEED]
       world.disasterSystem.earthquakeTimer = globals[PROPS.GLOBALS.EARTHQUAKE_TIMER]
 
-      world.chunkManager.clear()
-
       const entityCounts = {
         creature: globals[PROPS.GLOBALS.CREATURE_COUNT],
         animal: globals[PROPS.GLOBALS.ANIMAL_COUNT],
@@ -76,41 +74,41 @@ export const WorldUpdater = {
         tornado: globals[PROPS.GLOBALS.TORNADO_COUNT],
         mine: globals[PROPS.GLOBALS.MINE_COUNT],
         resource: globals[PROPS.GLOBALS.RESOURCE_COUNT],
-        village: globals[PROPS.GLOBALS.VILLAGE_COUNT], // 마을 추가
+        village: globals[PROPS.GLOBALS.VILLAGE_COUNT],
       }
 
-      // 복수형 변환 맵 (엔진 내 View 이름과 매칭)
+      // [Optimization/BugFix] 방어적 렌더링: 버퍼 교체 시점에 데이터가 비어있으면 렌더링 건너뜀 (깜빡임 방지)
+      const totalCount = 
+        entityCounts.creature + entityCounts.animal + entityCounts.plant + 
+        entityCounts.building + entityCounts.resource + entityCounts.tornado
+
+      if (totalCount === 0 && (world._lastTotalCount || 0) > 0) {
+        // 데이터가 아직 준비되지 않은 경우, 기존 청크매니저를 유지하여 잔상/깜빡임 방지
+        return
+      }
+      world._lastTotalCount = totalCount
+
+      // (C) 메인 스레드 청크 매니저 업데이트 (렌더링 컬링용)
+      // [Security] clear() 대신 clearAll()을 사용하여 정적 객체 누적(Ghosting) 방지
+      world.chunkManager.clearAll()
+
       const pluralMap = {
         creature: 'creatures',
         animal: 'animals',
         plant: 'plants',
         building: 'buildings',
-        tornado: 'tornadoes', // tornado -> tornadoes 버그 수정
+        tornado: 'tornadoes',
         mine: 'mines',
         resource: 'resources',
         village: 'villages',
       }
 
-      // (C) 메인 스레드 청크 매니저 업데이트 (렌더링 컬링용)
-      world.chunkManager.clear()
-      
-      // [Optimization] 매 프레임 수천 개의 임시 객체 생성을 막기 위해 SpatialProxy 풀 사용 (INP 해결 핵심)
       if (!world.spatialProxies) world.spatialProxies = []
       let proxyIdx = 0
 
-      const frontIndex = globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+      // [Atomic Load] Atomics.load를 사용하여 워커의 쓰기가 완료된 최신 인덱스를 안전하게 가져옴
+      const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
       const currentSet = world.views.sets[frontIndex]
-
-      // [Optimization/BugFix] 방어적 렌더링: 버퍼 교체 시점에 데이터가 비어있으면 렌더링 건너뜀 (깜빡임 방지)
-      const totalCount = 
-        entityCounts.creature + entityCounts.animal + entityCounts.plant + 
-        entityCounts.building + entityCounts.resource
-      
-      if (totalCount === 0 && (world._lastTotalCount || 0) > 0) {
-        // 데이터가 아직 준비되지 않은 것으로 간주하고 이전 프레임의 청크매니저 유지
-        return
-      }
-      world._lastTotalCount = totalCount
 
       for (const type in entityCounts) {
         const count = entityCounts[type]
@@ -129,7 +127,6 @@ export const WorldUpdater = {
         for (let i = 0; i < count; i++) {
           const offset = i * stride
           if (view[offset] === 1) { // IS_ACTIVE
-            // 객체 생성 대신 풀에서 꺼내 재사용
             if (!world.spatialProxies[proxyIdx]) {
               world.spatialProxies[proxyIdx] = { _type: '', id: 0, x: 0, y: 0, size: 0 }
             }
@@ -146,15 +143,14 @@ export const WorldUpdater = {
       }
       
       world.pathSystem.initSharedState(world)
+      world.particleSystem.update(deltaTime)
+      world.interactionSystem.update(deltaTime, world)
 
       world.bgUpdateTimer += deltaTime
       if (world.bgUpdateTimer >= 2000) {
         world.needsBackgroundUpdate = true
         world.bgUpdateTimer = 0
       }
-
-      world.particleSystem.update(deltaTime)
-      world.interactionSystem.update(deltaTime, world) // world 추가 전달
     }
   }
 }

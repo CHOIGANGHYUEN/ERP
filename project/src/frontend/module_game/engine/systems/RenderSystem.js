@@ -23,7 +23,7 @@ export class RenderSystem {
     }
 
     // [Performance Optimization] 프레임당 가비지 생성을 방지하기 위한 정적 버킷 및 풀 (Zero-GC)
-    this.buckets = []
+    this.buckets = new Map() // [Hardening] 맵(Map)을 사용하여 안정적 인덱싱 및 빠른 비우기 지원
     this.arrayPool = []
     this.poolIdx = 0
   }
@@ -81,14 +81,18 @@ export class RenderSystem {
 
     // ── 1. 동적 배경 업데이트 (길, 건물 등 자주 변하는 요소) ───────────────
     if (world.needsBackgroundUpdate) {
-      const globals = world.views.globals
-      const frontIndex = globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+      // [Atomic Load] 배경 업데이트 시에도 워커와의 동기화를 위해 원자적 읽기 수행
+      const { globals, globalsInt32 } = world.views
+      const frontIndex = Atomics.load(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+      if (frontIndex !== 0 && frontIndex !== 1) return
+
       const currentSet = world.views.sets[frontIndex]
+      if (!currentSet) return
 
       const villageView = currentSet.villages
-      const villageCount = globals[PROPS.GLOBALS.VILLAGE_COUNT]
+      const villageCount = Atomics.load(globalsInt32, PROPS.GLOBALS.VILLAGE_COUNT)
       const buildingView = currentSet.buildings
-      const buildingCount = globals[PROPS.GLOBALS.BUILDING_COUNT]
+      const buildingCount = Atomics.load(globalsInt32, PROPS.GLOBALS.BUILDING_COUNT)
       const ctx = world.bgBufferCtx
 
       ctx.clearRect(0, 0, world.width, world.height)
@@ -154,20 +158,24 @@ export class RenderSystem {
     }
     const drawables = world.chunkManager.query(viewRange)
     
-    // [Nuclear Optimization] O(N log N) 정렬 대신 O(N) Y-버킷 정렬 도입 (Zero-Allocation 버전)
+    // [Nuclear Optimization] Y-버킷 정렬 (Zero-Allocation + Hard Clear)
     this.poolIdx = 0 
+    this.buckets.clear() // 매 프레임 버킷을 완전히 비워 잔상 원천 차단
     let minY = 99999, maxY = -99999
-
+    
     for (let i = 0; i < drawables.length; i++) {
-      const obj = drawables[i]
-      const yKey = Math.floor(obj.y)
-      if (!this.buckets[yKey] || this.buckets[yKey]._frame !== timestamp) {
-          this.buckets[yKey] = this._getArrayFromPool()
-          this.buckets[yKey]._frame = timestamp 
-      }
-      this.buckets[yKey].push(obj)
-      if (yKey < minY) minY = yKey
-      if (yKey > maxY) maxY = yKey
+        const obj = drawables[i]
+        const yKey = Math.floor(obj.y)
+        if (isNaN(yKey)) continue // 유효하지 않은 좌표 방어
+
+        let bucket = this.buckets.get(yKey)
+        if (!bucket) {
+            bucket = this._getArrayFromPool()
+            this.buckets.set(yKey, bucket)
+        }
+        bucket.push(obj)
+        if (yKey < minY) minY = yKey
+        if (yKey > maxY) maxY = yKey
     }
 
     // 그림자 선 렌더링 (모든 엔티티 통합)
@@ -176,8 +184,8 @@ export class RenderSystem {
     // 버킷 순회하며 렌더링 (minY ~ maxY 범위로 최적화)
     if (drawables.length > 0) {
       for (let y = minY; y <= maxY; y++) {
-        const bucket = this.buckets[y]
-        if (!bucket || bucket._frame !== timestamp) continue
+        const bucket = this.buckets.get(y)
+        if (!bucket) continue
         for (let i = 0; i < bucket.length; i++) {
           const obj = bucket[i]
           const instance = this.renderProxies[obj._type]
