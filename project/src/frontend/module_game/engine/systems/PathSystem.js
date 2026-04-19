@@ -73,3 +73,108 @@ export class PathSystem {
     }
   }
 }
+
+/**
+ * A* Pathfinding with safety limit (MAX_ITERATIONS)
+ */
+export function findPath(world, start, target) {
+  const gridSize = 16;
+  const cols = Math.ceil(world.width / gridSize);
+  const rows = Math.ceil(world.height / gridSize);
+
+  const startCoord = {
+    x: Math.floor(start.x / gridSize),
+    y: Math.floor(start.y / gridSize)
+  };
+  const targetCoord = {
+    x: Math.floor(target.x / gridSize),
+    y: Math.floor(target.y / gridSize)
+  };
+
+  const openSet = [startCoord];
+  const cameFrom = new Map();
+  const gScore = new Map();
+  const fScore = new Map();
+
+  const posKey = (p) => `${p.x},${p.y}`;
+  gScore.set(posKey(startCoord), 0);
+  fScore.set(posKey(startCoord), heuristic(startCoord, targetCoord));
+
+  let iterationCount = 0;
+  const MAX_ITERATIONS = 500; // Safety limit to prevent freezes
+
+  while (openSet.length > 0) {
+    iterationCount++;
+    if (iterationCount > MAX_ITERATIONS) {
+      console.error('🚨 PathSystem 무한 루프 감지! 타겟에 도달할 수 없습니다:', target);
+      return null;
+    }
+
+    // Get node in openSet with lowest fScore
+    let current = openSet[0];
+    let lowestF = fScore.get(posKey(current));
+    let currentIndex = 0;
+
+    for (let i = 1; i < openSet.length; i++) {
+      const f = fScore.get(posKey(openSet[i]));
+      if (f < lowestF) {
+        lowestF = f;
+        current = openSet[i];
+        currentIndex = i;
+      }
+    }
+
+    if (current.x === targetCoord.x && current.y === targetCoord.y) {
+      return reconstructPath(cameFrom, current, gridSize);
+    }
+
+    openSet.splice(currentIndex, 1);
+
+    const neighbors = [
+      { x: current.x + 1, y: current.y },
+      { x: current.x - 1, y: current.y },
+      { x: current.x, y: current.y + 1 },
+      { x: current.x, y: current.y - 1 }
+    ];
+
+    for (const neighbor of neighbors) {
+      if (neighbor.x < 0 || neighbor.x >= cols || neighbor.y < 0 || neighbor.y >= rows) continue;
+      
+      // Collision check
+      if (world.terrain) {
+        const type = world.terrain[neighbor.y * cols + neighbor.x];
+        if (type === 2) continue; // HIGH_MOUNTAIN is blocking
+      }
+
+      const tentativeGScore = (gScore.get(posKey(current)) || 0) + 1;
+      if (tentativeGScore < (gScore.get(posKey(neighbor)) || Infinity)) {
+        cameFrom.set(posKey(neighbor), current);
+        gScore.set(posKey(neighbor), tentativeGScore);
+        const f = tentativeGScore + heuristic(neighbor, targetCoord);
+        fScore.set(posKey(neighbor), f);
+        
+        if (!openSet.some(p => p.x === neighbor.x && p.y === neighbor.y)) {
+          openSet.push(neighbor);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function heuristic(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function reconstructPath(cameFrom, current, gridSize) {
+  const path = [];
+  let curr = current;
+  const posKey = (p) => `${p.x},${p.y}`;
+  
+  while (cameFrom.has(posKey(curr))) {
+    path.push({ x: curr.x * gridSize + gridSize / 2, y: curr.y * gridSize + gridSize / 2 });
+    curr = cameFrom.get(posKey(curr));
+  }
+  return path.reverse();
+}

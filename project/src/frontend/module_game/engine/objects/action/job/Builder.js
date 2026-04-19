@@ -1,5 +1,6 @@
 import { MoveTask } from '../../tasks/MoveTask.js'
 import { BuildTask } from '../../tasks/BuildTask.js'
+import { findPath } from '../../../systems/PathSystem.js'
 
 export const BUILDER = (creature, world, _candidates) => {
   if (!creature.village) return creature.wander(world)
@@ -56,7 +57,20 @@ export const BUILDER = (creature, world, _candidates) => {
       creature.wander(world)
     }
   } else {
-    creature.taskQueue.push(new MoveTask(targetBuilding))
-    creature.taskQueue.push(new BuildTask(targetBuilding))
+    console.log('[DEBUG] 1. 건설 프로세스 진입: ', targetBuilding.id);
+    
+    // 💡 경로 탐색 시도 (A* with MAX_ITERATIONS)
+    const path = findPath(world, creature, targetBuilding);
+    console.log('[DEBUG] 2. 길찾기 시도 완료');
+
+    if (path) {
+      // 경로가 있다면 이동 및 건설 타스크 할당
+      creature.taskQueue.push(new MoveTask(targetBuilding))
+      creature.taskQueue.push(new BuildTask(targetBuilding))
+      console.log('[DEBUG] 3. 이동 및 건설 타스크 부여 완료');
+    } else {
+      console.log('[DEBUG] 2-1. 경로를 찾을 수 없어 건설이 취소되었습니다.');
+      creature.wander(world);
+    }
   }
 }
