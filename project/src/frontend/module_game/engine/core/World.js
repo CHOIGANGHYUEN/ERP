@@ -176,7 +176,29 @@ export class World {
 
   stop() {
     this.isRunning = false
-    if (this.animationId) cancelAnimationFrame(this.animationId)
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId)
+      this.animationId = null
+    }
+    Logger.info('World', '월드 루프가 성공적으로 중단되었습니다.')
+  }
+
+  // 프레임 리소스 및 대규모 객체 해제 (Memory Hardening)
+  destroy() {
+    this.stop()
+    this.creatures = []
+    this.animals = []
+    this.plants = []
+    this.resources = []
+    if (this.chunkManager) this.chunkManager.clearAll()
+    
+    // Canvas GPU 리소스 해제 힌트
+    if (this.canvas) { this.canvas.width = 1; this.canvas.height = 1 }
+    if (this.bgCanvas) { this.bgCanvas.width = 1; this.bgCanvas.height = 1 }
+    if (this.bgBufferCanvas) { this.bgBufferCanvas.width = 1; this.bgBufferCanvas.height = 1 }
+    if (this.bgStaticCanvas) { this.bgStaticCanvas.width = 1; this.bgStaticCanvas.height = 1 }
+    
+    Logger.info('World', '월드 리소스가 정리되었습니다.')
   }
 
   // 워커 전용 백그라운드 연산 루프

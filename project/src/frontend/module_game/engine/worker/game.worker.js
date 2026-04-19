@@ -153,6 +153,18 @@ self.onmessage = (e) => {
           ...extInfo
         }
       })
+    } else if (type === 'GET_WORLD_SAVE_DATA') {
+      const worldData = world.creatures.map((c) => ({
+        x: c.x,
+        y: c.y,
+        color: c.color,
+        age: c.age,
+        profession: c.profession,
+      }))
+      self.postMessage({
+        type: 'WORLD_SAVE_DATA',
+        payload: { worldData }
+      })
     } else if (type === 'GET_WORLD_INVENTORY') {
       const totalInventory = { food: 0, wood: 0, stone: 0, iron: 0, gold: 0, knowledge: 0 }
       world.villages.forEach((v) => {

@@ -137,7 +137,8 @@ const {
   displayTime,
   zoomLevel,
   mapWidth,
-  mapHeight
+  mapHeight,
+  requestWorldSaveData
 } = useGameWorker(gameCanvas)
 
 // 2. Tools & UI Menus Logic
@@ -174,11 +175,11 @@ const { handleCanvasClick } = useGameInteraction(
 
 // API Handlers
 const handleSave = async () => {
-  const worldInstance = getWorldInstance()
-  if (!worldInstance) return
-  const worldData = worldInstance.creatures.map((c) => ({
-    x: c.x, y: c.y, color: c.color, age: c.age, profession: c.profession,
-  }))
+  const worldData = await requestWorldSaveData()
+  if (!worldData || worldData.length === 0) {
+    alert('저장할 월드 데이터가 없거나 워커가 응답하지 않습니다.')
+    return
+  }
   try {
     await saveWorld({
       worldName: `Mock World ${new Date().toLocaleTimeString()}`,

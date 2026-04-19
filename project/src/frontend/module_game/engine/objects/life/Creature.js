@@ -50,10 +50,6 @@ export class Creature extends Entity {
     this.familyId = 0
     this.tradeTimer = 0 // MERCHANT 교역 타이머
 
-    this.tradeTimer = 0 // MERCHANT 교역 타이머
-
-    this.tradeTimer = 0 // MERCHANT 교역 타이머
-
     this.brain.init(this)
     FamilySystem.assignFamily(this)
   }
@@ -121,8 +117,11 @@ export class Creature extends Entity {
       this.workEfficiency += 0.2 // 채집 및 작업 속도 20% 증가
       this.speed += 0.1
 
-      const idx = world.creatures.indexOf(this)
-      if (idx !== -1) world.showSpeechBubble(idx, 'creature', `⭐ Lv.${this.level} 달성!`, 3000)
+      // [Optimization] 전수 조사(O(N)) 대신 고유 ID 사용 및 레벨업 메세지 최적화
+      // 인구수가 많을 때 메인 스레드 메세지 큐 병목 방지를 위해 특정 레벨 단위로만 출력
+      if (this.level % 5 === 0 || this.level < 10) {
+        world.showSpeechBubble(this.id, 'creature', `⭐ Lv.${this.level} 달성!`, 3000)
+      }
       world.spawnParticle(this.x, this.y, { color: '#f1c40f', count: 15, speed: 60 }) // 레벨업 파티클
     }
   }

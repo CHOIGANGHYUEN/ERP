@@ -71,13 +71,14 @@ export const VillageActions = {
     
     const isBuildingHouse = village.buildings.some((b) => b.type === 'HOUSE' && !b.isConstructed)
 
-    // 집 건설 트리거
-    if (population > housingCapacity && !isBuildingHouse && village.creatures.length > 0) {
+    // 집 건설 트리거 (인구 대비 주거지 부족 + 건설 중인 집이 없음 + 최소 자원 보유)
+    if (population > housingCapacity && !isBuildingHouse && village.creatures.length > 0 && (village.inventory.wood || 0) >= 30) {
       const builder = village.creatures.find(c => c.profession === 'BUILDER' && (c.state === 'WANDERING' || c.state === 'IDLE'))
       if (builder) {
         const angle = Math.random() * Math.PI * 2
         const radius = 50 + Math.random() * village.radius * 0.5
         world.spawnBuilding(village.x + Math.cos(angle) * radius, village.y + Math.sin(angle) * radius, 'HOUSE', village)
+        village.inventory.wood -= 30 // 자원 즉시 차감 (워커 내에서 동기화)
         world.broadcastEvent(`[${village.name}]에 집이 부족하여 새 집을 짓습니다!`, '#e67e22')
       }
     }

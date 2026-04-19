@@ -163,8 +163,13 @@ export class EntitySpawnerSystem {
         : CARNIVORES.includes(type)
           ? 'CARNIVORE'
           : 'HERBIVORE'
-    let animal = world.animalPool.length > 0 ? world.animalPool.pop() : new Animal(x, y, actualType)
-    if (world.animalPool.length > 0) animal.reset(x, y, actualType)
+    let animal
+    if (world.animalPool.length > 0) {
+      animal = world.animalPool.pop()
+      animal.reset(x, y, actualType)
+    } else {
+      animal = new Animal(x, y, actualType)
+    }
     const SPECIES_PROPS = {
       RABBIT: { color: '#ecf0f1', size: 6 },
       DEER: { color: '#cd84f1', size: 10 },
@@ -247,9 +252,13 @@ export class EntitySpawnerSystem {
   }
 
   spawnResource(world, x, y, type) {
-    let resource =
-      world.resourcePool.length > 0 ? world.resourcePool.pop() : new Resource(x, y, type)
-    if (world.resourcePool.length > 0) resource.reset(x, y, type)
+    let resource
+    if (world.resourcePool.length > 0) {
+      resource = world.resourcePool.pop()
+      resource.reset(x, y, type)
+    } else {
+      resource = new Resource(x, y, type)
+    }
     const RESOURCE_COLORS = {
       food: '#e74c3c',
       wood: '#8e44ad',

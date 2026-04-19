@@ -247,11 +247,15 @@ export class BufferSyncSystem {
    * 고속 렌더 패스를 위한 무할당(Zero-Allocation) 동기화 메서드.
    * 새로운 객체를 생성하지 않고 전달받은 target의 속성을 직접 수정합니다.
    */
-   hydrate(world, target, type, id) {
+   hydrate(world, target, type, id, forcedIndex = null) {
     if (!world.views || id < 0) return false
     
     // [Atomic Load] Atomics.load를 사용하여 메모리 가시성 보장 및 데이터 레이스 방지
-    const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+    // forcedIndex가 제공되면 해당 인덱스(고정된 프레임 데이터)를 사용합니다.
+    const frontIndex = forcedIndex !== null 
+      ? forcedIndex 
+      : Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+      
     if (frontIndex !== 0 && frontIndex !== 1) return false // 인덱스 유효성 검사
 
     const set = world.views.sets[frontIndex]
@@ -318,11 +322,14 @@ export class BufferSyncSystem {
     return true
   }
 
-  getDataFromBuffer(world, type, id) {
+  getDataFromBuffer(world, type, id, forcedIndex = null) {
     if (!world.views || id < 0) return false
     
     // [Atomic Load] 데이터 원자성 보장
-    const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+    const frontIndex = forcedIndex !== null 
+      ? forcedIndex 
+      : Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+      
     if (frontIndex !== 0 && frontIndex !== 1) return null
 
     const set = world.views.sets[frontIndex]

@@ -26,6 +26,7 @@ export function useGameWorker(gameCanvas) {
   const selectedEntityData = ref(null)
   const worldInventory = ref(null)
   const chatLogs = ref([])
+  const saveResolve = ref(null)
 
   const getWorldInstance = () => worldInstance
 
@@ -70,9 +71,25 @@ export function useGameWorker(gameCanvas) {
   const initWorker = () => {
     if (!gameCanvas.value) return
 
-    gameWorker = new Worker(new URL('../engine/worker/game.worker.js', import.meta.url), {
-      type: 'module',
-    })
+    // [Lifecycle Security] 기존 실행 중인 워커와 인터벌이 있다면 즉시 종료 (Zombie Worker 방지)
+    if (gameWorker) {
+      console.warn('[useGameWorker] 기존 워커 인스턴스를 발견하여 종료합니다.')
+      gameWorker.terminate()
+      gameWorker = null
+    }
+    if (popInterval) {
+      clearInterval(popInterval)
+      popInterval = null
+    }
+
+    try {
+      gameWorker = new Worker(new URL('../engine/worker/game.worker.js', import.meta.url), {
+        type: 'module',
+      })
+    } catch (e) {
+      console.error('[useGameWorker] 워커 생성 실패:', e)
+      return
+    }
     worldInstance = new World(setupDI(), gameCanvas.value)
     worldInstanceReady.value = true
     mapWidth.value = worldInstance.width
@@ -130,7 +147,7 @@ export function useGameWorker(gameCanvas) {
           text: payload.text,
           color: payload.color || (isBubble ? '#ecf0f1' : '#f1c40f'),
         })
-        if (chatLogs.value.length > 500) chatLogs.value.shift()
+        if (chatLogs.value.length > 100) chatLogs.value.shift()
       } else if (type === 'ERROR_LOG') {
         const timeStr = payload.time || new Date().toLocaleTimeString()
         chatLogs.value.push({
@@ -139,8 +156,13 @@ export function useGameWorker(gameCanvas) {
           text: payload.message,
           color: '#e74c3c' // 빨간색 에러 표시
         })
-        if (chatLogs.value.length > 500) chatLogs.value.shift()
+        if (chatLogs.value.length > 100) chatLogs.value.shift()
         console.error(`[Worker Error - ${payload.tag}]`, payload.message, payload.stack)
+      } else if (type === 'WORLD_SAVE_DATA') {
+        if (saveResolve.value) {
+          saveResolve.value(payload.worldData)
+          saveResolve.value = null
+        }
       }
     }
 
@@ -162,9 +184,31 @@ export function useGameWorker(gameCanvas) {
     }, 200)
   }
 
+  const requestWorldSaveData = () => {
+    return new Promise((resolve) => {
+      if (!gameWorker) {
+        resolve([])
+        return
+      }
+      saveResolve.value = resolve
+      gameWorker.postMessage({ type: 'GET_WORLD_SAVE_DATA' })
+    })
+  }
+
   onBeforeUnmount(() => {
-    if (gameWorker) gameWorker.terminate()
-    if (popInterval) clearInterval(popInterval)
+    if (worldInstance) {
+      worldInstance.destroy()
+      worldInstanceReady.value = false
+      worldInstance = null
+    }
+    if (gameWorker) {
+      gameWorker.terminate()
+      gameWorker = null
+    }
+    if (popInterval) {
+      clearInterval(popInterval)
+      popInterval = null
+    }
   })
 
   return {
@@ -181,6 +225,7 @@ export function useGameWorker(gameCanvas) {
     displayTime,
     zoomLevel,
     mapWidth,
-    mapHeight
+    mapHeight,
+    requestWorldSaveData
   }
 }

@@ -41,9 +41,10 @@ export const CreatureSet = {
         const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
         if (injector) injector(creature, survivalDrive.payload, world)
       } 
-      // 2. 생존 우선순위가 아니면 직업 행동 탐색
-      else if (creature.taskQueue.length === 0) {
-        const searchRange = { x: creature.x - 800, y: creature.y - 800, width: 1600, height: 1600 }
+      // 2. 생존 우선순위가 아니면 직업 행동 탐색 (IDLE/WANDERING 상태일 때만)
+      else if (creature.taskQueue.length === 0 && ['IDLE', 'WANDERING'].includes(creature.state)) {
+        // [Optimization] 탐색 범위를 1600 -> 600으로 축소 (CPU 부하 대폭 감소)
+        const searchRange = { x: creature.x - 300, y: creature.y - 300, width: 600, height: 600 }
         const candidates = world.chunkManager.query(searchRange)
 
         const jobInjector = CreatureActions.JobInjectors[creature.profession]

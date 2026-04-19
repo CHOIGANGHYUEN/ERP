@@ -81,7 +81,7 @@ export class RenderSystem {
 
     // ── 1. 동적 배경 업데이트 (길, 건물 등 자주 변하는 요소) ───────────────
     if (world.needsBackgroundUpdate) {
-      // [Atomic Load] 배경 업데이트 시에도 워커와의 동기화를 위해 원자적 읽기 수행
+      // [Atomic Load] 배경 업데이트 시에도 워커와의 동기화를 위해 원자적 읽기 수행 (프레임 내 고정 index 사용)
       const { globals, globalsInt32 } = world.views
       const frontIndex = Atomics.load(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
       if (frontIndex !== 0 && frontIndex !== 1) return
@@ -127,7 +127,7 @@ export class RenderSystem {
         const offset = i * STRIDE.VILLAGE
         if (villageView[offset + PROPS.VILLAGE.IS_ACTIVE] === 1) {
           const v = this.renderProxies.village
-          world.bufferSyncSystem.hydrate(world, v, 'village', i)
+          world.bufferSyncSystem.hydrate(world, v, 'village', i, frontIndex)
           v.nation = { color: v.color, name: '국가' }
           v.render(ctx)
         }
@@ -137,7 +137,7 @@ export class RenderSystem {
         const offset = i * STRIDE.BUILDING
         if (buildingView[offset + PROPS.BUILDING.IS_CONSTRUCTED] === 1) {
           const b = this.renderProxies.building
-          world.bufferSyncSystem.hydrate(world, b, 'building', i)
+          world.bufferSyncSystem.hydrate(world, b, 'building', i, frontIndex)
           b.render(ctx)
         }
       }
@@ -149,6 +149,10 @@ export class RenderSystem {
     }
 
     world.ctx.drawImage(world.bgCanvas, 0, 0)
+
+    // [Atomic Load] 메인 렌더 패스에서도 프레임 시작 시점에 인덱스 고정 (Tearing 방지)
+    const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+    if (frontIndex !== 0 && frontIndex !== 1) return
 
     const viewRange = {
       x: world.camera.x - 50,
@@ -166,16 +170,20 @@ export class RenderSystem {
     for (let i = 0; i < drawables.length; i++) {
         const obj = drawables[i]
         const yKey = Math.floor(obj.y)
-        if (isNaN(yKey)) continue // 유효하지 않은 좌표 방어
+        // [Hardening] 유효하지 않거나 무한대인 좌표 방어
+        if (!Number.isFinite(yKey)) continue 
 
-        let bucket = this.buckets.get(yKey)
+        // [Hardening] 월드 경계 내로 키 제한 (루프 프리징 방지)
+        const clampedY = Math.max(0, Math.min(yKey, (world.height || 3200)))
+
+        let bucket = this.buckets.get(clampedY)
         if (!bucket) {
             bucket = this._getArrayFromPool()
-            this.buckets.set(yKey, bucket)
+            this.buckets.set(clampedY, bucket)
         }
         bucket.push(obj)
-        if (yKey < minY) minY = yKey
-        if (yKey > maxY) maxY = yKey
+        if (clampedY < minY) minY = clampedY
+        if (clampedY > maxY) maxY = clampedY
     }
 
     // 그림자 선 렌더링 (모든 엔티티 통합)
@@ -190,7 +198,7 @@ export class RenderSystem {
           const obj = bucket[i]
           const instance = this.renderProxies[obj._type]
           if (instance) {
-            const success = world.bufferSyncSystem.hydrate(world, instance, obj._type, obj.id)
+            const success = world.bufferSyncSystem.hydrate(world, instance, obj._type, obj.id, frontIndex)
             if (!success || instance.isDead) continue
 
             if (obj._type === 'building' && instance.isConstructed) continue

@@ -22,8 +22,6 @@ export class Animal extends Entity {
     this.color = type === 'CARNIVORE' ? '#e67e22' : '#ecf0f1'
     this.resourceTimer = 0
 
-    this.resourceTimer = 0
-
     this.brain.init(this)
   }
 
@@ -54,9 +52,16 @@ export class Animal extends Entity {
       if (this.resourceTimer > 10000) { // 10초 주기
         this.resourceTimer = 0
         // 주민이 근처에 있다면 주민의 피로/허기를 조금 줄여주거나 자원을 드랍
-        const nearbyCreatures = world.creatures.filter(c => !c.isDead && c.distanceTo(this) < 100)
+        // [Optimization] world.creatures.filter(O(N)) 대신 ChunkManager.query(O(1)) 사용
+        const nearby = world.chunkManager.query({ 
+           x: this.x - 100, y: this.y - 100, width: 200, height: 200 
+        })
+        
         let hasFarmer = false
-        for (const c of nearbyCreatures) {
+        for (const c of nearby) {
+           if (c._type !== 'creature' || c.isDead) continue
+           if (this.distanceTo(c) > 100) continue
+
            // 근처 주민 감성 증가 (피로 감소, 동물 구경)
            c.needsFatigue = Math.max(0, c.needsFatigue - 5)
            if (c.profession === 'FARMER') hasFarmer = true
