@@ -9,16 +9,17 @@ export class EatTask extends BaseTask {
 
   execute(creature, deltaTime, world) {
     this.status = 'RUNNING'
-    
+
     if (!this.target || this.target.isDead) {
       this.status = 'FAILED'
       return this.status
     }
 
     const dist = creature.distanceTo(this.target)
-    if (dist <= 50) { // 적당히 접근
+    if (dist <= 50) {
+      // 적당히 접근
       creature.state = 'EATING' // 먹는 행동 묘사
-      
+
       if (this.target.type === 'food' || this.target.type === 'crop') {
         this.target.die(world)
         CreatureEmotion.fulfillHunger(creature)
@@ -29,8 +30,9 @@ export class EatTask extends BaseTask {
           CreatureEmotion.fulfillHunger(creature)
           this.status = 'COMPLETED'
         } else {
-           // 마을에 식량이 없다면 굶주림(실패)
+          // 마을에 식량이 없다면 굶주림(실패)
           this.status = 'FAILED'
+          this.failReason = 'NO_FOOD'
         }
       } else {
         this.status = 'FAILED'

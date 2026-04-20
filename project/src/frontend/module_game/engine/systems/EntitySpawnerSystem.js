@@ -12,7 +12,8 @@ export class EntitySpawnerSystem {
   getSafeLandPosition(world, preferTerrainType = -1) {
     let x, y
     let attempts = 0
-    let bestX = 0, bestY = 0
+    let bestX = 0,
+      bestY = 0
     let bestScore = -1
 
     while (attempts < 50) {
@@ -43,7 +44,9 @@ export class EntitySpawnerSystem {
       }
     }
     // 50번 못찾으면 차선책 반환 또는 중앙
-    return (bestX !== 0 || bestY !== 0) ? { x: bestX, y: bestY } : { x: world.width / 2, y: world.height / 2 }
+    return bestX !== 0 || bestY !== 0
+      ? { x: bestX, y: bestY }
+      : { x: world.width / 2, y: world.height / 2 }
   }
 
   initNature(world) {
@@ -94,14 +97,14 @@ export class EntitySpawnerSystem {
       else if (rand > 0.35) mType = 'copper'
       else if (rand > 0.2) mType = 'iron'
       else if (rand > 0.1) mType = 'coal'
-      
+
       const pos = this.getSafeLandPosition(world, 1) // 1: 낮은산(LOW_MOUNTAIN)
       world.mines.push(new Mine(pos.x, pos.y, mType))
     }
   }
 
   spawnCreature(world, x, y) {
-    console.log(`🐣 [Spawner] spawnCreature 시작 (isHeadless: ${world.isHeadless})`, { x, y });
+    console.log(`🐣 [Spawner] spawnCreature 시작 (isHeadless: ${world.isHeadless})`, { x, y })
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_CREATURE', payload: { x, y } })
     let creature
@@ -123,16 +126,16 @@ export class EntitySpawnerSystem {
     }
 
     if (!joinedVillage) {
-      console.log('🆕 [Spawner] 새로운 마을 생성을 시작합니다...');
+      console.log('🆕 [Spawner] 새로운 마을 생성을 시작합니다...')
       const newVillage = new Village(x, y, `마을 ${world.villages.length + 1}`)
-      console.log(`🆕 [Spawner] 새로운 마을 생성 완료: ${newVillage.name}`);
+      console.log(`🆕 [Spawner] 새로운 마을 생성 완료: ${newVillage.name}`)
       world.villages.push(newVillage)
       newVillage.addCreature(creature)
 
       let assignedNation = null
       for (const nation of world.nations) {
         if (nation.villages.length === 0) continue
-        
+
         // [Hardening] 스프레드 연산자(...) 대신 reduce를 사용하여 콜스택 초과 방지 (Stack Overflow 방어)
         const closestVillageDist = nation.villages.reduce((minDist, v) => {
           const dist = v.distanceTo(newVillage)
@@ -165,6 +168,12 @@ export class EntitySpawnerSystem {
   spawnAnimal(world, x, y, type) {
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_ANIMAL', payload: { x, y, type } })
+
+    // 💡 [Freezing 방어] 동물 개체수 제한 적용
+    if (world.animals.length >= 1024) {
+      return
+    }
+
     const HERBIVORES = ['RABBIT', 'DEER', 'SHEEP', 'COW', 'BOAR', 'ELEPHANT', 'MAMMOTH']
     const CARNIVORES = ['WOLF', 'BEAR', 'FOX', 'TIGER', 'LION']
     const actualType =
@@ -215,14 +224,14 @@ export class EntitySpawnerSystem {
       })
     const snapX = Math.floor(x / 32) * 32 + 16,
       snapY = Math.floor(y / 32) * 32 + 16
-    
+
     // [Optimization] O(N) some() 체크 대신 ChunkManager 공간 쿼리 사용
     const queryRange = { x: snapX - 16, y: snapY - 16, width: 32, height: 32 }
     const nearby = world.chunkManager.query(queryRange)
     const b = new Building(snapX, snapY, type)
     b.occupants = []
     b.capacity = type === 'HOUSE' ? 1 + (b.tier || 1) : 0
-    
+
     // [Safety] Terrain validation before push
     if (world.terrain) {
       const cols = Math.ceil(world.width / 16)
@@ -230,11 +239,15 @@ export class EntitySpawnerSystem {
       const ty = Math.floor(snapY / 16)
       const terrainType = world.terrain[ty * cols + tx]
       if (terrainType === 2 || terrainType >= 3) {
-        console.warn(`[EntitySpawnerSystem] ${type} 소환 위치가 산이나 바다입니다. 취소합니다.`, { snapX, snapY, terrainType })
+        console.warn(`[EntitySpawnerSystem] ${type} 소환 위치가 산이나 바다입니다. 취소합니다.`, {
+          snapX,
+          snapY,
+          terrainType,
+        })
         return
       }
     }
-    
+
     world.buildings.push(b)
     if (village) village.addBuilding(b)
   }

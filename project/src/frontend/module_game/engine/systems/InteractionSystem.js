@@ -25,6 +25,18 @@ export class InteractionSystem {
         const p = world.spatialProxies[i]
         this.entityMap.set(`${p._type}_${p.id}`, p)
       }
+
+      this.bubbles.forEach((b) => {
+        // 동물과 크리처 구분 처리 포함 빠른 조회
+        const proxy =
+          this.entityMap.get(`${b.entityType}_${b.entityId}`) ||
+          this.entityMap.get(`${b.entityType === 'animal' ? 'animal' : b.entityType}_${b.entityId}`)
+        if (proxy) {
+          b.x = proxy.x
+          b.y = proxy.y
+          b.size = proxy.size || 16
+        }
+      })
     }
 
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
@@ -44,9 +56,8 @@ export class InteractionSystem {
     ctx.font = 'bold 12px "Pretendard", sans-serif'
 
     this.bubbles.forEach((b) => {
-      // [Optimization] .find() 대신 ID 맵에서 고속 조회
-      const entity = this.entityMap ? this.entityMap.get(`${b.entityType}_${b.entityId}`) : null
-      if (!entity) return
+      // proxy를 찾지 못해 좌표가 없는 말풍선은 렌더링 스킵
+      if (b.x === undefined || b.y === undefined) return
 
       const alpha = Math.min(1, b.lifeTime / 300) // 마지막 300ms 동안 서서히 페이드아웃
       ctx.globalAlpha = alpha
@@ -56,8 +67,8 @@ export class InteractionSystem {
       const paddingY = 6
       const boxWidth = textWidth + paddingX * 2
       const boxHeight = 22
-      const x = entity.x
-      const y = entity.y - (entity.size || 16) - 8 // 개체 머리 위로 띄움
+      const x = b.x
+      const y = b.y - b.size - 8 // 개체 머리 위로 띄움
 
       // 말풍선 배경
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'

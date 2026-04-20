@@ -1,21 +1,25 @@
 export const BuildingActions = {
   update: (building, deltaTime, world) => {
-    // 완성된 건물 효과
-    if (building.isConstructed) {
-      building.effectTimer += deltaTime
-      if (building.effectTimer >= 5000) {
-        building.effectTimer = 0
-        BuildingActions.applyEconomicEffect(building)
-      }
+    try {
+      // 완성된 건물 효과
+      if (building.isConstructed) {
+        building.effectTimer += deltaTime
+        if (building.effectTimer >= 5000) {
+          building.effectTimer = 0
+          BuildingActions.applyEconomicEffect(building)
+        }
 
-      // 티어 자동 업그레이드 조건 체크
-      if (building.village && building.tier < building.maxTier) {
-        building.upgradeTimer += deltaTime
-        if (building.upgradeTimer >= 5000) {
-          building.upgradeTimer = 0
-          BuildingActions.tryUpgrade(building)
+        // 티어 자동 업그레이드 조건 체크
+        if (building.village && building.tier < building.maxTier) {
+          building.upgradeTimer += deltaTime
+          if (building.upgradeTimer >= 5000) {
+            building.upgradeTimer = 0
+            BuildingActions.tryUpgrade(building)
+          }
         }
       }
+    } catch (e) {
+      console.error(`[Building Action Error] ID ${building?.id}:`, e)
     }
   },
 
@@ -87,5 +91,5 @@ export const BuildingActions = {
     if (building.type === 'HOUSE') {
       building.capacity = 2 * building.tier
     }
-  }
+  },
 }

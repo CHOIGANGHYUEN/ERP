@@ -138,7 +138,7 @@ const {
   zoomLevel,
   mapWidth,
   mapHeight,
-  requestWorldSaveData
+  requestWorldSaveData,
 } = useGameWorker(gameCanvas)
 
 // 2. Tools & UI Menus Logic
@@ -151,7 +151,7 @@ const {
   showLogsPanel,
   showMinimapPanel,
   toggleTool,
-  handleAction
+  handleAction,
 } = useGameTools(getWorldInstance)
 
 // 3. Camera (Drag/Zoom) Logic
@@ -161,7 +161,7 @@ const {
   handleMouseMove,
   handleMouseUp,
   handleWheel,
-  syncCameraToWorker
+  syncCameraToWorker,
 } = useGameCamera(worldInstanceReady, getWorldInstance, gameCanvas)
 
 // 4. Interaction (Clicking canvas) Logic
@@ -170,7 +170,7 @@ const { handleCanvasClick } = useGameInteraction(
   gameCanvas,
   activeTool,
   isClickDrag,
-  selectedEntityData
+  selectedEntityData,
 )
 
 // API Handlers
@@ -209,10 +209,15 @@ const loadWorldData = (world) => {
   if (world.worldData && Array.isArray(world.worldData)) {
     worldInstance.loadCreatures(world.worldData)
   } else {
-    worldInstance.creatures = []
+    // 💡 [병목 개선] 개체를 하나씩 소환하여 수천 개의 Worker 메시지를 쏘는 대신 일괄(Batch) 배열로 전달
+    const dummyData = []
     for (let i = 0; i < world.population; i++) {
-      worldInstance.spawnCreature(Math.random() * worldInstance.width, Math.random() * worldInstance.height)
+      dummyData.push({
+        x: Math.random() * worldInstance.width,
+        y: Math.random() * worldInstance.height,
+      })
     }
+    worldInstance.loadCreatures(dummyData)
   }
 }
 

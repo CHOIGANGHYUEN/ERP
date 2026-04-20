@@ -1,13 +1,16 @@
 export const VillageActions = {
   update: (village, deltaTime, world) => {
-    village.tickTimer += deltaTime
-    if (village.tickTimer >= 1000) {
-      village.tickTimer = 0
+    try {
+      village.tickTimer += deltaTime
+      if (village.tickTimer >= 1000) {
+        village.tickTimer = 0
 
-      // console.log(`[Village:${village.name}] --- 1초 틱 업데이트 시작 ---`);
-      VillageActions.handleExpansion(village)
-      VillageActions.handleEconomy(village, world)
-      VillageActions.handleConstructionAI(village, world)
+        VillageActions.handleExpansion(village)
+        VillageActions.handleEconomy(village, world)
+        VillageActions.handleConstructionAI(village, world)
+      }
+    } catch (e) {
+      console.error(`[Village Action Error] ID ${village?.id}:`, e)
     }
   },
 
@@ -68,8 +71,6 @@ export const VillageActions = {
           const type = item.resourceType || item.type
           village.inventory[type] = (village.inventory[type] || 0) + 1
 
-          console.log(`[Economy] 영토 내 자원 발견 및 수집: ${type} (거리: ${Math.floor(dist)})`)
-
           if (['meat', 'milk', 'biomass'].includes(type)) {
             village.inventory.food = (village.inventory.food || 0) + 1
           }
@@ -79,77 +80,78 @@ export const VillageActions = {
     })
   },
 
-  // 3. 건설 AI
+  // 3. 건설 AI (최적화 및 버그 수정 버전)
   handleConstructionAI: (village, world) => {
+    const currentTime = Date.now()
+
+    // [핵심 수정] 판단 쿨다운: 3초(3000ms)에 한 번만 건설 여부를 판단함
+    // village 객체에 lastConstructionCheck 속성이 기록됩니다.
+    if (village.lastConstructionCheck && currentTime - village.lastConstructionCheck < 3000) {
+      return
+    }
+    village.lastConstructionCheck = currentTime
+
     const population = village.creatures.length
     const inv = village.inventory
 
+    // 1. 현재 주거 수용량 계산 (최적화: filter/reduce는 판단 시점에만 실행)
     const housingCapacity = village.buildings
       .filter((b) => b.type === 'HOUSE' && b.isConstructed)
       .reduce((sum, b) => sum + (b.capacity || 2), 0)
 
+    // 2. 현재 건설 중인 집이 있는지 확인
     const isBuildingHouse = village.buildings.some((b) => b.type === 'HOUSE' && !b.isConstructed)
 
-    // [HOUSE] 건설 트리거 디버깅
+    // --- [HOUSE] 건설 로직 ---
     if (population > housingCapacity && !isBuildingHouse) {
-      console.log(`[Construction_AI] 집 부족 감지! (인구:${population}/수용량:${housingCapacity})`)
+      // 나무 자원 확인 (부족하면 여기서 중단)
+      if ((inv.wood || 0) < 30) {
+        return
+      }
 
-      if ((inv.wood || 0) >= 30) {
+      // 놀고 있는 빌더 찾기
+      const builder = village.creatures.find(
+        (c) => c.profession === 'BUILDER' && (c.state === 'WANDERING' || c.state === 'IDLE'),
+      )
+
+      if (builder) {
+        const angle = Math.random() * Math.PI * 2
+        const radius = 50 + Math.random() * (village.radius || 100) * 0.5
+        const spawnX = village.x + Math.cos(angle) * radius
+        const spawnY = village.y + Math.sin(angle) * radius
+
+        // 건물 스폰 및 자원 차감
+        world.spawnBuilding(spawnX, spawnY, 'HOUSE', village)
+        inv.wood -= 30
+
+        world.broadcastEvent(`[${village.name}]에 집이 부족하여 새 집을 짓습니다!`, '#e67e22')
+      } else {
+      }
+    }
+
+    // --- [MARKET] 건설 로직 ---
+    const hasMarket = village.buildings.some((b) => b.type === 'MARKET')
+    const isBuildingMarket = village.buildings.some((b) => b.type === 'MARKET' && !b.isConstructed)
+
+    if (population >= 10 && !hasMarket && !isBuildingMarket) {
+      // 시장 건설 자원 확인
+      if ((inv.wood || 0) >= 100 && (inv.stone || 0) >= 30) {
         const builder = village.creatures.find(
           (c) => c.profession === 'BUILDER' && (c.state === 'WANDERING' || c.state === 'IDLE'),
         )
 
         if (builder) {
           const angle = Math.random() * Math.PI * 2
-          const radius = 50 + Math.random() * village.radius * 0.5
+          const radius = 40 + Math.random() * 80
           const spawnX = village.x + Math.cos(angle) * radius
           const spawnY = village.y + Math.sin(angle) * radius
 
-          world.spawnBuilding(spawnX, spawnY, 'HOUSE', village)
-          inv.wood -= 30
-
-          console.log(
-            `[Construction_AI] 집 건설 시작! 빌더:${builder.id}, 위치:[${Math.floor(spawnX)}, ${Math.floor(spawnY)}]`,
-          )
-          world.broadcastEvent(`[${village.name}]에 집이 부족하여 새 집을 짓습니다!`, '#e67e22')
-        } else {
-          console.warn(`[Construction_AI] 집을 지어야 하지만 한가한 BUILDER가 없습니다.`)
-        }
-      } else {
-        console.log(
-          `[Construction_AI] 집을 지어야 하지만 나무가 부족합니다. (보유:${inv.wood}/필요:30)`,
-        )
-      }
-    }
-
-    // [MARKET] 건설 트리거 디버깅
-    const hasMarket = village.buildings.some((b) => b.type === 'MARKET')
-    const isBuildingMarket = village.buildings.some((b) => b.type === 'MARKET' && !b.isConstructed)
-
-    if (population >= 10 && !hasMarket && !isBuildingMarket) {
-      console.log(`[Construction_AI] 시장 건설 조건 충족 (인구 10명 이상)`)
-
-      if ((inv.wood || 0) >= 100 && (inv.stone || 0) >= 30) {
-        const builder = village.creatures.find((c) => c.profession === 'BUILDER')
-        if (builder) {
-          const angle = Math.random() * Math.PI * 2
-          const radius = 40 + Math.random() * 80
-          world.spawnBuilding(
-            village.x + Math.cos(angle) * radius,
-            village.y + Math.sin(angle) * radius,
-            'MARKET',
-            village,
-          )
+          world.spawnBuilding(spawnX, spawnY, 'MARKET', village)
           inv.wood -= 100
           inv.stone -= 30
 
-          console.log(`[Construction_AI] 시장 건설 시작! 위치 인근`)
           world.broadcastEvent(`[${village.name}]에 시장(Market)이 건설됩니다! 🏪`, '#f39c12')
-        } else {
-          console.warn(`[Construction_AI] 시장을 지을 빌더가 없습니다.`)
         }
-      } else {
-        console.log(`[Construction_AI] 시장 자원 부족 (W:${inv.wood}/100, S:${inv.stone}/30)`)
       }
     }
   },

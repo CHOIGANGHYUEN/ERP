@@ -10,10 +10,18 @@ export const BuildingSet = {
   },
 
   update: (building, deltaTime, world) => {
-    BuildingActions.update(building, deltaTime, world)
+    try {
+      BuildingActions.update(building, deltaTime, world)
+    } catch (e) {
+      console.error(`[BuildingSet Update Error] ID ${building?.id}:`, e)
+    }
   },
 
   render: (building, ctx, world) => {
-    BuildingRenders.render(building, ctx, world)
-  }
+    try {
+      BuildingRenders.render(building, ctx, world)
+    } catch (e) {
+      console.error(`[BuildingSet Render Error] ID ${building?.id}:`, e)
+    }
+  },
 }

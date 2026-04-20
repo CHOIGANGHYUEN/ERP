@@ -23,7 +23,7 @@ export function useGameWorker(gameCanvas) {
   const mapWidth = ref(0)
   const mapHeight = ref(0)
 
-  // [Optimization] 시뮬레이션 데이터(개체, 마을 등)는 구조가 크고 양방향 참조가 있을 수 있으므로 
+  // [Optimization] 시뮬레이션 데이터(개체, 마을 등)는 구조가 크고 양방향 참조가 있을 수 있으므로
   // shallowRef와 markRaw를 사용하여 Vue의 Deep Reactivity 추적(병목의 원인)을 방지합니다.
   const selectedEntityData = shallowRef(null)
   const worldInventory = shallowRef(null)
@@ -131,40 +131,55 @@ export function useGameWorker(gameCanvas) {
         }
       } else if (type === 'NATION_DETAILS') {
         if (selectedEntityData.value?.nation?.id === payload.id) {
-          selectedEntityData.value = markRaw({ ...selectedEntityData.value, nation: { ...selectedEntityData.value.nation, ...payload } })
+          selectedEntityData.value = markRaw({
+            ...selectedEntityData.value,
+            nation: { ...selectedEntityData.value.nation, ...payload },
+          })
         }
       } else if (type === 'WORLD_INVENTORY_DETAILS') {
         worldInventory.value = markRaw(payload)
       } else if (type === 'SPEECH_BUBBLE' || type === 'SYSTEM_MESSAGE') {
         const timeStr = new Date().toLocaleTimeString('ko-KR', {
-          hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
         })
         const isBubble = type === 'SPEECH_BUBBLE'
         if (isBubble) {
-          worldInstance.showSpeechBubble(payload.entityId, payload.entityType, payload.text, payload.duration)
+          worldInstance.showSpeechBubble(
+            payload.entityId,
+            payload.entityType,
+            payload.text,
+            payload.duration,
+          )
         }
-        
+
         const newLog = {
           time: timeStr,
-          sender: isBubble ? (payload.entityType === 'creature' ? `주민 ${payload.entityId || ''}` : '시스템') : '시스템 알림',
+          sender: isBubble
+            ? payload.entityType === 'creature'
+              ? `주민 ${payload.entityId || ''}`
+              : '시스템'
+            : '시스템 알림',
           text: payload.text,
           color: payload.color || (isBubble ? '#ecf0f1' : '#f1c40f'),
         }
-        const updatedLogs = [...chatLogs.value, newLog]
-        if (updatedLogs.length > 100) updatedLogs.shift()
-        chatLogs.value = updatedLogs
-
+        // 💡 [병목 개선] 배열 전개 연산자(...)를 계속 생성하는 대신 기존 배열에 push 후 슬라이싱
+        chatLogs.value.push(newLog)
+        if (chatLogs.value.length > 100) chatLogs.value.shift()
+        chatLogs.value = chatLogs.value.slice() // 반응형 갱신용 얕은 복사
       } else if (type === 'ERROR_LOG') {
         const timeStr = payload.time || new Date().toLocaleTimeString()
         const newLog = {
           time: timeStr,
           sender: `⚠️ ERROR [${payload.tag}]`,
           text: payload.message,
-          color: '#e74c3c' // 빨간색 에러 표시
+          color: '#e74c3c', // 빨간색 에러 표시
         }
-        const updatedLogs = [...chatLogs.value, newLog]
-        if (updatedLogs.length > 100) updatedLogs.shift()
-        chatLogs.value = updatedLogs
+        chatLogs.value.push(newLog)
+        if (chatLogs.value.length > 100) chatLogs.value.shift()
+        chatLogs.value = chatLogs.value.slice()
         console.error(`[Worker Error - ${payload.tag}]`, payload.message, payload.stack)
       } else if (type === 'WORLD_SAVE_DATA') {
         if (saveResolve.value) {
@@ -185,7 +200,9 @@ export function useGameWorker(gameCanvas) {
         const seasonMap = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER']
         season.value = seasonMap[globals[INDEX_SEASON]] || 'SPRING'
         zoomLevel.value = Math.round((worldInstance.camera.zoom || 1) * 100)
-        const hours = Math.floor(globals[INDEX_TIME_OF_DAY] / 1000).toString().padStart(2, '0')
+        const hours = Math.floor(globals[INDEX_TIME_OF_DAY] / 1000)
+          .toString()
+          .padStart(2, '0')
         displayTime.value = `${hours}:00`
         updateSelectedEntityData() // Sync selected entity info continuously
       }
@@ -234,6 +251,6 @@ export function useGameWorker(gameCanvas) {
     zoomLevel,
     mapWidth,
     mapHeight,
-    requestWorldSaveData
+    requestWorldSaveData,
   }
 }

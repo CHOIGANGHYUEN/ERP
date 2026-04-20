@@ -15,7 +15,13 @@ export class MoveTask extends BaseTask {
     this.status = 'RUNNING'
     creature.state = 'WANDERING' // 이동 중일 때의 렌더링 상태 지정
 
-    if (!this.target || this.target.isDead) {
+    // 💡 [프리징 원천 차단 2] 목표가 좌표를 상실(undefined)했을 때 연산이 NaN으로 오염되는 것(NaN Poisoning)을 방지
+    if (
+      !this.target ||
+      this.target.isDead ||
+      this.target.x === undefined ||
+      this.target.y === undefined
+    ) {
       this.status = 'FAILED'
       return this.status
     }
@@ -24,7 +30,7 @@ export class MoveTask extends BaseTask {
     if (dist <= this.threshold + (this.target.size || 0)) {
       this.status = 'COMPLETED'
     } else {
-      creature.moveToTarget(this.target.x, parseInt(this.target.y), deltaTime, world)
+      creature.moveToTarget(this.target.x, this.target.y, deltaTime, world)
     }
 
     return this.status

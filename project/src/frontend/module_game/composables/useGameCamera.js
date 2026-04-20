@@ -2,8 +2,14 @@ import { ref } from 'vue'
 
 export function useGameCamera(worldInstanceReady, getWorldInstance, gameCanvas) {
   const isClickDrag = ref(false)
+  let lastSyncTime = 0
 
   const syncCameraToWorker = () => {
+    // 💡 [버퍼 오버플로우 방지] 마우스 이벤트가 Worker 메시지 큐를 무한정 채우는 현상 방지 (약 60FPS 제한)
+    const currentTime = Date.now()
+    if (currentTime - lastSyncTime < 16) return
+    lastSyncTime = currentTime
+
     const worldInstance = getWorldInstance()
     if (worldInstance && worldInstance.onProxyAction) {
       worldInstance.onProxyAction({
@@ -59,6 +65,6 @@ export function useGameCamera(worldInstanceReady, getWorldInstance, gameCanvas) 
     handleMouseMove,
     handleMouseUp,
     handleWheel,
-    syncCameraToWorker
+    syncCameraToWorker,
   }
 }
