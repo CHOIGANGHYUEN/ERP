@@ -29,8 +29,15 @@ const authController = {
         return res.status(400).json({ message: 'Missing credential.' })
       }
 
-      // 1. 클라이언트 토큰 복호화 (유연한 암호화 규칙 적용)
-      const credential = decryptToken(encryptedCredential)
+      // 1. 클라이언트 토큰 복호화 또는 원본 그대로 사용 (Redirect 모드 지원)
+      // 프론트엔드의 Popup 방식은 btoa로 감싸서 보내지만, Google Redirect 방식은 원본 JWT를 POST 합니다.
+      // 원본 JWT는 '.'이 포함되어 있으므로 이를 기준으로 구분합니다.
+      let credential
+      if (encryptedCredential.includes('.')) {
+        credential = encryptedCredential // 원본 JWT (Redirect Mode)
+      } else {
+        credential = decryptToken(encryptedCredential) // Base64 복호화 (Popup Mode)
+      }
 
       // 2. 토큰 페이로드 디코딩 (서명 검증 전 자체 사전 체크용)
       const decoded = jwt.decode(credential)
@@ -43,24 +50,23 @@ const authController = {
 
       // 로그 저장을 위한 공통 데이터 셋
       const logData = {
-        loginDt: now, // DB의 DATE 타입에 맞게 Sequelize가 변환
+        loginDt: now,
         userId: userId,
         loginAt: now,
-        authorize: credential.substring(0, 255), // 인증값의 길이를 맞춰 저장
+        authorize: credential.substring(0, 255),
         createdBy: userId,
         changedBy: userId,
       }
 
       // 3. 토큰 유효 시간(만료) 사전 체크 로직
-      // 구글의 최종 검증을 타기 전에, 이미 토큰이 만료되었다면 튕겨내고 클라이언트를 로그아웃 처리합니다.
       const isExpired = decoded.exp * 1000 < now.getTime()
       if (isExpired) {
-        res.clearCookie('token') // 토큰 파괴 (로그아웃)
-        await LogLoginUser.create({ ...logData, logged: 'FAIL: TOKEN_EXPIRED' }) // 만료도 로그 남김
+        res.clearCookie('token')
+        await LogLoginUser.create({ ...logData, logged: 'FAIL: TOKEN_EXPIRED' })
         return res.status(401).json({ message: 'Token has expired.' })
       }
 
-      // 4. 동시 로그인(1초 미만 간격) 봇/중복 요청 방지 로직
+      // 4. 동시 로그인 방지 로직
       const lastLog = await LogLoginUser.findOne({
         where: { userId: userId },
         order: [['loginAt', 'DESC']],
@@ -69,8 +75,7 @@ const authController = {
       if (lastLog) {
         const timeDiff = now.getTime() - new Date(lastLog.loginAt).getTime()
         if (timeDiff < 1000) {
-          // 1초(1000ms) 이내의 요청일 경우 차단
-          await LogLoginUser.create({ ...logData, logged: 'BLOCKED: RAPID_REQUESTS' }) // 차단된 것도 로그 남김
+          await LogLoginUser.create({ ...logData, logged: 'BLOCKED: RAPID_REQUESTS' })
           return res.status(429).json({ message: 'Too many login attempts. Please wait a moment.' })
         }
       }
@@ -88,7 +93,6 @@ const authController = {
       const user = await userService.findOrCreateUser({ googleId, email, name, picture })
 
       // 7. 시스템 보안 설정(sysConfig) 동적 적용
-      // 보안규칙 1: 세션 만료 시간 (SEC_SESSION_TIMEOUT) 적용
       const timeoutConfig = await Config.findOne({
         where: { configId: 'SEC_SESSION_TIMEOUT', useYn: 1 },
       })
@@ -97,7 +101,6 @@ const authController = {
       const expiresIn = `${timeoutMinutes}m`
       const maxAge = timeoutMinutes * 60 * 1000
 
-      // 보안규칙 2: 중복 로그인 허용 여부 (SEC_ALLOW_MULTI_LOGIN) 검사 및 차단
       const multiLoginConfig = await Config.findOne({
         where: { configId: 'SEC_ALLOW_MULTI_LOGIN', useYn: 1 },
       })
@@ -108,16 +111,13 @@ const authController = {
           where: { userId },
           order: [['loginAt', 'DESC']],
         })
-        // 마지막 이력이 로그인 성공이고, 아직 세션 만료 시간 이내라면 (로그아웃 안 함)
         if (lastActivity && lastActivity.logged === 'SUCCESS: LOGIN_OK') {
           const timeDiff = now.getTime() - new Date(lastActivity.loginAt).getTime()
           if (timeDiff < maxAge) {
             await LogLoginUser.create({ ...logData, logged: 'BLOCKED: MULTI_LOGIN' })
-            return res
-              .status(403)
-              .json({
-                message: '이미 다른 기기에서 로그인 중입니다. 중복 로그인이 차단되었습니다.',
-              })
+            return res.status(403).json({
+              message: '이미 다른 기기에서 로그인 중입니다. 중복 로그인이 차단되었습니다.',
+            })
           }
         }
       }
@@ -138,11 +138,24 @@ const authController = {
       })
 
       console.log(`User ${user.userId} logged in successfully via Google OAuth.`)
-      res.json({
-        message: 'Login successful',
-        user: { userId: user.userId, email, name, picture },
-        token,
-      })
+
+      // 10. 응답 방식 결정 (Redirect 여부 확인)
+      // Google Redirect Mode는 요청 헤더의 Content-Type이 urlencoded 이거나 g_csrf_token 파라미터가 동반됨
+      const isRedirect =
+        req.headers['content-type'] === 'application/x-www-form-urlencoded' ||
+        req.body.g_csrf_token
+
+      if (isRedirect) {
+        // 리다이렉트 모드일 경우 메인 대시보드로 이동
+        return res.redirect('/')
+      } else {
+        // 기존 팝업 모드일 경우 JSON 응답
+        return res.json({
+          message: 'Login successful',
+          user: { userId: user.userId, email, name, picture },
+          token,
+        })
+      }
     } catch (error) {
       console.error('Google login error: ' + error.message)
       res.status(401).json({ message: 'Authentication failed', error: error.message })
@@ -173,6 +186,26 @@ const authController = {
 
     res.clearCookie('token')
     res.json({ message: 'Logged out successfully' })
+  },
+
+  async getMe(req, res) {
+    try {
+      // verifyToken 미들웨어로부터 req.user를 전달받음
+      const user = await userService.findUserByEmail(req.user.email)
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' })
+      }
+      res.json({
+        user: {
+          userId: user.userId,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+        },
+      })
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
   },
 }
 

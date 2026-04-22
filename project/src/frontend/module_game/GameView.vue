@@ -99,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, shallowRef, onMounted } from 'vue'
 import AppPageTitle from '../common/components/AppPageTitle.vue'
 import AppCard from '../common/components/AppCard.vue'
 import AppButton from '../common/components/AppButton.vue'
@@ -120,7 +120,7 @@ import { useGameTools } from './composables/useGameTools.js'
 import { useGameInteraction } from './composables/useGameInteraction.js'
 
 const gameCanvas = ref(null)
-const savedWorlds = ref([])
+const savedWorlds = shallowRef([]) // 💡 [Reactivity 최적화] 거대한 JSON 데이터 Deep Proxy 방지
 
 // 1. Worker & World State (Shared Logic)
 const {

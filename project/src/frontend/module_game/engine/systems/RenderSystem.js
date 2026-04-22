@@ -108,21 +108,28 @@ export class RenderSystem {
           const pCols = world.pathSystem.cols
           const pRows = world.pathSystem.rows
 
-          for (let r = 0; r < pRows; r++) {
-            const rowOffset = r * pCols
-            const ty = r * gridSize
-            for (let c = 0; c < pCols; c++) {
-              const traffic = paths[rowOffset + c]
-              if (traffic > 100) {
-                const tx = c * gridSize
-                ctx.fillStyle =
-                  traffic > 500
-                    ? `rgba(120, 100, 80, ${Math.min(0.8, traffic / 1000)})`
-                    : `rgba(160, 120, 60, ${Math.min(0.5, traffic / 500)})`
-                ctx.fillRect(tx, ty, gridSize, gridSize)
-              }
+          // 💡 [렌더링 최적화] 수만 번의 fillRect 호출을 단 2번의 일괄(Batch) 렌더링으로 압축하여 Main Thread 프레임 드랍(멈춤) 원천 방지
+          ctx.fillStyle = 'rgba(160, 120, 60, 0.4)'
+          ctx.beginPath()
+          for (let i = 0; i < paths.length; i++) {
+            if (paths[i] > 100 && paths[i] <= 500) {
+              const tx = (i % pCols) * gridSize
+              const ty = Math.floor(i / pCols) * gridSize
+              ctx.rect(tx, ty, gridSize, gridSize)
             }
           }
+          ctx.fill()
+
+          ctx.fillStyle = 'rgba(120, 100, 80, 0.7)'
+          ctx.beginPath()
+          for (let i = 0; i < paths.length; i++) {
+            if (paths[i] > 500) {
+              const tx = (i % pCols) * gridSize
+              const ty = Math.floor(i / pCols) * gridSize
+              ctx.rect(tx, ty, gridSize, gridSize)
+            }
+          }
+          ctx.fill()
         }
 
         for (let i = 0; i < villageCount; i++) {

@@ -6,7 +6,7 @@ export class LightingSystem {
   constructor(worldWidth, worldHeight) {
     this.worldWidth = worldWidth
     this.worldHeight = worldHeight
-    
+
     // 조명 오버레이 합성을 위한 오프스크린 캔버스 (Worker 환경 DOM 접근 불가 방어코드)
     this.lightCanvas = null
     this.lightCtx = null
@@ -16,7 +16,7 @@ export class LightingSystem {
     if (typeof document !== 'undefined') {
       this.lightCanvas = document.createElement('canvas')
       this.lightCtx = this.lightCanvas.getContext('2d')
-      
+
       // [Nuclear Optimization] 그림자 및 조명 텍스처 미리 생성 (Shadow & Light Stamping)
       this._createShadowTexture()
       this._createLightStamp()
@@ -29,12 +29,12 @@ export class LightingSystem {
     canvas.width = size
     canvas.height = size
     const ctx = canvas.getContext('2d')
-    
-    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2)
+
+    const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
     grad.addColorStop(0, 'rgba(0,0,0,1)')
     grad.addColorStop(0.4, 'rgba(0,0,0,0.6)')
     grad.addColorStop(1, 'rgba(0,0,0,0)')
-    
+
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, size, size)
     this.shadowTexture = canvas
@@ -46,13 +46,13 @@ export class LightingSystem {
     canvas.width = size
     canvas.height = size
     const ctx = canvas.getContext('2d')
-    
+
     // 부드러운 빛 확산 효과
-    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2)
+    const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
     grad.addColorStop(0, 'rgba(255, 255, 255, 1)')
     grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)')
     grad.addColorStop(1, 'rgba(255, 255, 255, 0)')
-    
+
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, size, size)
     this.lightStamp = canvas
@@ -72,18 +72,20 @@ export class LightingSystem {
 
     ctx.save()
     ctx.globalAlpha = shadowOpacity
-    
+
     entities.forEach((ent) => {
       const s = ent.size || 16
       const sw = s * shadowLength
       const sh = s * 0.3
       const x = ent.x + shadowOffsetX
       const y = ent.y + s / 4
-      
-      // [Nuclear Optimization] createRadialGradient 대신 미리 그려진 텍스처 복사 (Shadow Stamping)
-      ctx.drawImage(this.shadowTexture, x - sw, y - sh, sw * 2, sh * 2)
+
+      // 💡 [캔버스 멈춤 방어] 좌표나 크기가 유효하지 않을 때 drawImage가 호출되어 브라우저가 정지하는 현상 방어
+      if (sw > 0 && sh > 0 && Number.isFinite(x) && Number.isFinite(y)) {
+        ctx.drawImage(this.shadowTexture, x - sw, y - sh, sw * 2, sh * 2)
+      }
     })
-    
+
     ctx.restore()
   }
 
@@ -121,15 +123,36 @@ export class LightingSystem {
     }
 
     // 2. 계절 및 날씨 베이스 틴트 컬러 적용
-    let r = 0, g = 0, b = 0, a = darkness
+    let r = 0,
+      g = 0,
+      b = 0,
+      a = darkness
     switch (season) {
-      case 'SUMMER': r = 255; g = 230; b = 150; a = Math.max(a, 0.05); break
-      case 'AUTUMN': r = 255; g = 150; b = 50; a = Math.max(a, 0.08); break
-      case 'WINTER': r = 150; g = 200; b = 255; a = Math.max(a, 0.12); break
+      case 'SUMMER':
+        r = 255
+        g = 230
+        b = 150
+        a = Math.max(a, 0.05)
+        break
+      case 'AUTUMN':
+        r = 255
+        g = 150
+        b = 50
+        a = Math.max(a, 0.08)
+        break
+      case 'WINTER':
+        r = 150
+        g = 200
+        b = 255
+        a = Math.max(a, 0.12)
+        break
     }
 
     if (weatherType === 'rain') {
-      r = 30; g = 40; b = 60; a = Math.max(a, 0.3)
+      r = 30
+      g = 40
+      b = 60
+      a = Math.max(a, 0.3)
     }
 
     lCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`
@@ -147,14 +170,16 @@ export class LightingSystem {
           const screenY = (ent.y - camera.y) * zoom
           const radius = (ent.size || 32) * zoom * 2.5
 
-          // [Zero-Allocation] createRadialGradient 대신 미리 생성된 스탬프 사용
-          lCtx.drawImage(
-            this.lightStamp,
-            screenX - radius,
-            screenY - radius,
-            radius * 2,
-            radius * 2
-          )
+          // 💡 [캔버스 멈춤 방어]
+          if (radius > 0 && Number.isFinite(screenX) && Number.isFinite(screenY)) {
+            lCtx.drawImage(
+              this.lightStamp,
+              screenX - radius,
+              screenY - radius,
+              radius * 2,
+              radius * 2,
+            )
+          }
         }
       })
       lCtx.globalCompositeOperation = 'source-over'

@@ -18,19 +18,29 @@ export class InteractionSystem {
 
   update(deltaTime, world) {
     if (world && world.spatialProxies) {
-      // 말풍선을 위한 빠른 맵핑 (O(N) -> O(1)) - 기존 Map 재사용 (Zero-Allocation)
       this.entityMap.clear()
-      // 현재 씬의 유효한 개체들을 맵에 캐싱
+      // 💡 [렌더링 최적화] 매 프레임 수만 개의 문자열(`type_id`)을 생성하며 발생하는 GC 메모리 부하를 막기 위해 비트 연산 기반 정수 Key 사용
+      const typeMap = {
+        creature: 0,
+        animal: 1,
+        plant: 2,
+        building: 3,
+        tornado: 4,
+        mine: 5,
+        resource: 6,
+        village: 7,
+      }
       for (let i = 0; i < world.spatialProxies.length; i++) {
         const p = world.spatialProxies[i]
-        this.entityMap.set(`${p._type}_${p.id}`, p)
+        const t = typeMap[p._type] || 0
+        this.entityMap.set((t << 20) | p.id, p)
       }
 
       this.bubbles.forEach((b) => {
         // 동물과 크리처 구분 처리 포함 빠른 조회
-        const proxy =
-          this.entityMap.get(`${b.entityType}_${b.entityId}`) ||
-          this.entityMap.get(`${b.entityType === 'animal' ? 'animal' : b.entityType}_${b.entityId}`)
+        const tStr = b.entityType === 'animal' ? 'animal' : b.entityType
+        const t = typeMap[tStr] || 0
+        const proxy = this.entityMap.get((t << 20) | b.entityId)
         if (proxy) {
           b.x = proxy.x
           b.y = proxy.y
@@ -57,7 +67,7 @@ export class InteractionSystem {
 
     this.bubbles.forEach((b) => {
       // proxy를 찾지 못해 좌표가 없는 말풍선은 렌더링 스킵
-      if (b.x === undefined || b.y === undefined) return
+      if (b.x === undefined || b.y === undefined || Number.isNaN(b.x) || Number.isNaN(b.y)) return
 
       const alpha = Math.min(1, b.lifeTime / 300) // 마지막 300ms 동안 서서히 페이드아웃
       ctx.globalAlpha = alpha

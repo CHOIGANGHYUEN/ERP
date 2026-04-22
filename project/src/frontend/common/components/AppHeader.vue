@@ -25,10 +25,26 @@ const sysTitle = computed(() => configStore.getConfigValue('SYS_TITLE', 'ERP Sys
 
 const user = ref(null)
 
+const fetchUserProfile = async () => {
+  try {
+    const res = await fetch('/api/auth/me')
+    if (res.ok) {
+      const data = await res.json()
+      user.value = data.user
+      localStorage.setItem('user', JSON.stringify(data.user))
+    }
+  } catch (error) {
+    console.error('Failed to fetch user profile:', error)
+  }
+}
+
 onMounted(() => {
   const userData = localStorage.getItem('user')
   if (userData) {
     user.value = JSON.parse(userData)
+  } else {
+    // localStorage에 정보가 없으면 백엔드에서 세션 정보를 확인합니다.
+    fetchUserProfile()
   }
 })
 

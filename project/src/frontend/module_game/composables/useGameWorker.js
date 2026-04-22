@@ -92,7 +92,9 @@ export function useGameWorker(gameCanvas) {
       console.error('[useGameWorker] 워커 생성 실패:', e)
       return
     }
-    worldInstance = new World(setupDI(), gameCanvas.value)
+    // 💡 [핵심 프리징 원인 제거] Vue의 Reactivity 시스템이 수만 개의 배열/객체를 가진 World 인스턴스를
+    // 깊은 탐색(Deep Proxy)하려다 메인 스레드가 마비(Freezing)되는 현상을 원천 차단합니다.
+    worldInstance = markRaw(new World(setupDI(), gameCanvas.value))
     worldInstanceReady.value = true
     mapWidth.value = worldInstance.width
     mapHeight.value = worldInstance.height

@@ -32,7 +32,8 @@ onMounted(() => {
       clearInterval(checkGoogleLoaded)
       window.google.accounts.id.initialize({
         client_id: clientId,
-        callback: handleCredentialResponse,
+        ux_mode: 'redirect', // 핵심: 팝업 대신 리다이렉트 사용
+        login_uri: import.meta.env.VITE_GOOGLE_REDIRECT_URI, // .env에서 로드
       })
       window.google.accounts.id.renderButton(document.getElementById('google-login-btn'), {
         theme: 'outline',
@@ -42,29 +43,4 @@ onMounted(() => {
     }
   }, 100)
 })
-
-const handleCredentialResponse = async (response) => {
-  try {
-    // 토큰을 Base64로 인코딩하여 백엔드로 전송 (향후 AES 등으로 확장 가능)
-    const encryptedCredential = btoa(response.credential)
-
-    const res = await fetch('/api/auth/google', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ credential: encryptedCredential }),
-    })
-    const data = await res.json()
-    if (res.ok) {
-      localStorage.setItem('user', JSON.stringify(data.user))
-      router.push('/')
-    } else {
-      alert('Login failed: ' + data.message)
-    }
-  } catch (err) {
-    console.error('Login error:', err)
-    alert('An error occurred during login.')
-  }
-}
 </script>
