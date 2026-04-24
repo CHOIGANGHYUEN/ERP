@@ -62,10 +62,22 @@ export function useGameWorker(gameCanvas) {
         nation: preservedNation || bufferedData.nation,
       })
       worldInstance.onProxyAction({ type: 'GET_VILLAGE_DETAILS', payload: { id: ent.id } })
-    } else {
+    } else if (bufferedData.isVillage) {
       selectedEntityData.value = markRaw(bufferedData)
-      if (bufferedData.isVillage) {
-        worldInstance.onProxyAction({ type: 'GET_VILLAGE_DETAILS', payload: { id: ent.id } })
+      worldInstance.onProxyAction({ type: 'GET_VILLAGE_DETAILS', payload: { id: ent.id } })
+    } else {
+      // 💡 [핵심 수정] 크리처/동물/건물 등 비마을 개체는 버퍼 데이터로 기본 업데이트하고
+      // 워커에 REQUEST_ENTITY_DETAILS를 요청하여 taskQueue 등 실시간 데이터를 받아옴
+      const prev = selectedEntityData.value
+      if (prev && prev.id === bufferedData.id && prev._type === bufferedData._type) {
+        // 기존 데이터를 보존하되 버퍼 값(위치, 상태 등)으로 갱신
+        selectedEntityData.value = markRaw({ ...prev, ...bufferedData })
+      } else {
+        selectedEntityData.value = markRaw(bufferedData)
+      }
+      // 크리처의 경우 워커에 상세 정보(taskQueue, inventory) 요청
+      if (ent._type === 'creature') {
+        worldInstance.onProxyAction({ type: 'REQUEST_ENTITY_DETAILS', payload: { id: ent.id, type: 'creature' } })
       }
     }
   }
@@ -128,8 +140,16 @@ export function useGameWorker(gameCanvas) {
           }
         }
       } else if (type === 'ENTITY_DETAILS') {
-        if (selectedEntityData.value && selectedEntityData.value.id === payload.id) {
+        if (
+          selectedEntityData.value &&
+          selectedEntityData.value.id === payload.id &&
+          selectedEntityData.value._type === payload._type
+        ) {
           selectedEntityData.value = markRaw({ ...selectedEntityData.value, ...payload })
+          // [Render-Sync] 렌더링 프록시 객체에도 상세 데이터를 주입하여 InteractionSystem이 참조할 수 있도록 함
+          if (worldInstance.selectedEntity?.id === payload.id) {
+            Object.assign(worldInstance.selectedEntity, payload)
+          }
         }
       } else if (type === 'NATION_DETAILS') {
         if (selectedEntityData.value?.nation?.id === payload.id) {

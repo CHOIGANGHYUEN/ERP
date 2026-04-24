@@ -19,7 +19,7 @@ export class MovementSystem {
       if (creature.isDead || !creature.movement.isMoving) return
 
       const m = creature.movement
-      
+
       // 1.1) 경로 자동 생성 방어 로직: path가 비어있으면 직접 타겟으로 향하는 노드 생성
       if (m.path.length === 0) {
         if (creature.targetPos) {
@@ -32,7 +32,7 @@ export class MovementSystem {
       }
 
       const target = m.path[m.currentWaypointIndex]
-      
+
       if (!target) {
         m.isMoving = false
         return
@@ -55,14 +55,19 @@ export class MovementSystem {
       // 3) 지형 기반 이동 속도 및 이동 제한 (TerrainSystem 인덱스 준수)
       let speedMultiplier = 1.0
       const terrain = (world.views && world.views.terrain) || world.terrain
-      
+
+      const cols = Math.ceil((world.width || 3200) / 16)
+      const rows = Math.ceil((world.height || 3200) / 16)
       const tx = Math.floor(creature.x / 16)
       const ty = Math.floor(creature.y / 16)
-      if (terrain && tx >= 0 && tx < 200 && ty >= 0 && ty < 200) {
-        const t = terrain[ty * 200 + tx]
+      if (terrain && tx >= 0 && tx < cols && ty >= 0 && ty < rows) {
+        const t = terrain[ty * cols + tx]
+        if (Math.random() < 0.005) {
+          console.log(`[MovementSystem] Creature ${creature.id} at (${tx}, ${ty}) terrain: ${t}`);
+        }
         switch (t) {
           case 1: speedMultiplier = 0.6; break; // 낮은 산 (속도 저하)
-          case 2: case 3: case 4: case 5: 
+          case 2: case 3: case 4: case 5:
             speedMultiplier = 0.1; break; // 높은 산/물 진입 시 극도의 저항 (사실상 차단)
         }
       }
@@ -71,7 +76,7 @@ export class MovementSystem {
       const dist = Math.sqrt(distSq)
       const desiredVx = dist > 0.1 ? (dx / dist) : 0
       const desiredVy = dist > 0.1 ? (dy / dist) : 0
-      
+
       // Steering (로컬 회피) 합산
       let steerX = 0, steerY = 0
       if (this.steer && dist > 1) {
@@ -92,7 +97,7 @@ export class MovementSystem {
       const smoothing = 0.3 // 유연하면서도 즉각적인 반응성 확보 (0.15 -> 0.3)
       let vx = (creature.velocity?.x || 0) * (1 - smoothing) + finalTargetVx * smoothing
       let vy = (creature.velocity?.y || 0) * (1 - smoothing) + finalTargetVy * smoothing
-      
+
       // 벡터 정규화
       const mag = Math.sqrt(vx * vx + vy * vy)
       if (mag > 0.01) {
@@ -108,15 +113,15 @@ export class MovementSystem {
       const moveStep = m.speed * speedMultiplier * (deltaTime / 1000)
       const nextX = creature.x + vx * moveStep
       const nextY = creature.y + vy * moveStep
-      
-      const cols = 200
-      // [Hotfix] 중복 선언된 terrain 변수 제거 (상단에서 이미 선언됨)
-      
+
       if (terrain) {
         // 1. X축 이동 시도
         const nextGX = Math.floor(nextX / 16)
         const currentGY = Math.floor(creature.y / 16)
-        const tX = terrain[currentGY * cols + nextGX]
+        let tX = 0 // 기본 평지로 가정
+        if (nextGX >= 0 && nextGX < cols && currentGY >= 0 && currentGY < rows) {
+          tX = terrain[currentGY * cols + nextGX]
+        }
         if (tX === 0 || tX === 1) {
           creature.x = nextX
         }
@@ -124,7 +129,10 @@ export class MovementSystem {
         // 2. Y축 이동 시도
         const currentGX = Math.floor(creature.x / 16)
         const nextGY = Math.floor(nextY / 16)
-        const tY = terrain[nextGY * cols + currentGX]
+        let tY = 0 // 기본 평지로 가정
+        if (currentGX >= 0 && currentGX < cols && nextGY >= 0 && nextGY < rows) {
+          tY = terrain[nextGY * cols + currentGX]
+        }
         if (tY === 0 || tY === 1) {
           creature.y = nextY
         }
@@ -140,9 +148,13 @@ export class MovementSystem {
         creature.transform.y = creature.y
         const targetRot = Math.atan2(vy, vx)
         const diff = targetRot - creature.transform.rotation
+        
         // 각도 차이 정규화 (-PI ~ PI)
         const normalizedDiff = Math.atan2(Math.sin(diff), Math.cos(diff))
-        creature.transform.rotation += normalizedDiff * 0.15 
+        
+        // 💡 [Responsiveness] 회전 보정 속도 증가 (0.15 -> 0.35) 하여 이동 방향과 렌더링 방향 일치성 강화
+        creature.transform.rotation += normalizedDiff * 0.35
+        creature.rotation = creature.transform.rotation // 속성 일치성 확보
       }
     })
   }

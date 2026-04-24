@@ -11,6 +11,7 @@ export class Plant extends Entity {
     this.age = 0
     this.size = type === 'tree' ? 30 : type === 'crop' ? 15 : 10
     this.maxSize = this.size
+    this.maxAge = type === 'tree' ? 10000 + Math.random() * 5000 : 3000 + Math.random() * 2000
     this.color = type === 'tree' ? '#1e8449' : type === 'crop' ? '#f7b731' : '#26de81'
     this.energy = type === 'tree' ? 200 : type === 'crop' ? 20 : 50
     this.isImmortal = type === 'tree' && Math.random() < 0.3

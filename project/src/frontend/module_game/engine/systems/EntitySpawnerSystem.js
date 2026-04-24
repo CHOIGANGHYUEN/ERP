@@ -6,7 +6,7 @@ import { Building } from '../objects/society/Building.js'
 import { Nation } from '../objects/society/Nation.js'
 import { Village } from '../objects/society/Village.js'
 import { Mine } from '../objects/environment/Mine.js'
-import { MAX_CREATURES } from '../core/SharedState.js'
+import { MAX_CREATURES, MAX_ANIMALS, MAX_PLANTS } from '../core/SharedState.js'
 
 export class EntitySpawnerSystem {
   getSafeLandPosition(world, preferTerrainType = -1) {
@@ -200,7 +200,8 @@ export class EntitySpawnerSystem {
       return world.onProxyAction({ type: 'SPAWN_ANIMAL', payload: { x, y, type } })
 
     // 💡 [Freezing 방어] 동물 개체수 제한 적용
-    if (world.animals.length >= 1024) {
+    const limit = world.maxAnimals || MAX_ANIMALS
+    if (world.animals.length >= limit) {
       return
     }
 
@@ -302,8 +303,9 @@ export class EntitySpawnerSystem {
   spawnPlant(world, x, y, type) {
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_PLANT', payload: { x, y, type } })
+    const limit = world.maxPlants || MAX_PLANTS
     if (
-      world.plants.length < world.maxPlants &&
+      world.plants.length < limit &&
       x > 10 &&
       x < world.width - 10 &&
       y > 10 &&

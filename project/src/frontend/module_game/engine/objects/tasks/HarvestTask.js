@@ -26,7 +26,7 @@ export class HarvestTask extends BaseTask {
     }
 
     const dist = creature.distanceTo(this.target)
-    const interactRange = creature.size + (this.target.size || 12)
+    const interactRange = creature.size + (this.target.size || 12) + 15
 
     if (dist <= interactRange) {
       this.updateStateByTarget(creature)

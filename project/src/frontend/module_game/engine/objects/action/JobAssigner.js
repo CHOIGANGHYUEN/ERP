@@ -20,6 +20,15 @@ export class JobAssigner {
     if (creature.village && typeof creature.village.updateProfessionCount === 'function') {
       creature.village.updateProfessionCount(oldJob, newJob)
     }
+
+    // 💡 [실시간 연결] 직업 변경 시 현재 진행 중인 태스크를 즉시 취소하여 상태 불일치 방지
+    if (creature.currentTask && typeof creature.currentTask.onFailed === 'function') {
+      creature.currentTask.onFailed(creature, null, 'JobChanged')
+    }
+    creature.taskQueue = []
+    creature.currentTask = null
+    creature.state = 'WANDERING'
+    creature.target = null
   }
 
   static assignProfession(creature, world) {

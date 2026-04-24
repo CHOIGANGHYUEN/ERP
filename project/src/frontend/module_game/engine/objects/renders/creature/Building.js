@@ -48,5 +48,9 @@ export const BUILDING = (creature, ctx, timestamp, world) => {
   if (creature.target && creature.target.progress !== undefined) {
     RenderUtils.drawBar(ctx, creature.x, creature.y - drawSize - 12, 22, 4, 
       creature.target.progress / (creature.target.maxProgress || 100), '#e67e22')
+  } else if (creature.isWorking) {
+    // Fallback indicator when building without explicit target progress
+    const buildProgressPhase = (timestamp % 2000) / 2000
+    RenderUtils.drawBar(ctx, creature.x, creature.y - drawSize - 12, 22, 4, buildProgressPhase, '#e67e22')
   }
 }

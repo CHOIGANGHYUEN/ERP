@@ -4,11 +4,11 @@ export function useGameTools(getWorldInstance) {
   const activeTool = ref(null)
   
   const showToolMenu = ref(false)
-  const showTopUI = ref(true)
+  const showTopUI = ref(false)
   const showInspectorPanel = ref(true)
-  const showInteractionPanel = ref(true)
+  const showInteractionPanel = ref(false)
   const showLogsPanel = ref(true)
-  const showMinimapPanel = ref(true)
+  const showMinimapPanel = ref(false)
   const showTerritoryLayer = ref(true)
 
   // 💡 [Sync Settings] UI의 레이어 토글 상태를 엔진의 settings 객체와 동기화

@@ -3,20 +3,11 @@
     <div v-if="showToolMenu" class="tool-menu-panel dock-style">
       <div class="tool-group">
         <span class="tool-group-label">모니터링 패널</span>
-        <button class="tool-btn" :class="{ active: showTopUI }" @click="$emit('update:showTopUI', !showTopUI)">
-          <span class="icon">📊</span><span>상단 통계</span>
-        </button>
         <button class="tool-btn" :class="{ active: showInspectorPanel }" @click="$emit('update:showInspectorPanel', !showInspectorPanel)">
           <span class="icon">🔍</span><span>인스펙터</span>
         </button>
-        <button class="tool-btn" :class="{ active: showInteractionPanel }" @click="$emit('update:showInteractionPanel', !showInteractionPanel)">
-          <span class="icon">📜</span><span>상호작용</span>
-        </button>
         <button class="tool-btn" :class="{ active: showLogsPanel }" @click="$emit('update:showLogsPanel', !showLogsPanel)">
           <span class="icon">💬</span><span>이벤트/로그</span>
-        </button>
-        <button class="tool-btn" :class="{ active: showMinimapPanel }" @click="$emit('update:showMinimapPanel', !showMinimapPanel)">
-          <span class="icon">🗺️</span><span>미니맵</span>
         </button>
         <button class="tool-btn" :class="{ active: showTerritoryLayer }" @click="$emit('update:showTerritoryLayer', !showTerritoryLayer)">
           <span class="icon">🏁</span><span>영토 레이어</span>

@@ -40,8 +40,8 @@ export class MoveTask extends BaseTask {
     // 도달 체크 (MovementSystem이 isMoving을 false로 만들었을 때)
     if (!creature.movement.isMoving) {
       const dist = creature.distanceTo(this.target)
-      const range = this.threshold + (this.target.size || 0)
-      return (dist <= range) ? 'COMPLETED' : 'FAILED'
+      const range = this.threshold // WorkSystem 등에서 미리 target.size를 포함하여 계산해 줌
+      return (dist <= range + 5) ? 'COMPLETED' : 'FAILED' // 부동소수점 여유 5px
     }
 
     return 'RUNNING'

@@ -276,9 +276,17 @@ export class BufferSyncSystem {
     target._type = type
     target.isDead = false
 
+    // 💡 [Proxy Hardening] 렌더러가 transform 객체를 안전하게 참조할 수 있도록 초기화
+    if (!target.transform) target.transform = { x: 0, y: 0, rotation: 0 }
+
     const propMap = this.propMaps[type]
     for (const key in propMap) {
-      target[key] = view[offset + propMap[key]]
+      const val = view[offset + propMap[key]]
+      target[key] = val
+      // transform 객체와도 동기화 (기존 렌더러 호환성)
+      if (key === 'x') target.transform.x = val
+      if (key === 'y') target.transform.y = val
+      if (key === 'rotation') target.transform.rotation = val
     }
 
     // 종속성 속성 및 상수 매핑 최적화
@@ -362,6 +370,7 @@ export class BufferSyncSystem {
       data.state = Object.keys(STATE_MAP)[data.state]
       data.isAdult = data.isAdult === 1
       data.isImmortal = data.isImmortal === 1
+      data.isWorking = data.isWorking === 1
       data.color = `rgb(${Math.round(data.r * 255)}, ${Math.round(data.g * 255)}, ${Math.round(data.b * 255)})`
       data.needs = { hunger: data.needsHunger, fatigue: data.needsFatigue }
       data.emotions = {}

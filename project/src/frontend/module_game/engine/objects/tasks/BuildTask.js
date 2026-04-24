@@ -35,9 +35,9 @@ export class BuildTask extends BaseTask {
     // 2) 전역 타임아웃 상향 (대규모 건축물 대응)
     if (Date.now() - this.startTime > 300000) return 'FAILED'
 
-    // 3) 거리 체크 및 행동 수행 (훨씬 엄격하게 조정: 10px 이내)
+    // 3) 거리 체크 및 행동 수행 (넉넉한 인터랙션 거리 부여)
     const dist = creature.distanceTo(this.target)
-    const buildRange = (this.target.size || 20) * 0.8 
+    const buildRange = creature.size + (this.target.size || 20) + 15
 
     if (dist <= buildRange) {
       creature.state = 'BUILDING'

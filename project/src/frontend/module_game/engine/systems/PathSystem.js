@@ -252,7 +252,7 @@ export function findPath(world, start, target) {
       // Terrain Collision
       if (world.terrain) {
         const type = world.terrain[neighbor.y * cols + neighbor.x]
-        if (type === 2) continue // HIGH_MOUNTAIN blocking
+        if (type >= 2) continue // HIGH_MOUNTAIN and SEA blocking
       }
 
       // 💡 [Dynamic Collision] 생성된 동적 충돌 맵 적용

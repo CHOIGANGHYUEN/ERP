@@ -1,36 +1,64 @@
 export class UtilityScoringService {
   /**
    * 점수 계산: 시그모이드(Sigmoid) 곡선을 활용해 임계치 지연 효과 구현
-   * @param {number} value 현재 수치 (0~100)
-   * @param {number} threshold 임계치 (이 수치 아래로 내려갈 때까지 점수가 급격히 상승하지 않음)
-   * @param {number} k 기울기 (감도)
+   * 수치가 높을수록(욕구가 클수록) 점수가 급격히 상승함
    */
   calculateSigmoid(value, threshold, k = 0.2) {
-    // 0~100 스케일의 value를 threshold 기준으로 반전하여 점수화
-    // 배고픔이 100이면 점수 0, 배고픔이 0이면 점수 100
-    const x = threshold - value
+    const x = value - threshold // 수치가 임계치를 넘을 때부터 점수 증가
     return 100 / (1 + Math.exp(-k * x))
   }
 
   /**
-   * 크리처의 모든 욕구 점수를 계산하여 가장 시급한 행동 타입 반환
-   * @param {object} creatureStats { hunger, fatigue, health, etc }
+   * 크리처의 모든 욕구 점수와 마을의 공동 필요를 계산하여 가장 시급한 행동 타입 반환
+   * @param {object} creature { needs, village, profession, ... }
    */
-  getBestAction(creatureStats) {
-    const scores = [
-      { type: 'REST', score: this.calculateSigmoid(creatureStats.fatigue, 20, 0.15) },
-      { type: 'EAT', score: this.calculateSigmoid(creatureStats.hunger, 30, 0.1) },
-      { type: 'HEAL', score: this.calculateSigmoid(creatureStats.health, 40, 0.2) }
+  getBestAction(creature) {
+    const { needs, village, profession } = creature
+
+    // 1. 개인 생존 점수 (Hunger, Fatigue, Health)
+    const survivalScores = [
+      { type: 'REST', score: this.calculateSigmoid(needs?.fatigue || 0, 20, 0.15) },
+      { type: 'EAT', score: this.calculateSigmoid(needs?.hunger || 0, 30, 0.1) },
+      // 💡 [버그 수정] 체력이 낮을수록(100 - health) 회복 욕구가 커지도록 반전
+      { type: 'HEAL', score: this.calculateSigmoid(100 - (creature.health || 100), 40, 0.2) }
     ]
 
-    // 점수가 높은 순으로 정렬
-    scores.sort((a, b) => b.score - a.score)
+    // 2. 마을 자원 상태 및 직업 기반 의무(WORK) 점수 계산
+    let workMotivation = 30 // 기본 근로 동기
 
-    // 임계 점수(예: 30점)를 넘지 못하면 일반 업무(WORK)를 유지하도록 유도
-    if (scores[0].score < 30) {
+    if (village) {
+      const inv = village.inventory || {}
+      const pop = village.creatures?.length || 1
+
+      // 부족도(Scarcity) 계산 (0~100)
+      const foodScarcity = Math.max(0, 100 - (inv.food / (pop * 2)) * 100)
+      const woodScarcity = Math.max(0, 100 - (inv.wood / (pop * 2)) * 100)
+      const stoneScarcity = Math.max(0, 100 - (inv.stone / 30) * 100)
+
+      // 직업별 가중치 부여
+      if (profession === 'FARMER' || profession === 'GATHERER') {
+        workMotivation += foodScarcity * 0.7
+      } else if (profession === 'LUMBERJACK') {
+        workMotivation += woodScarcity * 0.7
+      } else if (profession === 'MINER') {
+        workMotivation += stoneScarcity * 0.7
+      } else if (profession === 'BUILDER') {
+        const needsBuild = (village.buildingCounts?.unconstructed || 0) > 0
+        if (needsBuild) workMotivation += 50
+      }
+
+      // 마을 전체의 비상 상황 (식품 고갈 등) 시 모든 주민의 근로 동기 상승
+      if (foodScarcity > 80) workMotivation += 20
+    }
+
+    // 최종 결정: 생존 욕구 중 가장 높은 것과 업무 동기 비교
+    survivalScores.sort((a, b) => b.score - a.score)
+
+    // 생존 욕구가 업무 동기보다 낮으면 사회적 업무(WORK) 수행
+    if (survivalScores[0].score < workMotivation) {
       return 'WORK'
     }
 
-    return scores[0].type
+    return survivalScores[0].type
   }
 }

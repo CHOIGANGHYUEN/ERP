@@ -169,15 +169,21 @@
         </div>
         
         <!-- Task Queue 패널 -->
-        <div class="app-grid-item full-span" v-if="entityData.taskQueue !== undefined">
-          <strong>📝 업무 지시 큐 (Task Queue):</strong>
+        <div class="app-grid-item full-span task-queue-section">
+          <strong>📝 할일 목록 (Task Queue):</strong>
           <ul class="task-queue-list">
-            <li v-for="(task, idx) in entityData.taskQueue" :key="idx" :class="{ 'current-task': idx === 0 }">
-              <span class="queue-num">{{ idx + 1 }}</span>
-              <span class="queue-type">{{ translateKey(task.type) }}</span> - 
-              <span :class="statusClass(task.status)">{{ translateKey(task.status) }}</span>
+            <template v-if="entityData.taskQueue && entityData.taskQueue.length > 0">
+              <li v-for="(task, idx) in entityData.taskQueue" :key="idx" :class="{ 'current-task': idx === 0 }">
+                <span class="queue-num">{{ idx + 1 }}</span>
+                <span class="queue-type">{{ translateKey(task.type) }}</span>
+                <span v-if="task.targetType" class="queue-target"> → {{ translateKey(task.targetType) }}</span>
+                <span :class="statusClass(task.status)"> [{{ translateKey(task.status) }}]</span>
+              </li>
+            </template>
+            <li v-else class="task-idle">
+              <span v-if="entityData.state && entityData.state !== 'IDLE'">🔄 {{ translateKey(entityData.state) }} 중...</span>
+              <span v-else style="color:#aaa;">대기 중... (업무 대기)</span>
             </li>
-            <li v-if="entityData.taskQueue.length === 0" style="color:#aaa;">대기 중... (업무 대기)</li>
           </ul>
         </div>
 
@@ -242,6 +248,7 @@ const getProfessionName = (prof) => {
 
 const translateKey = (key) => {
   const dict = {
+    // needs
     hunger: '허기',
     fatigue: '피로',
     moisture: '수분 갈증',
@@ -250,15 +257,49 @@ const translateKey = (key) => {
     fear: '공포',
     aggression: '공격성',
     vitality: '활력',
+    // task types
     MOVE: '목적지로 이동',
     HARVEST: '수확/채집/채광',
+    BUILD: '건설 작업',
     DEPOSIT: '창고 납품',
     SLEEP: '수면/휴식',
     EAT: '식사',
+    // task status
     PENDING: '대기 중',
     RUNNING: '실행 중',
     COMPLETED: '완료됨',
     FAILED: '취소/실패',
+    // creature states
+    IDLE: '대기',
+    WORK: '작업 준비',
+    MOVING: '이동 중',
+    WORKING: '작업 중',
+    BUILDING: '건설 중',
+    HARVESTING: '벌목 중',
+    GATHERING: '채집 중',
+    MINING: '채광 중',
+    RESTING: '휴식 중',
+    EATING: '식사 중',
+    SLEEPING: '수면 중',
+    WANDERING: '배회 중',
+    FLEEING: '도망 중',
+    ATTACKING: '공격 중',
+    SUFFERING: '고통 중',
+    // resource/target types
+    tree: '나무',
+    plant: '식물',
+    crop: '농작물',
+    grass: '풀',
+    mine: '광맥',
+    stone: '돌',
+    iron: '철광석',
+    gold: '금광석',
+    wood: '목재',
+    food: '식량',
+    biomass: '생물량',
+    village: '마을',
+    building: '건물',
+    creature: '주민',
   }
   return dict[key] || key
 }
@@ -340,20 +381,32 @@ const getRelationClass = (status) => {
 .bg-purple {
   background-color: #9b59b6 !important;
 }
+.task-queue-section {
+  grid-column: 1 / -1;
+}
 .task-queue-list {
   padding-left: 0;
   list-style: none;
   font-size: 0.85rem;
+  margin-top: 6px;
 }
 .task-queue-list li {
   padding: 4px 6px;
   background: rgba(255, 255, 255, 0.05);
   margin-bottom: 4px;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .current-task {
   border-left: 3px solid #2ecc71;
   background: rgba(46, 204, 113, 0.1) !important;
+}
+.task-idle {
+  color: #95a5a6;
+  font-style: italic;
 }
 .queue-num {
   display: inline-block;
@@ -363,10 +416,14 @@ const getRelationClass = (status) => {
   height: 18px;
   text-align: center;
   line-height: 18px;
-  margin-right: 6px;
   font-size: 0.75rem;
+  flex-shrink: 0;
 }
 .queue-type {
   font-weight: bold;
+}
+.queue-target {
+  color: #3498db;
+  font-size: 0.8rem;
 }
 </style>

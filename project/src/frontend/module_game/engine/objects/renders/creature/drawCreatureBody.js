@@ -47,7 +47,8 @@ export const drawCreatureBody = (creature, ctx, world, timestamp, yOffset = 0, a
   } = animProps
 
   // ■ 8방향 계산 (완벽한 매핑)
-  const rotation = creature.rotation ?? creature.transform?.rotation ?? (Math.PI / 2)
+  // 💡 [Visual Sync] 로컬 transform.rotation이 있으면 우선 (작업 중 타겟 응시 등), 없으면 시뮬레이션 rotation 사용
+  const rotation = creature.transform?.rotation ?? creature.rotation ?? (Math.PI / 2)
   const norm = (rotation + Math.PI * 2) % (Math.PI * 2)
   const dIdx = Math.floor((norm + Math.PI / 8) / (Math.PI / 4)) % 8
   const DIR_MAP = [2, 3, 4, 5, 6, 7, 0, 1] 

@@ -58,7 +58,7 @@ export class RenderSystem {
       const { globals, globalsInt32, sets } = world.views
       const frontIndex = Atomics.load(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
       if (frontIndex !== 0 && frontIndex !== 1) return
-      
+
       const currentSet = sets[frontIndex]
       const villageView = currentSet.villages
       const villageCount = Atomics.load(globalsInt32, PROPS.GLOBALS.VILLAGE_COUNT)
@@ -251,7 +251,7 @@ export class RenderSystem {
       // ... selection ring, particles, UI render lines ...
       world.particleSystem.render(world.ctx)
       world.weather.render(world.ctx)
-      world.interactionSystem.render(world.ctx, drawables)
+      world.interactionSystem.render(world.ctx, drawables, world)
       world.ctx.restore()
       world.timeSystem.renderOverlay(world.ctx, world.canvas.width, world.canvas.height)
       world.lightingSystem.applyColorGrading(

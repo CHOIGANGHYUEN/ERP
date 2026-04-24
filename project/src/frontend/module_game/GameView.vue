@@ -70,33 +70,7 @@
       </div>
     </div>
 
-    <AppCard v-if="savedWorlds.length > 0" style="margin-top: 24px">
-      <h3 style="margin-top: 0; margin-bottom: 16px">저장된 월드 목록 (Mock Data)</h3>
-      <table class="app-table modern-data-table">
-        <thead>
-          <tr>
-            <th>월드명</th>
-            <th>인구수</th>
-            <th>생성일시</th>
-            <th>조작</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="world in savedWorlds" :key="world.id">
-            <td>{{ world.worldName }}</td>
-            <td>
-              <span class="badge-success">{{ world.population }}명</span>
-            </td>
-            <td>{{ new Date(world.createdAt).toLocaleString() }}</td>
-            <td>
-              <AppButton type="secondary" size="small" @click="loadWorldData(world)">
-                이 월드 불러오기
-              </AppButton>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </AppCard>
+    <!-- [UI Clean-up] 하단 저장된 월드 목록 제거 -->
   </div>
 </template>
 

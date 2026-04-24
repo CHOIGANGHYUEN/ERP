@@ -11,8 +11,8 @@ export class World {
     this.isHeadless = isHeadless
     this.canvas = canvas
 
-    this.width = 3000
-    this.height = 3000
+    this.width = 3200
+    this.height = 3200
 
     this.weather = this.di.resolve(TOKENS.WeatherSystem, this.width, this.height)
     this.timeSystem = this.di.resolve(TOKENS.TimeSystem)
@@ -59,7 +59,7 @@ export class World {
       this.sharedBuffers = createSharedBuffers()
       this.initSharedState(this.sharedBuffers)
     }
-    
+
     this.pathSystem.initSharedState(this)
 
     if (this.isHeadless) {
@@ -67,8 +67,7 @@ export class World {
       this.plants = []; this.plantPool = [];
       this.resources = []; this.resourcePool = [];
       this.animals = []; this.animalPool = [];
-      this.buildings = []; this.mines = [];
-      this.nations = []; this.villages = [];
+      this.buildings = []; this.mines = []; this.nations = []; this.villages = [];
     } else {
       this.villages = []
     }
@@ -79,12 +78,17 @@ export class World {
     this.quadTree = this.chunkManager
     this.maxFertility = 50000
     this.currentFertility = 50000
+    
+    // [System Limits] 개체 생성 제한수 동기화
+    this.maxCreatures = 2000
+    this.maxAnimals = 1000
+    this.maxPlants = 2000
 
     if (!this.isHeadless) {
       this.bgCanvas = document.createElement('canvas')
       this.bgCanvas.width = this.width; this.bgCanvas.height = this.height
       this.bgCtx = this.bgCanvas.getContext('2d')
-      
+
       this.bgBufferCanvas = document.createElement('canvas')
       this.bgBufferCanvas.width = this.width; this.bgBufferCanvas.height = this.height
       this.bgBufferCtx = this.bgBufferCanvas.getContext('2d')
@@ -106,11 +110,13 @@ export class World {
   }
 
   getEntityById(id, type) {
-    if (!id || !type) return null
+    // 💡 [버그 수정] id가 0일 때 falsy로 판정되어 첫 번째 타겟을 찾지 못하는 현상 방어
+    if (id === undefined || id === null || !type) return null
     const t = type.toLowerCase()
     if (t === 'creature') return this.creatures.find(e => e.id === id)
     if (t === 'building') return this.buildings.find(e => e.id === id)
     if (t === 'animal') return this.animals.find(e => e.id === id)
+    if (t === 'mine') return this.mines.find(e => e.id === id) // 💡 광맥(mine) 조회 누락 수정
     const res = this.resources.find(e => e.id === id)
     return res || this.plants.find(e => e.id === id)
   }
@@ -137,6 +143,18 @@ export class World {
   stop() {
     this.isRunning = false
     if (this.animationId) cancelAnimationFrame(this.animationId)
+  }
+
+  destroy() {
+    this.stop()
+    this.isRunning = false
+    if (this.chunkManager) {
+      this.chunkManager.clearAll?.()
+    }
+    // Remove references to help GC
+    this.di = null
+    this.canvas = null
+    this.ctx = null
   }
 
   startLogic(onSync) {

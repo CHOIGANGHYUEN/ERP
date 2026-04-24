@@ -12,7 +12,7 @@ export const MAX_TORNADOES = 10
 
 export const STRIDE = {
   GLOBALS: 16,
-  CREATURE: 22,
+  CREATURE: 24,
   ANIMAL: 12,
   PLANT: 12,
   RESOURCE: 8,

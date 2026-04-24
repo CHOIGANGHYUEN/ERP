@@ -15,7 +15,7 @@ export const WorldSet = {
     WorldUpdater.update(world, deltaTime)
   },
 
-  getEntityAt: (world, screenX, screenY) => {
-    return WorldInteractor.getEntityAt(world, screenX, screenY)
+  getEntityAt: (world, worldX, worldY) => {
+    return WorldInteractor.getEntityAt(world, worldX, worldY)
   }
 }

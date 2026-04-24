@@ -48,14 +48,16 @@ const authController = {
       const userId = decoded.email
       const now = new Date()
 
-      // 로그 저장을 위한 공통 데이터 셋
-      const kstNow = new Date(new Date().getTime() + 9 * 60 * 60 * 1000) // 한국 시간 강제 교정
+      // 💡 [버그수정 완료] DB 뷰어상 명확한 한국 시간(KST)을 기록하기 위함
+      // 단순 new Date() + 9시간을 객체 그대로 쓰면 Node/Sequelize의 로컬 변환 규칙과 꼬여 에러를 유발합니다.
+      // 강제 ISO 문자열 포맷(YYYY-MM-DD HH:mm:ss)로 박아서 저장하면 MySQL/MariaDB에 의도된 시간만 남습니다.
+      const kstTime = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+      const kstDateString = kstTime.toISOString().replace('T', ' ').substring(0, 19)
 
-      // 로그 저장을 위한 공통 데이터 셋
       const logData = {
-        loginDt: kstNow,
+        loginDt: kstDateString,
         userId: userId,
-        loginAt: kstNow,
+        loginAt: kstDateString,
         authorize: credential.substring(0, 255),
         createdBy: userId,
         changedBy: userId,
@@ -77,8 +79,18 @@ const authController = {
       })
 
       if (lastLog) {
-        const timeDiff = now.getTime() - new Date(lastLog.loginAt).getTime()
-        if (timeDiff < 3000) {
+        // [타임존 호환성 방어] DB에서 꺼낸 loginAt이 '+09:00' 정보가 떨어져 나간 단순 문자열이라면,
+        // Node 컨테이너(UTC) 환경에서는 이를 UTC 시간으로 잘못 파싱하여 미래 시간으로 착각할 수 있습니다.
+        // 이를 막기 위해 파싱 시 KST 오프셋을 붙여서 절대 기준시(Epoch)를 동일하게 맞춥니다.
+        let parsedLastLoginTime
+        if (typeof lastLog.loginAt === 'string' && !lastLog.loginAt.includes('+')) {
+          parsedLastLoginTime = new Date(lastLog.loginAt.trim() + '+09:00').getTime()
+        } else {
+          parsedLastLoginTime = new Date(lastLog.loginAt).getTime()
+        }
+
+        const timeDiff = now.getTime() - parsedLastLoginTime
+        if (timeDiff < 1000) {
           // 중복 클릭이 감지되었을 때 에러 로그만 남기고 응답 종료
           console.warn(`[Auth] Blocked rapid login request for ${userId}. Time diff: ${timeDiff}ms`)
           return res.status(429).json({ message: '이미 로그인 처리가 진행 중입니다. 잠시만 기다려주세요.' })
@@ -182,10 +194,12 @@ const authController = {
       if (token) {
         const decoded = jwt.decode(token)
         if (decoded && decoded.email) {
+          const kstTime = new Date(new Date().getTime() + 9 * 60 * 60 * 1000)
+          const kstDateString = kstTime.toISOString().replace('T', ' ').substring(0, 19)
           await LogLoginUser.create({
-            loginDt: new Date(),
+            loginDt: kstDateString,
             userId: decoded.email,
-            loginAt: new Date(),
+            loginAt: kstDateString,
             authorize: 'LOGOUT',
             logged: 'SUCCESS: LOGOUT',
             createdBy: decoded.email,

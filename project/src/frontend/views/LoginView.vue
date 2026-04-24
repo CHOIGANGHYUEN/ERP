@@ -38,19 +38,26 @@ onMounted(() => {
   checkGoogleLoaded = setInterval(() => {
     if (window.google) {
       clearInterval(checkGoogleLoaded)
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        ux_mode: 'redirect',
-        login_uri: import.meta.env.VITE_GOOGLE_REDIRECT_URI,
-      })
-      window._googleInitialized = true
-      renderGoogleButton()
+      checkGoogleLoaded = null
+      
+      if (!window._googleInitialized) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          ux_mode: 'redirect',
+          login_uri: import.meta.env.VITE_GOOGLE_REDIRECT_URI,
+        })
+        window._googleInitialized = true
+        renderGoogleButton()
+      }
     }
   }, 100)
 })
 
 const renderGoogleButton = () => {
   if (window.google && document.getElementById('google-login-btn')) {
+    // 이미 버튼이 렌더링되었는지 확인하는 flag 추가 (선택사항이나 안전함)
+    if (document.getElementById('google-login-btn').innerHTML !== '') return
+    
     window.google.accounts.id.renderButton(document.getElementById('google-login-btn'), {
       theme: 'outline',
       size: 'large',

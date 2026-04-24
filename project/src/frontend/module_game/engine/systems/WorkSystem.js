@@ -15,10 +15,18 @@ export class WorkSystem {
 
     world.creatures.forEach(creature => {
       // 1) 상태 및 쿨다운 검사
-      if (creature.isDead || !creature.isAdult) return
-      
+      // 💡 [버그 수정] 나이(isAdult)와 상관없이 태어나자마자 마을을 짓고 활동하도록 제약 해제
+      if (creature.isDead) return
+
       // 💡 [지속성 강화] 이미 중요한 일을 하고 있으면 의사결정 스킵 (딴짓 방지)
       if (creature.taskQueue.length > 0) return
+
+      // 💡 [초기 직업 자동 배정] 무직인 주민에게 기본 직업을 부여하여 즉각적인 경제/건설 활동 유도
+      if (!creature.profession || creature.profession === 'NONE' || creature.profession === 'IDLE') {
+        const defaultJobs = ['GATHERER', 'LUMBERJACK', 'BUILDER', 'MINER']
+        const hashId = typeof creature.id === 'string' ? creature.id.charCodeAt(0) : (creature.id || Math.floor(Math.random() * 100))
+        creature.profession = defaultJobs[hashId % defaultJobs.length]
+      }
 
       let timer = (this.timers.get(creature.id) || 0) + deltaTime
       if (timer < this.processRate) {
@@ -28,37 +36,60 @@ export class WorkSystem {
       this.timers.set(creature.id, 0)
 
       // 2) [인지 및 판단 트리거]
+      if (!creature.state) creature.state = 'IDLE' // 초기 상태 보정
       if (!['WORK', 'IDLE', 'WANDERING'].includes(creature.state)) return
 
-      const villageId = world.villages.indexOf(creature.village)
-      if (villageId === -1) return
+      // 💡 [버그 수정] 아직 마을 등록이 완전히 끝나지 않았어도 개인 작업(벌목 등)은 하도록 완화
+      const villageId = creature.village ? world.villages.indexOf(creature.village) : -1
 
-      // 3) [타겟 스캔 로직]
-      const nearbyTasks = taskBoard.getAvailableTasks(villageId)
+      // 3) [의사결정: 공동 업무 vs 개인 직업 활동]
+      const nearbyTasks = villageId !== -1 && taskBoard ? taskBoard.getAvailableTasks(villageId) : []
       let bestTask = null
 
-      // 💡 [건축 우선 원칙] 마을 발전을 위해 미완성 건물을 무조건 최우선으로 처리함
-      // 개인 채집 활동(Harvest)보다 건축(Build)이 지리적으로 조금 멀더라도 건축에 우선 전념함
-      if (nearbyTasks.length > 0) {
-        bestTask = this.findBestTask(creature, nearbyTasks)
-      } 
-      
-      // 공용 업무(건축 등)가 없을 때만 개인 직업 활동 수행
-      if (!bestTask) {
+      // 💡 [버그 수정] 마을에 아직 소속되지 않은 주민이 있을 때 발생하는 치명적 에러 방어
+      const inv = creature.village?.inventory || {}
+      const pop = creature.village?.creatures?.length || 1
+      const isFoodLow = inv.food < pop * 2
+      const isLumberLow = inv.wood < pop * 2
+
+      // 💡 [자원 상태 기반 우선순위 동적 변경]
+      // 식량이 부족할 때, 식량 관련 직업(FARMER, GATHERER)은 건축보다 채집을 우선함
+      if (isFoodLow && ['FARMER', 'GATHERER'].includes(creature.profession)) {
         bestTask = this.perceivePersonalTask(creature, world)
+        if (!bestTask && nearbyTasks.length > 0) {
+          bestTask = this.findBestTask(creature, nearbyTasks)
+        }
+      }
+      // 목재가 부족할 때, 벌목꾼(LUMBERJACK)은 건축보다 벌목을 우선함
+      else if (isLumberLow && creature.profession === 'LUMBERJACK') {
+        bestTask = this.perceivePersonalTask(creature, world)
+        if (!bestTask && nearbyTasks.length > 0) {
+          bestTask = this.findBestTask(creature, nearbyTasks)
+        }
+      }
+      else {
+        // 기본적으로는 미완성 건물(BUILD)을 최우선으로 처리
+        if (nearbyTasks.length > 0) {
+          bestTask = this.findBestTask(creature, nearbyTasks)
+        }
+
+        // 공용 업무가 없으면 개인 직업 활동 수행
+        if (!bestTask) {
+          bestTask = this.perceivePersonalTask(creature, world)
+        }
       }
 
       // 4) [타겟 매칭 & 큐 할당]
       if (bestTask) {
-        const claimed = bestTask.isPersonal 
-          ? bestTask 
+        const claimed = bestTask.isPersonal
+          ? bestTask
           : taskBoard.claimTask(villageId, bestTask.id, creature.id)
 
         if (claimed) {
           this.assignTaskChain(creature, claimed, world)
         }
       } else {
-        // 일감이 없으면 가끔 배회 (Fallback)
+        // 일감이 없거나 휴식/방황이 필요할 때 배회 (Fallback)
         if (Math.random() < 0.1) creature.wander(world)
       }
     })
@@ -106,13 +137,15 @@ export class WorkSystem {
           const cols = Math.ceil((world.width || 3200) / 16)
           const tx = Math.floor(obj.x / 16), ty = Math.floor(obj.y / 16)
           const terrainType = world.terrain[ty * cols + tx]
-          if (terrainType === 2 || terrainType >= 3) return 
+          if (terrainType === 2 || terrainType >= 3) return
 
-          // 💡 [활동 범위 제한] 전사나 탐험가가 아니면 마을 영토 밖의 자원은 무시
+          // 💡 [활동 범위 제한] 전사나 탐험가가 아니면 남의 영토 밖의 자원은 무시
           const isScout = ['WARRIOR', 'EXPLORER'].includes(creature.profession)
           if (!isScout && world.territory) {
             const vIdx = world.villages.indexOf(creature.village) + 1
-            if (world.territory[ty * cols + tx] !== vIdx) return
+            const terrOwner = world.territory[ty * cols + tx]
+            // 💡 [수집 범위 완화] 마을 영토가 아직 좁을 수 있으므로 내 땅이거나 주인이 없는 땅(0)이면 허용!
+            if (terrOwner !== vIdx && terrOwner !== 0) return
           }
         }
 
@@ -144,18 +177,19 @@ export class WorkSystem {
     const target = world.getEntityById(task.targetId, task.targetType)
     if (!target) return
 
+    // 💡 [핵심 수정] 기존 순수 객체 방식 → BaseTask 인스턴스로 교체
+    // CreatureSet.update()가 taskQueue[0].execute()를 호출하므로 반드시 BaseTask 인스턴스여야 함
     creature.taskQueue = []
-    
-    // 💡 [AI Communication] 콘솔 로그 대신 실시간 인게임 이벤트로 방송
-    const shortId = creature.id.substring(0, 4)
+
+    // 말풍선 & 이벤트 방송
+    const shortId = String(creature.id).substring(0, 4)
     const targetInfo = task.targetType || '대상'
-    const msg = `[${creature.profession}] ${shortId} -> ${task.type} (${targetInfo})`
-    world.broadcastEvent(msg, '#f1c40f')
-    
-    // 말풍선으로도 표현하여 현장감 극대화
+    world.broadcastEvent(`[${creature.profession}] ${shortId} -> ${task.type} (${targetInfo})`, '#f1c40f')
     world.showSpeechBubble(creature.id, 'creature', `${targetInfo} ${task.type}!`)
 
     const range = creature.size + (target.size || 10)
+
+    // 💡 [수정] BaseTask 인스턴스 사용 (execute() 메서드 보유)
     creature.taskQueue.push(new MoveTask(target, range))
 
     if (task.type === 'BUILD') {
@@ -163,8 +197,9 @@ export class WorkSystem {
     } else {
       creature.taskQueue.push(new HarvestTask(target))
     }
-    
-    creature.currentTask = creature.taskQueue[0]
+
+    // 💡 [수정] currentTask를 미리 shift하지 않음
+    // CreatureSet.update()가 taskQueue[0]을 직접 execute()하므로 여기서 꺼내면 안 됨
     creature.state = 'WORK'
   }
 }

@@ -56,9 +56,15 @@ export const CreatureSet = {
         // 1. 생존 욕구 평가 및 주입
         const survivalDrive = CreatureEmotion.evaluateSurvivalNeeds(creature, world)
         if (survivalDrive && survivalDrive.type !== DRIVE.NONE) {
-          creature.taskQueue = [] // 강제 전환
-          const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
-          if (injector) injector(creature, survivalDrive.payload, world)
+          // 💡 [핵심 버그 수정] 이미 taskQueue에 작업이 있으면 생존 드라이브가 덮어쓰지 않음
+          // 단, PANIC(육식동물 위협)은 예외적으로 즉시 중단
+          const hasActiveTasks = creature.taskQueue.length > 0
+          const isPanic = survivalDrive.type === DRIVE.PANIC
+          if (!hasActiveTasks || isPanic) {
+            if (isPanic) creature.taskQueue = [] // 패닉일 때만 큐 비움지
+            const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
+            if (injector) injector(creature, survivalDrive.payload, world)
+          }
         }
         // 2. 생존 우선순위가 아니면 업무 시스템(WorkSystem)이 새로운 작업을 할당할 때까지 대기
         else if (creature.taskQueue.length === 0 && (creature.state === 'IDLE' || creature.state === 'WORK')) {

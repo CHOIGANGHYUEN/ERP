@@ -29,17 +29,17 @@ import { EatTask } from '../tasks/EatTask.js'
 // 💡 [추가] 개별 크리쳐 액션 중 에러 발생 시 전체 틱이 멈추는 것을 방지하는 래퍼 함수
 const safe =
   (fn) =>
-  (entity, ...args) => {
-    try {
-      return fn(entity, ...args)
-    } catch (error) {
-      console.error(`[Creature Action Error] ID: ${entity?.id}`, error)
-      if (entity) {
-        entity.state = 'WANDERING'
-        entity.target = null
+    (entity, ...args) => {
+      try {
+        return fn(entity, ...args)
+      } catch (error) {
+        console.error(`[Creature Action Error] ID: ${entity?.id}`, error)
+        if (entity) {
+          entity.state = 'WANDERING'
+          entity.target = null
+        }
       }
     }
-  }
 
 export const CreatureActions = {
   // 직업별 일거리 주입 (Job Behaviors)
@@ -93,7 +93,7 @@ export const CreatureActions = {
       const idx = world.creatures.indexOf(creature)
       if (idx !== -1) world.showSpeechBubble(idx, 'creature', text, 2000)
     }),
-    [DRIVE.NONE]: safe((_creature, _payload, _world) => {}),
+    [DRIVE.NONE]: safe((_creature, _payload, _world) => { }),
   },
 
   // 상태 기반 프레임별 실행 (State Execution)
@@ -110,11 +110,12 @@ export const CreatureActions = {
     FLEEING: safe(FLEEING),
     MATING: safe(MATING),
     TRAINING: safe(TRAINING),
-    IDLE: safe(() => {}),
-    MOVING: safe(() => {}), // MoveTask 진행 중 상태 - WANDERING executor 충돌 방지용
-    EATING: safe(() => {}),
-    DEPOSITING: safe(() => {}),
-    SUFFERING: safe(() => {}),
+    IDLE: safe(() => { }),
+    MOVING: safe(() => { }), // MoveTask 진행 중 상태 - WANDERING executor 충돌 방지용
+    EATING: safe(() => { }),
+    DEPOSITING: safe(() => { }),
+    SUFFERING: safe(() => { }),
+    HEAL: safe(() => { }), // 💡 상태 충돌 방지용 더미(Dummy) 실행기
 
     TRADING: safe((creature, deltaTime, world) => {
       if (!creature.target || creature.target.isDead) {

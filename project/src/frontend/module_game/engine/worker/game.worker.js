@@ -142,12 +142,22 @@ self.onmessage = (e) => {
       } else if (type === 'REQUEST_ENTITY_DETAILS') {
         let extInfo = {}
         if (payload.type === 'creature') {
-          const creature = world.creatures.find((c) => c.id === payload.id)
+          // 💡 [핵심 버그 수정] payload.id는 메인 스레드 프록시의 배열 인덱스입니다.
+          // c.id (문자열)과 payload.id (숫자)를 비교하면 항상 undefined가 반환되어 taskQueue가 비어있게 됩니다.
+          const creature = world.creatures[payload.id]
           if (creature) {
+            // 💡 [핵심 수정] taskQueue를 UI에 표시할 수 있는 순수 객체로 직렬화
+            const serializeTask = (t) => ({
+              type: t.type || t.constructor?.name || 'UNKNOWN',
+              status: t.status || 'PENDING',
+              name: t.name || t.type || '\uc791\uc5c5',
+              targetType: t.target?._type || t.target?.type || null,
+              targetId: t.target?.id !== undefined ? t.target?.id : null,
+            })
             extInfo = {
               inventory: creature.inventory ? { ...creature.inventory } : {},
               taskQueue: creature.taskQueue
-                ? creature.taskQueue.map((t) => ({ type: t.type, status: t.status }))
+                ? creature.taskQueue.map(serializeTask)
                 : [],
             }
           }
@@ -156,6 +166,7 @@ self.onmessage = (e) => {
           type: 'ENTITY_DETAILS',
           payload: {
             id: payload.id,
+            _type: payload.type,
             ...extInfo,
           },
         })

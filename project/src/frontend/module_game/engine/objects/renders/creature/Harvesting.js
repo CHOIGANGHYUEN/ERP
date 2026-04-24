@@ -47,5 +47,11 @@ export const HARVESTING = (creature, ctx, timestamp, world) => {
   if (creature.target && creature.target.energy !== undefined) {
     RenderUtils.drawBar(ctx, creature.x, creature.y - drawSize - 12, 22, 4, 
       creature.target.energy / (creature.target.maxEnergy || 100), '#2ecc71')
+  } else if (creature.resourceCarryCount > 0) {
+    // 자원을 채집했음을 보여주는 시각적 힌트
+    RenderUtils.drawPixel(ctx, creature.x, creature.y - drawSize - 16, '#f1c40f', 3)
+  } else if (creature.isWorking) {
+    const harvestProgressPhase = (timestamp % 2000) / 2000
+    RenderUtils.drawBar(ctx, creature.x, creature.y - drawSize - 12, 22, 4, harvestProgressPhase, '#2ecc71')
   }
 }

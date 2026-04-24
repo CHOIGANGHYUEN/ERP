@@ -1,7 +1,11 @@
 export const VillageActions = {
   update: (village, deltaTime, world) => {
     try {
-      village.tickTimer += deltaTime
+      // 💡 [버그 수정] 생성 직후 tickTimer가 undefined여서 NaN이 되어 영원히 업데이트가 멈추는 버그 방어
+      village.tickTimer = (village.tickTimer || 0) + deltaTime
+      // 💡 [버그 수정] 마을 인벤토리가 없을 경우 초기화
+      if (!village.inventory) village.inventory = { wood: 0, food: 0, stone: 0, gold: 0, iron: 0 }
+
       if (village.tickTimer >= 1000) {
         village.tickTimer = 0
 
@@ -106,7 +110,7 @@ export const VillageActions = {
         if ((item._type === 'resource' || item.type === 'resource') && !item.isDead) {
           const tx = Math.floor(item.x / 16)
           const ty = Math.floor(item.y / 16)
-          
+
           // 해당 자원이 우리 영토 내에 있는지(ownerId) 검사!
           if (tx >= 0 && tx < 200 && ty >= 0 && ty < 200) {
             if (world.territory[ty * 200 + tx] === vId) {
@@ -156,15 +160,24 @@ export const VillageActions = {
     const hasMarket = buildings.some(b => b.type === 'MARKET') // WAREHOUSE 대용
 
     // 유효한 부지 선정 함수
-    const findPlot = () => {
-      const angle = Math.random() * Math.PI * 2
-      const dist = 40 + Math.random() * 80
-      const tx = village.x + Math.cos(angle) * dist
-      const ty = village.y + Math.sin(angle) * dist
-      const gx = Math.floor(tx / 16), gy = Math.floor(ty / 16)
-      if (gx >= 0 && gx < 200 && gy >= 0 && gy < 200) {
-        if (world.territory[gy * 200 + gx] === (vId + 1) && world.terrain[gy * 200 + gx] < 2) {
-          return { x: tx, y: ty }
+    const findPlot = (isTownHall = false) => {
+      // 💡 [건설 개선] 첫 건물(TOWN_HALL)은 부지 탐색 없이 즉시 마을 중심에 건설
+      if (isTownHall) {
+        return { x: village.x, y: village.y }
+      }
+      // 다른 건물들은 위치를 여러 번 탐색
+      for (let i = 0; i < 15; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const dist = 30 + Math.random() * 80
+        const tx = village.x + Math.cos(angle) * dist
+        const ty = village.y + Math.sin(angle) * dist
+        const gx = Math.floor(tx / 16), gy = Math.floor(ty / 16)
+        if (gx >= 0 && gx < 200 && gy >= 0 && gy < 200) {
+          const terrOwner = world.territory[gy * 200 + gx]
+          // 💡 [건설 개선] 초기에는 영토가 좁으므로 남의 땅이 아닌 주인이 없는 땅(0)에도 확장을 허용
+          if ((terrOwner === (vId + 1) || terrOwner === 0) && world.terrain[gy * 200 + gx] < 2) {
+            return { x: tx, y: ty }
+          }
         }
       }
       return null
@@ -172,7 +185,7 @@ export const VillageActions = {
 
     // [Step 1] 캠프파이어 (TOWN_HALL 역할) 우선 구축
     if (!hasCampfire) {
-      const plot = findPlot()
+      const plot = findPlot(true)
       if (plot) world.spawnBuilding(plot.x, plot.y, 'TOWN_HALL', village)
       return
     }
@@ -180,11 +193,11 @@ export const VillageActions = {
     // [Step 2] 저장고 (MARKET 역할) 구축
     if (!hasMarket) {
       if (village.inventory.wood >= 10) {
-         const plot = findPlot()
-         if (plot) {
-           world.spawnBuilding(plot.x, plot.y, 'MARKET', village)
-           village.inventory.wood -= 10
-         }
+        const plot = findPlot()
+        if (plot) {
+          world.spawnBuilding(plot.x, plot.y, 'MARKET', village)
+          village.inventory.wood -= 10
+        }
       }
       return
     }
