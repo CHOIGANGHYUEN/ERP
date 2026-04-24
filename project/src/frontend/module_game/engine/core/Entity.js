@@ -138,10 +138,40 @@ export class Entity {
           dirY /= steerDist
         }
       }
-
       let pathSpeedMult = 1.0
       if (world.pathSystem) {
         pathSpeedMult = world.pathSystem.getSpeedMult(this.x, this.y)
+      }
+
+      // 💡 [Local Avoidance] 근처 유닛들과의 뭉침 방지 (Repulsion)
+      // 매 프레임 모든 개체를 검사하면 무거우므로 chunkManager를 활용해 주변 반경 16내 동적 객체만 대상
+      if (world.chunkManager && world.tick % 2 === 0) {
+        const nearby = world.chunkManager.query({
+          x: this.x - 16, y: this.y - 16, width: 32, height: 32
+        }, 'dynamic')
+        
+        let repelX = 0
+        let repelY = 0
+        for (let i = 0; i < nearby.length; i++) {
+          const other = nearby[i]
+          if (other === this || other.isDead || other.type !== this.type) continue
+          const rx = this.x - other.x
+          const ry = this.y - other.y
+          const rDist = Math.sqrt(rx * rx + ry * ry)
+          // 8px 이하로 붙으면 강한 밀어내기 힘 적용
+          if (rDist > 0 && rDist < 8) {
+            repelX += (rx / rDist) * (8 - rDist)
+            repelY += (ry / rDist) * (8 - rDist)
+          }
+        }
+        
+        if (repelX !== 0 || repelY !== 0) {
+          dirX += repelX * 0.3
+          dirY += repelY * 0.3
+          const len = Math.sqrt(dirX * dirX + dirY * dirY)
+          dirX /= len
+          dirY /= len
+        }
       }
 
       const moveStep = this.speed * speedMult * pathSpeedMult * (deltaTime * 0.06)

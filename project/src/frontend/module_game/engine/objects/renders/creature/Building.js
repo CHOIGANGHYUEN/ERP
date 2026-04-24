@@ -7,38 +7,41 @@ import { RenderUtils } from '../../../utils/RenderUtils.js'
  * Layer5: 망치 이펙트 + 먼지 파티클 + 진척 바
  */
 export const BUILDING = (creature, ctx, timestamp, world) => {
-  const t = timestamp * 0.009
-
-  // 망치 swing: 0→위 → 아래 → 위 반복
+  const t = timestamp * 0.01
   const hammer = Math.abs(Math.sin(t * Math.PI)) * 9
 
-  // 망치질 임팩트 순간 먼지 파티클
-  if (hammer < 1.5 && Math.floor(t) !== Math.floor(t - 0.016)) {
-    const P = Math.max(1, Math.round((creature.size || 16) / 8))
-    const dx = creature.x + 10
-    const dy = creature.y - 5
-    ctx.fillStyle = '#bdc3c7'; ctx.fillRect(dx,     dy,     P*2, P)
-    ctx.fillStyle = '#95a5a6'; ctx.fillRect(dx + 4, dy + 2, P,   P)
-    ctx.fillStyle = '#7f8c8d'; ctx.fillRect(dx - 2, dy + 1, P,   P*2)
+  // 타겟 방향으로 몸 돌리기
+  if (creature.target && creature.transform) {
+    const dx = creature.target.x - creature.x
+    const dy = creature.target.y - creature.y
+    creature.transform.rotation = Math.atan2(dy, dx)
   }
 
-  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, hammer * 0.12, {
-    legL: 3,
-    legR: -1,
-    armL: hammer * 0.4,
-    armR: -hammer,   // 오른팔이 위로 들림 → 망치질
-    bodyTilt: 0.07,
+  // 임팩트 먼지 파티클
+  if (hammer < 2) {
+    const angle = creature.transform.rotation + (Math.random() - 0.5)
+    RenderUtils.drawPixel(ctx, 
+      creature.x + Math.cos(angle) * 12, 
+      creature.y + Math.sin(angle) * 10, 
+      '#bdc3c7', 3)
+  }
+
+  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, 0, {
+    legL: 1, legR: -1,
+    armL: 0,
+    armR: -hammer,
+    bodyTilt: hammer * 0.01,
+    toolOffset: {
+      x: Math.cos(creature.transform.rotation) * 6,
+      y: Math.sin(creature.transform.rotation) * 2,
+      rotation: creature.transform.rotation - (hammer * 0.1),
+      color: '#95a5a6' // 망치 색상
+    }
   })
 
   // 진척 바
-  if (creature.isAdult && creature.target && creature.target.progress !== undefined) {
-    RenderUtils.drawBar(
-      ctx,
-      creature.x,
-      creature.y - drawSize - 8,
-      22, 3,
-      creature.target.progress / (creature.target.maxProgress || 100),
-      '#e67e22', '#f1c40f',
-    )
+  if (creature.target && creature.target.progress !== undefined) {
+    RenderUtils.drawBar(ctx, creature.x, creature.y - drawSize - 10, 20, 3, 
+      creature.target.progress / (creature.target.maxProgress || 100), '#e67e22')
   }
 }

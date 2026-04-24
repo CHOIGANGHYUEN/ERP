@@ -4,38 +4,64 @@ export class BuildTask extends BaseTask {
   constructor(targetBuilding) {
     super('BUILD')
     this.target = targetBuilding
+    this.startTime = Date.now()
+    this.stuckTimer = 0
+    this.lastPos = { x: 0, y: 0 }
   }
 
-  execute(creature, deltaTime, world) {
-    this.status = 'RUNNING'
+  onEnter(creature, world) {
+    if (!this.target || this.target.isDead) throw new Error('Building target missing')
+    this.lastPos = { x: creature.x, y: creature.y }
+  }
 
-    if (!this.target || this.target.isConstructed) {
-      this.status = 'COMPLETED'
-      return this.status
+  onRunning(creature, deltaTime, world) {
+    if (this.target.isConstructed) return 'COMPLETED'
+
+    // 엣지 케이스 2: 갇힘 / 정체 체크
+    if (creature.movement.isMoving) {
+      const dx = creature.x - this.lastPos.x
+      const dy = creature.y - this.lastPos.y
+      if (Math.sqrt(dx * dx + dy * dy) < 0.1) {
+        this.stuckTimer += deltaTime
+        if (this.stuckTimer > 3000) { // 3초간 제자리
+          console.warn(`[BuildTask] Stuck detected for ${creature.id}`)
+          return 'FAILED'
+        }
+      } else {
+        this.stuckTimer = 0
+        this.lastPos = { x: creature.x, y: creature.y }
+      }
     }
 
+    // 전역 타임아웃
+    if (Date.now() - this.startTime > 30000) return 'FAILED'
+
     const dist = creature.distanceTo(this.target)
-    if (dist <= creature.size + (this.target.size || 0)) {
+    if (dist <= creature.size + (this.target.size || 20)) {
       creature.state = 'BUILDING'
-      
-      // 💡 핵심 수정: 1틱당 1회 연산만 수행하도록 제어. 
-      // 자원이 필요한 경우 여기서 체크 로직을 넣을 수 있음.
-      // 현재는 시간 기반 진행도를 적용하되, 루프 없이 if로만 처리.
       this.target.progress += deltaTime * 0.05
       
       if (this.target.progress >= (this.target.maxProgress || 100)) {
-        this.target.isConstructed = true
-        if (this.target.village) {
-          this.target.village.updateBuildingStatus(true)
-        }
-        this.status = 'COMPLETED'
+        return 'COMPLETED'
       }
     } else {
-      // 거리가 멀면 이동만 처리하고 이번 틱 종료
       creature.moveToTarget(this.target.x, this.target.y, deltaTime, world)
-      this.status = 'RUNNING'
     }
 
-    return this.status
+    return 'RUNNING'
+  }
+
+  onComplete(creature, world) {
+    if (this.target.isConstructed && this.target.village) {
+      this.target.village.updateBuildingStatus(true)
+    }
+  }
+
+  onFailed(creature, world, reason) {
+    creature.state = 'IDLE'
+    // 갇혔을 경우 블랙리스트에 추가하여 다른 작업 유도
+    if (this.target && world.blacklistService) {
+      world.blacklistService.add(this.target.id)
+    }
   }
 }

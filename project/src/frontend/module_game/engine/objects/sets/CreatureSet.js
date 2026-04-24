@@ -65,45 +65,24 @@ export const CreatureSet = {
           const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
           if (injector) injector(creature, survivalDrive.payload, world)
         }
-        // 2. 생존 우선순위가 아니면 직업 행동 탐색
-        else if (
-          creature.taskQueue.length === 0 &&
-          ['IDLE', 'WANDERING'].includes(creature.state)
-        ) {
-          const jobInjector = CreatureActions.JobInjectors[creature.profession]
-          if (jobInjector) {
-            // console.log(`🛠️ [Creature: ${creature.id}] 직업 활동 탐색 중 (${creature.profession})`);
-            const searchRange = {
-              x: creature.x - 300,
-              y: creature.y - 300,
-              width: 600,
-              height: 600,
-            }
-            const candidates = world.chunkManager.query(searchRange)
-            jobInjector(creature, world, candidates)
-          } else {
-            creature.wander(world)
-          }
+        // 2. 생존 우선순위가 아니면 업무 시스템(WorkSystem)이 새로운 작업을 할당할 때까지 대기
+        else if (creature.taskQueue.length === 0 && (creature.state === 'IDLE' || creature.state === 'WORK')) {
+           if (Math.random() < 0.05) creature.wander(world)
         }
-        // console.groupEnd();
       }
 
       // 3. SUFFERING (허기/고통 시각화 상태 전환)
-      if (
-        creature.needs.hunger >= 90 &&
-        creature.state !== 'EATING' &&
-        creature.state !== 'FLEEING' &&
-        creature.state !== 'ATTACKING'
-      ) {
+      if (creature.needs?.hunger >= 90 && 
+          !['EATING', 'FLEEING', 'ATTACKING'].includes(creature.state)) {
         creature.state = 'SUFFERING'
-      } else if (creature.state === 'SUFFERING' && creature.needs.hunger < 85) {
-        creature.state = 'WANDERING'
+      } else if (creature.state === 'SUFFERING' && creature.needs?.hunger < 85) {
+        creature.state = 'IDLE'
       }
 
       // Task Queue 기반 행동 실행 처리
       if (creature.taskQueue.length > 0) {
         const currentTask = creature.taskQueue[0]
-        const status = currentTask.safeExecute(creature, deltaTime, world)
+        const status = currentTask.execute(creature, deltaTime, world)
 
         if (status === 'COMPLETED' || status === 'FAILED') {
           creature.taskQueue.shift()

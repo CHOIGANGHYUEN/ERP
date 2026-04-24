@@ -6,9 +6,10 @@ export class Building extends Entity {
     super.init(x, y)
     this.type = type // 'HOUSE', 'SCHOOL', 'FARM', 'BARRACKS', 'TEMPLE', 'SMITHY', 'MARKET', 'FENCE', 'FENCE_GATE'
     this.tier = 1
-    this.maxTier = ['HOUSE', 'FARM'].includes(type) ? 3 : 2
+    this.maxTier = ['HOUSE', 'FARM', 'TOWN_HALL'].includes(type) ? 3 : 2
 
     const typeProps = {
+      TOWN_HALL: { size: 48, color: '#f1c40f', maxProgress: 500 },
       HOUSE: { size: 24, color: '#e74c3c', maxProgress: 100 },
       SCHOOL: { size: 32, color: '#3498db', maxProgress: 200 },
       FARM: { size: 36, color: '#27ae60', maxProgress: 120 },

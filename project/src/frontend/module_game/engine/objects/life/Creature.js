@@ -6,9 +6,19 @@ export class Creature extends Entity {
   init(x, y) {
     console.log('🧬 [Creature] init 시작:', { x, y });
     super.init(x, y)
+    
+    // ■ 1단계: 순수 데이터 계층 (Entity Component)
+    this.transform = { x, y, rotation: 0 }
+    this.movement = {
+      speed: 100 * (1.0 + Math.random() * 0.5), // 기본 이동 속도 (픽셀/초)
+      velocity: { x: 0, y: 0 },
+      path: [],
+      currentWaypointIndex: 0,
+      isMoving: false
+    }
+    this.collider = { radius: 10 }
+    
     this.size = 16
-    this.targetX = x
-    this.targetY = y
 
     // Age and Life stage
     this.age = 0 // In game "years", 1 real second = 1 game year
@@ -51,6 +61,9 @@ export class Creature extends Entity {
     this.familyId = 0
     this.tradeTimer = 0 // MERCHANT 교역 타이머
 
+    // 16. 공간 기억 (Spatial Memory)
+    this.spatialMemory = [] // { type, x, y, time }
+
     this.brain.init(this)
     FamilySystem.assignFamily(this)
   }
@@ -90,17 +103,22 @@ export class Creature extends Entity {
 
     if (!this.isAdult) {
       // 아기일 때는 배회만 함
-      if (Math.random() < 0.02) {
+      if (Math.random() < 0.02 && !this.movement.isMoving) {
         this.targetX = this.x + (Math.random() - 0.5) * 100
         this.targetY = this.y + (Math.random() - 0.5) * 100
+        this.movement.isMoving = true // 시스템이 이를 감지하여 경로를 생성할 것임
       }
-      this.moveToTarget(this.targetX, this.targetY, deltaTime, world)
       return
     }
 
     // 상태(State) 기반 렌더링 보정 (경험치 흭득)
     if (['GATHERING', 'HARVESTING', 'MINING', 'BUILDING', 'ATTACKING'].includes(this.state)) {
       this.gainExp(deltaTime * 0.05, world)
+    }
+
+    // [New Architecture] 중앙 제어 시스템 업데이트
+    if (world.movementSystem) {
+      world.movementSystem.updateEntity(this, deltaTime, world)
     }
 
     // Brain 세트에 핵심 스케줄링 및 행동 렌더 로직 위임
@@ -142,8 +160,17 @@ export class Creature extends Entity {
   }
 
   moveToTarget(tx, ty, deltaTime, world) {
-    const speedMult = this.age >= 60 ? 0.6 : this.isAdult ? 1.0 : 0.8
-    super.moveToTarget(tx, ty, deltaTime, world, speedMult)
+    // 목표가 이미 설정되어 있고, 거정도가 매우 가깝다면 리셋하지 않음 (지그재그 및 멈춤 방지)
+    if (this.targetPos && Math.abs(this.targetPos.x - tx) < 5 && Math.abs(this.targetPos.y - ty) < 5) {
+      this.movement.isMoving = true
+      return
+    }
+
+    // 이제 능동적으로 이동하지 않고, targetPos만 설정하여 시스템이 처리하도록 위임
+    this.targetPos = { x: tx, y: ty }
+    this.movement.isMoving = true
+    this.movement.currentWaypointIndex = 0
+    this.movement.path = [] // 새 목표이므로 경로 초기화 (MovementSystem이 다음 틱에 재생성)
   }
 
   assignProfession(world) {

@@ -8,43 +8,42 @@ import { RenderUtils } from '../../../utils/RenderUtils.js'
  */
 export const MINING = (creature, ctx, timestamp, world) => {
   const t = timestamp * 0.012
+  const phase = (t % (Math.PI * 2))
+  const swing = phase < Math.PI ? Math.sin(phase) * -10 : Math.sin(phase) * 8
 
-  // 2단 모션: 크게 올리고 → 빠르게 내리기 (비대칭 이징)
-  const phase  = (t % (Math.PI * 2))
-  const swing  = phase < Math.PI
-    ? Math.sin(phase) * -10        // 올리기 (느리게)
-    : Math.sin(phase) * 8          // 내리기 (빠르게)
-
-  // 충격 순간 (swing 최대치) 스파크
-  if (swing > 6) {
-    const P = Math.max(1, Math.round((creature.size || 16) / 8))
-    const sx = creature.x + 12
-    const sy = creature.y - 2
-    ctx.fillStyle = '#f1c40f'; ctx.fillRect(sx,       sy,     P*2, P)
-    ctx.fillStyle = '#e74c3c'; ctx.fillRect(sx + 4,   sy - 3, P,   P)
-    ctx.fillStyle = '#f39c12'; ctx.fillRect(sx - 2,   sy + 2, P,   P*2)
+  // 타겟 방향으로 몸 돌리기
+  if (creature.target && creature.transform) {
+    const dx = creature.target.x - creature.x
+    const dy = creature.target.y - creature.y
+    creature.transform.rotation = Math.atan2(dy, dx)
   }
 
-  // 몸이 충격에 따라 앞으로 틸트
-  const tilt = swing > 4 ? 0.15 : 0.05
+  // 충격 순간 스파크 (방향 반영)
+  if (swing > 6) {
+    const angle = creature.transform.rotation + (Math.random() - 0.5) * 0.5
+    for(let i=0; i<3; i++) {
+       RenderUtils.drawPixel(ctx, 
+         creature.x + Math.cos(angle) * 14, 
+         creature.y + Math.sin(angle) * 10, 
+         i % 2 === 0 ? '#f1c40f' : '#e67e22', 2)
+    }
+  }
 
-  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, Math.abs(swing) * 0.15, {
-    legL: -2,
-    legR: -2,
-    armL: -swing * 0.3,
+  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, 0, {
+    legL: -1, legR: -1,
+    armL: 0,
     armR: swing,
-    bodyTilt: tilt,
+    bodyTilt: swing * 0.02,
+    toolOffset: {
+      x: Math.cos(creature.transform.rotation) * 6,
+      y: Math.sin(creature.transform.rotation) * 2,
+      rotation: creature.transform.rotation + (swing * 0.1),
+      color: '#5d6d7e' // 곡괭이 색상
+    }
   })
 
-  // 진척 바 (광맥 체력)
-  if (creature.isAdult && creature.target && creature.target.energy !== undefined) {
-    RenderUtils.drawBar(
-      ctx,
-      creature.x,
-      creature.y - drawSize - 8,
-      22, 3,
-      creature.target.energy / (creature.target.maxEnergy || 100),
-      '#aab7b8', '#f1c40f',
-    )
+  if (creature.target && creature.target.energy !== undefined) {
+    RenderUtils.drawBar(ctx, creature.x, creature.y - drawSize - 10, 20, 3, 
+      creature.target.energy / (creature.target.maxEnergy || 100), '#f1c40f')
   }
 }

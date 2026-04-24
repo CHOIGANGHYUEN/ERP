@@ -18,6 +18,9 @@
         <button class="tool-btn" :class="{ active: showMinimapPanel }" @click="$emit('update:showMinimapPanel', !showMinimapPanel)">
           <span class="icon">🗺️</span><span>미니맵</span>
         </button>
+        <button class="tool-btn" :class="{ active: showTerritoryLayer }" @click="$emit('update:showTerritoryLayer', !showTerritoryLayer)">
+          <span class="icon">🏁</span><span>영토 레이어</span>
+        </button>
       </div>
 
       <div class="tool-divider"></div>
@@ -100,6 +103,7 @@ defineProps({
   showInteractionPanel: Boolean,
   showLogsPanel: Boolean,
   showMinimapPanel: Boolean,
+  showTerritoryLayer: Boolean,
   activeTool: String
 })
 defineEmits([
@@ -109,6 +113,7 @@ defineEmits([
   'update:showInteractionPanel',
   'update:showLogsPanel',
   'update:showMinimapPanel',
+  'update:showTerritoryLayer',
   'toggleTool',
   'handleAction'
 ])

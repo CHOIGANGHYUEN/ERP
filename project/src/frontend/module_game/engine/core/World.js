@@ -32,6 +32,19 @@ export class World {
     this.renderSystem = this.di.resolve(TOKENS.RenderSystem)
     this.pathSystem = this.di.resolve(TOKENS.PathSystem)
 
+    // [New AI Architecture Resolution]
+    this.eventBusService = this.di.resolve(TOKENS.EventBusService)
+    this.blacklistService = this.di.resolve(TOKENS.BlacklistService)
+    this.taskBoardService = this.di.resolve(TOKENS.TaskBoardService)
+    this.utilityScoringService = this.di.resolve(TOKENS.UtilityScoringService)
+    this.pathfinderService = this.di.resolve(TOKENS.PathfinderService)
+    this.steeringService = this.di.resolve(TOKENS.SteeringService)
+    this.movementSystem = this.di.resolve(TOKENS.MovementSystem, this.di)
+    this.assignmentSystem = this.di.resolve(TOKENS.WorkerAIAssignmentSystem, this.di)
+    this.behaviorSystem = this.di.resolve(TOKENS.BehaviorSystem, this.di)
+    this.perceptionSystem = this.di.resolve(TOKENS.PerceptionSystem, this.di)
+    this.workSystem = this.di.resolve(TOKENS.WorkSystem, this.di)
+
     // 카메라 시스템
     if (!this.isHeadless && canvas) {
       this.ctx = canvas.getContext('2d')
@@ -45,6 +58,12 @@ export class World {
       )
     } else {
       this.camera = { x: 0, y: 0, zoom: 1, width: 800, height: 400 } // Worker용 더미 카메라
+    }
+
+    // [New] Render/UI Settings
+    this.settings = {
+      showTerritory: true,
+      showGrid: false,
     }
 
     // [SAB] Shared Array Buffer
@@ -143,6 +162,7 @@ export class World {
   initSharedState(buffers) {
     this.sharedBuffers = buffers
     this.terrain = new Uint8Array(buffers.terrain)
+    this.territory = new Uint8Array(buffers.territory) // [New] Grid territory ownership maps
     this.bufferSyncSystem.initSharedState(this, buffers)
     this.needsStaticTerrainUpdate = true // 새 데이터 연동 시 정적 렌더링 트리거
   }
@@ -311,8 +331,12 @@ export class World {
 
       const dt = Math.min(deltaTime, 100)
 
-      this.update(dt)
-      this.render(timestamp)
+      // ✅ 시뮬레이션 연산(update)은 Worker에서 이미 실행 중이므로
+      // 메인 스레드에서는 렌더링(render)만 담당합니다.
+      // 👇 this.update(dt) 제거 → 메인 스레드 블로킹 원인 제거
+      if (!this.isHeadless) {
+        this.render(timestamp)
+      }
     } catch (error) {
       Logger.error('MainLoop', `메인 렌더 루프 에러: ${error.message}`, error)
     } finally {

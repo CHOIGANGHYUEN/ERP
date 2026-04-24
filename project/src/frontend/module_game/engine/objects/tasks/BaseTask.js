@@ -1,25 +1,49 @@
 export class BaseTask {
   constructor(type) {
     this.type = type
-    this.status = 'PENDING' // 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED'
+    this.status = 'PENDING'
+    this._initialized = false
   }
 
-  // 상속하여 구현. 실행 결과를 this.status에 업데이트 후 반환
+  // ■ 라이프사이클 훅 (자식 클래스에서 오버라이드)
+  onEnter(creature, world) {}
+  onRunning(creature, deltaTime, world) { return 'RUNNING' }
+  onComplete(creature, world) {}
+  onFailed(creature, world, reason) {}
+
+  /**
+   * ECS/FSM 통합 실행 메서드
+   */
   execute(creature, deltaTime, world) {
-    return this.status
+    if (this.status === 'COMPLETED' || this.status === 'FAILED') return this.status
+
+    try {
+      // 1. 진입 (Enter)
+      if (!this._initialized) {
+        this.onEnter(creature, world)
+        this._initialized = true
+        this.status = 'RUNNING'
+      }
+
+      // 2. 실행 (Running)
+      const result = this.onRunning(creature, deltaTime, world)
+      this.status = result || 'RUNNING'
+
+      // 3. 완료 처리
+      if (this.status === 'COMPLETED') {
+        this.onComplete(creature, world)
+      }
+
+      return this.status
+    } catch (e) {
+      console.error(`[Task Fatal Error] ${this.type}`, e)
+      return this.fail(creature, world, e.message)
+    }
   }
 
-  // 💡 [추가] 자식 클래스의 execute 실행 시 에러를 방어하는 래퍼 메서드
-  safeExecute(creature, deltaTime, world) {
-    try {
-      return this.execute(creature, deltaTime, world)
-    } catch (e) {
-      console.error(
-        `[Task Error] ${this.type} Task 실행 중 오류 (Creature ID: ${creature?.id}):`,
-        e,
-      )
-      this.status = 'FAILED'
-      return this.status
-    }
+  fail(creature, world, reason) {
+    this.status = 'FAILED'
+    this.onFailed(creature, world, reason)
+    return 'FAILED'
   }
 }

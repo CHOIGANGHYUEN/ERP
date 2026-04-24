@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 export function useGameTools(getWorldInstance) {
   const activeTool = ref(null)
@@ -9,6 +9,15 @@ export function useGameTools(getWorldInstance) {
   const showInteractionPanel = ref(true)
   const showLogsPanel = ref(true)
   const showMinimapPanel = ref(true)
+  const showTerritoryLayer = ref(true)
+
+  // 💡 [Sync Settings] UI의 레이어 토글 상태를 엔진의 settings 객체와 동기화
+  watch(showTerritoryLayer, (val) => {
+    const worldInstance = getWorldInstance()
+    if (worldInstance && worldInstance.settings) {
+      worldInstance.settings.showTerritory = val
+    }
+  })
 
   const toggleTool = (toolName) => {
     if (activeTool.value === toolName) {
@@ -48,6 +57,7 @@ export function useGameTools(getWorldInstance) {
     showInteractionPanel,
     showLogsPanel,
     showMinimapPanel,
+    showTerritoryLayer,
     toggleTool,
     handleAction
   }

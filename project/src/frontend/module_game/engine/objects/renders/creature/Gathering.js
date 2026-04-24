@@ -6,31 +6,19 @@ import { drawCreatureBody } from './drawCreatureBody.js'
  * Layer5: 채집 파티클 스파크
  */
 export const GATHERING = (creature, ctx, timestamp, world) => {
-  const t = timestamp * 0.004
-  const cycle = Math.sin(t * Math.PI) // -1 ~ 1
+  const t = timestamp * 0.01
+  const cycle = Math.sin(t * Math.PI)
+  const armDown = 3 + cycle * 2
 
-  // 허리를 굽혔다 펴는 리듬
-  const bendY    = 3 + cycle * 2          // 하체 고정, 상체만 아래로
-  const tilt     = 0.18 + cycle * 0.06   // 앞으로 기울어짐
-
-  // 두 팔 아래로 뻗어 채집
-  const armDown  = 4 + cycle * 3
-
-  // Layer5: 채집 반짝임 (녹색/노란 스파크)
-  const S = creature.size || 16
-  const sparkX = creature.x + Math.cos(t * 3.7) * 8
-  const sparkY = creature.y + 4 + Math.sin(t * 5.1) * 4
-  ctx.fillStyle = cycle > 0 ? '#2ecc71' : '#f1c40f'
-  ctx.fillRect(sparkX, sparkY, 2, 2)
-  ctx.fillStyle = '#27ae60'
-  ctx.fillRect(sparkX + 4, sparkY - 2, 2, 2)
-
-  drawCreatureBody(creature, ctx, world, timestamp, bendY, {
-    legL:     2,
-    legR:     2,
-    armL:     armDown,
-    armR:     armDown,
-    bodyTilt: tilt,
-    blinkPhase: 0, // 집중 = 눈 고정
+  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, 2, {
+    legL: 1, legR: 1,
+    armL: armDown, armR: armDown,
+    bodyTilt: 0.15,
+    toolOffset: {
+      x: Math.cos(creature.rotation || 0) * 4,
+      y: Math.sin(creature.rotation || 0) * 2 + armDown,
+      rotation: 0,
+      color: '#f39c12' // 자루(Sack) 색상
+    }
   })
 }

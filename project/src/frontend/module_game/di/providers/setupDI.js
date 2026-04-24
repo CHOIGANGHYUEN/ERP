@@ -18,6 +18,19 @@ import { EntitySystem } from '../../engine/systems/EntitySystem.js'
 import { RenderSystem } from '../../engine/systems/RenderSystem.js'
 import { PathSystem } from '../../engine/systems/PathSystem.js'
 
+// [New AI Architecture Imports]
+import { EventBusService } from '../../engine/services/EventBusService.js'
+import { BlacklistService } from '../../engine/services/BlacklistService.js'
+import { TaskBoardService } from '../../engine/services/TaskBoardService.js'
+import { UtilityScoringService } from '../../engine/services/UtilityScoringService.js'
+import { PathfinderService } from '../../engine/services/PathfinderService.js'
+import { SteeringService } from '../../engine/services/SteeringService.js'
+import { MovementSystem } from '../../engine/systems/MovementSystem.js'
+import { WorkerAIAssignmentSystem } from '../../engine/systems/WorkerAIAssignmentSystem.js'
+import { BehaviorSystem } from '../../engine/systems/BehaviorSystem.js'
+import { PerceptionSystem } from '../../engine/systems/PerceptionSystem.js'
+import { WorkSystem } from '../../engine/systems/WorkSystem.js'
+
 /**
  * 시스템 전역 의존성 주입 컨테이너를 설정하고 반환합니다.
  * GameView.vue에서 World 객체 생성 시 주입되어 활용됩니다.
@@ -28,7 +41,6 @@ export function setupDI() {
   // 각 분리된 모듈들을 Singleton 단위로 컨테이너에 등록합니다.
   container.register(TOKENS.WeatherSystem, WeatherSystem)
   container.register(TOKENS.TimeSystem, TimeSystem)
-  // 카메라는 캔버스 크기에 따라 가변적으로 생성되므로 싱글톤 패턴을 해제합니다.
   container.register(TOKENS.CameraSystem, Camera, { singleton: false })
   container.register(TOKENS.DisasterSystem, DisasterSystem)
   container.register(TOKENS.PluginManager, PluginManager)
@@ -43,6 +55,19 @@ export function setupDI() {
   container.register(TOKENS.EntitySystem, EntitySystem)
   container.register(TOKENS.RenderSystem, RenderSystem)
   container.register(TOKENS.PathSystem, PathSystem)
+
+  // [New AI Architecture Registration]
+  container.register(TOKENS.EventBusService, EventBusService)
+  container.register(TOKENS.BlacklistService, BlacklistService)
+  container.register(TOKENS.TaskBoardService, TaskBoardService)
+  container.register(TOKENS.UtilityScoringService, UtilityScoringService)
+  container.register(TOKENS.PathfinderService, PathfinderService)
+  container.register(TOKENS.SteeringService, SteeringService)
+  container.register(TOKENS.MovementSystem, MovementSystem)
+  container.register(TOKENS.WorkerAIAssignmentSystem, WorkerAIAssignmentSystem)
+  container.register(TOKENS.BehaviorSystem, BehaviorSystem)
+  container.register(TOKENS.PerceptionSystem, PerceptionSystem)
+  container.register(TOKENS.WorkSystem, WorkSystem)
 
   return container
 }

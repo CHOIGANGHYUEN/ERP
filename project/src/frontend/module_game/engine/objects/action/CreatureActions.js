@@ -111,6 +111,7 @@ export const CreatureActions = {
     MATING: safe(MATING),
     TRAINING: safe(TRAINING),
     IDLE: safe(() => {}),
+    MOVING: safe(() => {}), // MoveTask 진행 중 상태 - WANDERING executor 충돌 방지용
     EATING: safe(() => {}),
     DEPOSITING: safe(() => {}),
     SUFFERING: safe(() => {}),

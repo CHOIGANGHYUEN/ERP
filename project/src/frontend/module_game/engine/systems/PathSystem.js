@@ -20,6 +20,10 @@ export class PathSystem {
     this.paths = null // Float32Array
     this.decayTimer = 0
     this.currentDecayIndex = 0 // 분산 처리를 위한 인덱스
+
+    // [New] Dynamic Obstacles
+    this.obstacles = new Uint8Array(this.cols * this.rows)
+    this.obstacleUpdateTimer = 0
   }
 
   initSharedState(world) {
@@ -63,7 +67,7 @@ export class PathSystem {
   /**
    * 매 프레임 조금씩 경로 데이터를 감쇄시켜 연산 스파이크를 방지합니다.
    */
-  update(deltaTime) {
+  update(deltaTime, world) {
     if (!this.paths) return
 
     // 40,000개의 셀을 한 번에 처리하지 않고 프레임당 약 200개씩 분산 처리
@@ -82,6 +86,32 @@ export class PathSystem {
       }
 
       this.currentDecayIndex = (this.currentDecayIndex + 1) % totalCells
+    }
+
+    // 💡 [Dynamic Collision Map] 1초에 한 번 동적 오브젝트(건물 등)를 충돌 맵에 렌더링
+    if (world) {
+      this.obstacleUpdateTimer += deltaTime
+      if (this.obstacleUpdateTimer >= 1000) {
+        this.obstacleUpdateTimer = 0
+        this.obstacles.fill(0)
+        
+        // 건물들을 순회하며 공간을 1로 마킹
+        world.buildings.forEach((b) => {
+          if (!b.x || !b.y || !b.size) return
+          // 건물 중심에서 사이즈 절반만큼 영역 차지
+          const halfSize = (b.size / 2) * 0.8 // 약간의 여유(0.8)를 두어 옆으로 지나갈 수 있게 함
+          const startX = Math.max(0, Math.floor((b.x - halfSize) / this.gridSize))
+          const endX = Math.min(this.cols - 1, Math.ceil((b.x + halfSize) / this.gridSize))
+          const startY = Math.max(0, Math.floor((b.y - halfSize) / this.gridSize))
+          const endY = Math.min(this.rows - 1, Math.ceil((b.y + halfSize) / this.gridSize))
+          
+          for (let y = startY; y <= endY; y++) {
+            for (let x = startX; x <= endX; x++) {
+              this.obstacles[y * this.cols + x] = 1
+            }
+          }
+        })
+      }
     }
   }
 }
@@ -223,6 +253,17 @@ export function findPath(world, start, target) {
       if (world.terrain) {
         const type = world.terrain[neighbor.y * cols + neighbor.x]
         if (type === 2) continue // HIGH_MOUNTAIN blocking
+      }
+
+      // 💡 [Dynamic Collision] 생성된 동적 충돌 맵 적용
+      if (world.pathSystem && world.pathSystem.obstacles) {
+        if (world.pathSystem.obstacles[neighbor.y * cols + neighbor.x] === 1) {
+          // 목표지점이 바로 장애물 안에 있는 경우는 도착을 허용해야 함
+          // (예: 목적지가 집 중심인 경우 집 주변 1칸은 열어줌)
+          if (Math.abs(neighbor.x - targetCoord.x) > 1 || Math.abs(neighbor.y - targetCoord.y) > 1) {
+            continue
+          }
+        }
       }
 
       const tentativeGScore = currentG + 1

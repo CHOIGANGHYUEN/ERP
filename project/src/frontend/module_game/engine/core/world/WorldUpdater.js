@@ -62,6 +62,13 @@ export const WorldUpdater = {
           world.disasterSystem.update(deltaTime * 60, world)
         }
 
+        // [New AI Architecture Update Loop]
+        if (world.perceptionSystem) world.perceptionSystem.update(deltaTime, world)
+        if (world.workSystem) world.workSystem.update(deltaTime, world)
+        if (world.assignmentSystem) world.assignmentSystem.update(deltaTime, world)
+        if (world.behaviorSystem) world.behaviorSystem.update(deltaTime, world)
+        if (world.movementSystem) world.movementSystem.update(deltaTime, world)
+
         // 길찾기 감쇄는 자체적으로 분산 처리가 되어 있으므로 매 프레임 호출 (내부에서 쪼개짐)
         world.pathSystem.update(deltaTime, world)
 

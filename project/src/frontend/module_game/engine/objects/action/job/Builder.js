@@ -3,11 +3,9 @@ import { BuildTask } from '../../tasks/BuildTask.js'
 import { findPath, PATH_THROTTLED } from '../../../systems/PathSystem.js'
 import { JobAssigner } from '../JobAssigner.js'
 
-export const BUILDER = (creature, world, _candidates) => {
-  console.log(`[Builder Debug: ${creature.id}] BUILDER 로직 진입`)
+export const BUILDER = (creature, world) => {
   // 0. 기초 검증
   if (!creature.village) {
-    console.log(`[Builder Debug: ${creature.id}] 소속 마을 없음. 배회로 전환`)
     return creature.wander(world)
   }
 
@@ -17,206 +15,190 @@ export const BUILDER = (creature, world, _candidates) => {
     if (b.isUnreachable && b._unreachableAt && Date.now() - b._unreachableAt > staleThreshold) {
       b.isUnreachable = false
       b._unreachableAt = null
-      console.log(`[Builder] ♻️ 건물(${b.id}) isUnreachable 해제 (30초 경과, 재시도 허용)`)
     }
   })
 
-  // 💡 [프리징 차단] 부지 탐색에 연달아 실패한 건축가는 5초간 탐색을 쉬게 하여 A* 길찾기 연산 폭주를 원천 차단합니다.
+  // 💡 [프리징 차단] 부지 탐색에 연달아 실패한 건축가는 5초간 탐색을 쉬게 하여 길찾기 연산 폭주를 차단
   const now = Date.now()
   if (creature._buildCooldown && now - creature._buildCooldown < 5000) {
     return creature.wander(world)
   }
 
-  console.log(`[Builder Debug: ${creature.id}] 소속 마을 확인 완료. 기존 미완공 건물 검색 시작`)
-
-  // 1. 기존에 짓고 있는 건물이 있는지 확인
+  // 1. 기존에 짓고 있는 건물이 있는지 확인 (우선순위 최고)
   let targetBuilding = creature.village.buildings.find((b) => !b.isConstructed && !b.isUnreachable)
 
   if (!targetBuilding) {
-    console.log(`[Builder Debug: ${creature.id}] 기존 미완공 건물 없음. 신규 기획 단계 진입`)
+    // 신규 기획 단계 (Town Planning) 진입
     const inv = creature.village.inventory
     const wood = inv.wood || 0
+    const stone = inv.stone || 0
+    const gold = inv.gold || 0
 
-    // 신규 건설 로직 진입 조건 체크
-    if (wood >= 30 && Math.random() < 0.2) {
-      console.groupCollapsed(`👷 [Builder: ID ${creature.id}] 신규 건물 기획 변수 추적`)
-      try {
-        console.log(
-          `[변수] 보유 목재: ${wood}, 보유 석재: ${inv.stone || 0}, 보유 금: ${inv.gold || 0}`,
-        )
+    const bList = creature.village.buildings
+    const population = creature.village.creatures.length
 
-        let type = 'HOUSE'
-        const bList = creature.village.buildings
-        let costWood = 0,
-          costStone = 0,
-          costGold = 0
+    const housingCapacity = bList
+      .filter((b) => b.type === 'HOUSE' && b.isConstructed)
+      .reduce((sum, b) => sum + (b.capacity || 2), 0)
 
-        // 우선순위에 따른 타입 결정 로직 로그
-        if (!bList.some((b) => b.type === 'FARM') && wood >= 40) {
-          type = 'FARM'
-          costWood = 40
-          console.log(`[결정] 농장(FARM) 우선순위 채택 (목재 -40)`)
-        } else if (
-          bList.filter((b) => b.type === 'HOUSE').length < creature.village.creatures.length / 3 &&
-          wood >= 30
-        ) {
-          type = 'HOUSE'
-          costWood = 30
-          console.log(`[결정] 집(HOUSE) 우선순위 채택 (인구 대비 집 부족, 목재 -30)`)
-        } else if (!bList.some((b) => b.type === 'BARRACKS') && wood >= 50 && inv.stone >= 20) {
-          type = 'BARRACKS'
-          costWood = 50
-          costStone = 20
-          console.log(`[결정] 병영(BARRACKS) 우선순위 채택 (목재 -50, 석재 -20)`)
-        } else if (!bList.some((b) => b.type === 'SMITHY') && wood >= 40 && inv.stone >= 30) {
-          type = 'SMITHY'
-          costWood = 40
-          costStone = 30
-          console.log(`[결정] 대장간(SMITHY) 우선순위 채택 (목재 -40, 석재 -30)`)
-        } else if (!bList.some((b) => b.type === 'SCHOOL') && wood >= 60) {
-          type = 'SCHOOL'
-          costWood = 60
-          console.log(`[결정] 학교(SCHOOL) 우선순위 채택 (목재 -60)`)
-        } else if (
-          !bList.some((b) => b.type === 'TEMPLE') &&
-          wood >= 100 &&
-          inv.stone >= 50 &&
-          inv.gold >= 10
-        ) {
-          type = 'TEMPLE'
-          costWood = 100
-          costStone = 50
-          costGold = 10
-          console.log(`[결정] 사원(TEMPLE) 우선순위 채택 (목재 -100, 석재 -50, 금 -10)`)
-        } else if (wood >= 30) {
-          type = 'HOUSE'
-          costWood = 30
-          console.log(`[결정] 기본 확장: 집(HOUSE) 채택 (목재 -30)`)
-        }
+    let type = null
+    let costWood = 0
+    let costStone = 0
+    let costGold = 0
 
-        let attempts = 0
-        let success = false
-        let spawnX, spawnY
+    // Town Planning 우선순위 결정
+    if (!bList.some((b) => b.type === 'TOWN_HALL') && wood >= 100 && stone >= 50) {
+      type = 'TOWN_HALL'
+      costWood = 100
+      costStone = 50
+    } else if (population > housingCapacity && wood >= 30) {
+      type = 'HOUSE'
+      costWood = 30
+    } else if (bList.filter((b) => b.type === 'FARM').length < population / 5 && wood >= 40) {
+      type = 'FARM'
+      costWood = 40
+    } else if (!bList.some((b) => b.type === 'MARKET') && population >= 15 && wood >= 120 && stone >= 40) {
+      type = 'MARKET'
+      costWood = 120
+      costStone = 40
+    } else if (!bList.some((b) => b.type === 'BARRACKS') && population >= 10 && wood >= 80 && stone >= 40) {
+      type = 'BARRACKS'
+      costWood = 80
+      costStone = 40
+    } else if (!bList.some((b) => b.type === 'SMITHY') && wood >= 60 && stone >= 40) {
+      type = 'SMITHY'
+      costWood = 60
+      costStone = 40
+    } else if (wood >= 60) {
+      type = 'HOUSE'
+      costWood = 30
+    }
 
-        console.log(`[Builder Debug: ${creature.id}] 건물 타입: ${type}, 부지 탐색 루프 시작`)
+    if (type) {
+      let success = false
+      let spawnX, spawnY
+      
+      // 💡 [Advanced Town Planning] 무작위 스폰 대신 '격자(Grid)형 구획' 시스템 도입
+      // 마을 중심점으로부터 일정 간격(48px)으로 빈 공간을 탐색합니다.
+      const gridSize = 48
+      const villageX = creature.village.x
+      const villageY = creature.village.y
+      
+      // 나선형 탐색 (Spiral Search)으로 중심에서 가장 가까운 빈 공간 찾기
+      let foundSlot = false
+      const maxSearchRadius = 15 // 15바퀴 (더 넓게 탐색)
+      const vId = world.villages.indexOf(creature.village) + 1
 
-        while (attempts < 3) {
-          attempts++
-          spawnX = creature.village.x + (Math.random() - 0.5) * 180
-          spawnY = creature.village.y + (Math.random() - 0.5) * 180
+      for (let r = 1; r <= maxSearchRadius && !foundSlot; r++) {
+        for (let ix = -r; ix <= r && !foundSlot; ix++) {
+          for (let iy = -r; iy <= r && !foundSlot; iy++) {
+            // 가장자리(외곽)부터 탐색
+            if (Math.abs(ix) !== r && Math.abs(iy) !== r) continue
+            
+            const candX = villageX + ix * gridSize
+            const candY = villageY + iy * gridSize
+            
+            // 기존 건물과 겹치는지 체크 (간격 유지)
+            const isOverlap = bList.some(b => 
+              Math.sqrt(Math.pow(b.x - candX, 2) + Math.pow(b.y - candY, 2)) < gridSize * 0.8
+            )
+            
+            if (!isOverlap) {
+              // 💡 [Grid Validation] 지형 및 영토 체크
+              let validTerrain = true
+              if (world.terrain && world.territory) {
+                const cols = Math.ceil(world.width / 16)
+                const tx = Math.floor(candX / 16)
+                const ty = Math.floor(candY / 16)
+                const tidx = ty * cols + tx
 
-          let validTerrain = true
-          let terrainType = '알 수 없음'
-          if (world.terrain) {
-            const cols = Math.ceil(world.width / 16)
-            const tx = Math.floor(spawnX / 16)
-            const ty = Math.floor(spawnY / 16)
-            terrainType = world.terrain[ty * cols + tx]
-
-            if (terrainType === 2 || terrainType >= 3) {
-              validTerrain = false
+                // 1. 내 영토가 맞는지 확인!
+                if (tx < 0 || tx >= cols || ty < 0 || ty >= Math.ceil(world.height / 16)) {
+                  validTerrain = false
+                } else if (world.territory[tidx] !== vId) {
+                  // 타운홀 건물은 첫 건물이므로 예외적으로 빈 공간 허용
+                  if (type !== 'TOWN_HALL' || world.territory[tidx] !== 0) {
+                    validTerrain = false
+                  }
+                }
+                
+                // 2. 바다/산맥인지 확인
+                if (validTerrain) {
+                  const t = world.terrain[tidx]
+                  if (t === 2 || t >= 3) validTerrain = false
+                }
+              }
+              
+              if (validTerrain) {
+                const path = findPath(world, creature, { x: candX, y: candY })
+                if (path && path !== PATH_THROTTLED) {
+                  spawnX = candX
+                  spawnY = candY
+                  foundSlot = true
+                  success = true
+                }
+              }
             }
           }
-
-          console.log(
-            `[탐색 ${attempts}/3] 좌표: (${Math.floor(spawnX)}, ${Math.floor(spawnY)}), 지형 코드: ${terrainType}`,
-          )
-
-          // 💡 [프리징 방어] NaN 좌표가 시스템에 유입되는 것을 원천 차단
-          if (isNaN(spawnX) || isNaN(spawnY)) {
-            console.error(`🚨 [Builder: ID ${creature.id}] NaN 좌표 발생! (${spawnX}, ${spawnY})`);
-            validTerrain = false;
-          }
-
-          if (validTerrain) {
-            console.log(`[탐색 ${attempts}/3] 지형 검증 통과. 길찾기(findPath) 시도...`)
-            const path = findPath(world, creature, { x: spawnX, y: spawnY })
-            if (path && path !== PATH_THROTTLED) {
-              success = true
-              console.log(
-                `[결과 ${attempts}/3] ✅ 지형 유효 & 길찾기 도달 가능 확인! (경로 길이: ${path.length})`,
-              )
-              break
-            } else if (path === PATH_THROTTLED) {
-              console.log(`[결과 ${attempts}/3] ⏳ 길찾기 엔진 부하로 판단 보류. 다음 틱에 재시도합니다.`)
-            } else {
-              console.log(
-                `[결과 ${attempts}/3] ❌ 지형은 유효하나, 현재 위치에서 길찾기로 도달 불가능함`,
-              )
-            }
-          } else {
-            console.log(`[결과 ${attempts}/3] ❌ 산/바다 등 건설 불가 지형임`)
-          }
         }
+      }
 
-        console.log(`[Builder Debug: ${creature.id}] 탐색 루프 종료. success: ${success}`)
-
-        if (success) {
-          if (costWood) inv.wood -= costWood
-          if (costStone) inv.stone -= costStone
-          if (costGold) inv.gold -= costGold
-          console.log(
-            `[최종] 🏠 건물(${type}) 배치 확정! 자원 차감 완료. world.spawnBuilding 호출 직전`,
-          )
-          world.spawnBuilding(spawnX, spawnY, type, creature.village)
-          console.log(`[최종] world.spawnBuilding 호출 성공`)
-        } else {
-          console.log(`[최종] ❌ 3회 탐색 모두 실패. 배회 상태로 돌아갑니다.`)
-          creature._buildCooldown = now // 실패 쿨타임 5초 적용
-          creature.wander(world)
+      if (success) {
+        if (costWood) inv.wood -= costWood
+        if (costStone) inv.stone -= costStone
+        if (costGold) inv.gold -= costGold
+        
+        world.spawnBuilding(spawnX, spawnY, type, creature.village)
+        if (type === 'TOWN_HALL') {
+          world.broadcastEvent(`[${creature.village.name}]의 중심 건물인 마을 회관(Town Hall) 건설을 시작합니다!`, '#f1c40f')
         }
-      } finally {
-        console.groupEnd()
+      } else {
+        // 부지를 찾지 못한 경우 휴식
+        creature._buildCooldown = now
+        creature.wander(world)
       }
       return
     } else {
-      console.log(`[Builder Debug: ${creature.id}] 신규 건설 조건 미달. (wood: ${wood}, 확률 체크)`)
-      // 자원이 부족하거나 확률(0.2)에 걸리지 않은 경우
-      if (wood < 30) {
-        console.log(
-          `👷 [Builder: ID ${creature.id}] 목재 부족(${wood}/30)으로 벌목꾼(LUMBERJACK) 임시 전직`,
-        )
-        JobAssigner.changeProfession(creature, 'LUMBERJACK', true) // 임시 전직
-
-        const idx = world.creatures.indexOf(creature)
-        if (idx !== -1) world.showSpeechBubble(idx, 'creature', '🪓나무 구하러 함!', 2000)
+      // 업그레이드 로직 (기존 건물 중 완공된 건물의 레벨업 시도)
+      const upgradeable = bList.find(b => b.isConstructed && (b.level || 1) < 2 && wood >= 50)
+      if (upgradeable) {
+        // TODO: 레벨업 태스크 추가 가능 (지금은 인벤토리 차감 및 상태 변경으로 간소화)
+        inv.wood -= 50
+        upgradeable.level = (upgradeable.level || 1) + 1
+        upgradeable.capacity = (upgradeable.capacity || 2) * 2 // 수용량 체감
+        world.broadcastEvent(`[${creature.village.name}]의 건물이 레벨 2로 업그레이드되었습니다!`, '#2ecc71')
         return
       }
-      console.log(`[Builder Debug: ${creature.id}] 배회로 전환`)
+      
+      if (wood < 30 && creature.village.creatures.length > 3) {
+        JobAssigner.changeProfession(creature, 'LUMBERJACK', true)
+        const idx = world.creatures.indexOf(creature)
+        if (idx !== -1) world.showSpeechBubble(idx, 'creature', '🪓건축 자원 수집 전환', 2000)
+        return
+      }
       creature.wander(world)
     }
   } else {
-    // 2. 기존 미완공 건물이 있는 경우
-    console.log(
-      `[Builder Debug: ${creature.id}] 기존 미완공 건물 발견 (Target ID: ${targetBuilding.id}, Type: ${targetBuilding.type}). 길찾기 시작`,
-    )
+    // 2. 기존 미완공 건물이 발견됨.
     const path = findPath(world, creature, targetBuilding)
 
     if (path && path !== PATH_THROTTLED) {
-      // ✅ 경로 찾기 성공
-      console.log(
-        `[Builder Debug: ${creature.id}] 기존 미완공 건물 도달 가능 (경로 확인). 태스크 큐 길이: ${creature.taskQueue.length}`,
-      )
       if (creature.taskQueue.length === 0) {
-        console.log(`[Builder Debug: ${creature.id}] MoveTask, BuildTask 추가`)
         creature.taskQueue.push(new MoveTask(targetBuilding))
         creature.taskQueue.push(new BuildTask(targetBuilding))
-      } else {
-        console.log(`[Builder Debug: ${creature.id}] 이미 태스크 진행 중`)
       }
     } else if (path === PATH_THROTTLED) {
-      // ⏳ 스로틀링은 일시적 상태 → isUnreachable 설정 없이 다음 틱에 재시도
-      console.log(`[Builder Debug: ${creature.id}] ⏳ 길찾기 엔진 부하. 다음 틱에 재시도합니다.`)
       creature.wander(world)
     } else {
-      // ❌ 진짜 도달 불가능 (null) → isUnreachable 설정
-      console.log(
-        `[Builder Debug: ${creature.id}] ❌ 미완공 건물 도달 불가능. isUnreachable = true 설정 후 배회`,
-      )
+      // 도달 불가능 마킹 (바다 너머 등)
       targetBuilding.isUnreachable = true
-      targetBuilding._unreachableAt = Date.now() // 30초 후 자동 재시도용 타임스탬프
+      targetBuilding._unreachableAt = Date.now()
+      
+      // 💡 [Fallback] 도달할 수 없는 상황이면 계속 빌더를 고집하지 않고 우선 채집가 등으로 전환
+      const fallbackJob = Math.random() > 0.5 ? 'GATHERER' : 'LUMBERJACK'
+      JobAssigner.changeProfession(creature, fallbackJob, true)
+      
       creature.wander(world)
     }
   }
-  console.log(`[Builder Debug: ${creature.id}] BUILDER 로직 종료`)
 }

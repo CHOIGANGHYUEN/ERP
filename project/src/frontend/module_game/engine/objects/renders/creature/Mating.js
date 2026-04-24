@@ -5,25 +5,23 @@ import { drawCreatureBody } from './drawCreatureBody.js'
  */
 export const MATING = (creature, ctx, timestamp, world) => {
   const t = timestamp * 0.005
-  // 마주보고 리듬을 타는 바운스
-  const bounce = -Math.abs(Math.sin(t * Math.PI)) * 1.5
-  const lean   = Math.sin(t) * 2
-
-  const animProps = {
-    legL: 1, 
-    legR: 1,
-    armL: 1, 
-    armR: 1,
+  const bounce = -Math.abs(Math.sin(t * Math.PI)) * 2
+  
+  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, bounce, {
+    legL: 1, legR: 1,
+    armL: 2, armR: 2,
     bodyTilt: 0,
-    lean,
-    blinkPhase: (Math.sin(t) + 1) * 0.5 // 수줍은 듯이 눈 깜빡임
-  }
+    blinkPhase: (Math.sin(t) + 1) * 0.5
+  })
 
-  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, bounce, animProps)
-
-  if (Math.sin(t * 3) > 0) {
-    ctx.fillStyle = '#e91e63'
-    ctx.font = '14px Arial'
-    ctx.fillText('💕', creature.x, creature.y - drawSize - 10)
+  // 여러 개의 하트 파티클
+  for(let i=0; i<3; i++) {
+    const off = (t + i * 2) % 3
+    const hX = creature.x + Math.sin(off * 5) * 15
+    const hY = creature.y - drawSize - 10 - off * 20
+    ctx.globalAlpha = 1 - (off / 3)
+    ctx.font = '12px Arial'
+    ctx.fillText('❤️', hX, hY)
   }
+  ctx.globalAlpha = 1.0
 }

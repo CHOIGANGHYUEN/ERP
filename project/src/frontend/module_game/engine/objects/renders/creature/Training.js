@@ -4,27 +4,18 @@ import { drawCreatureBody } from './drawCreatureBody.js'
  * TRAINING — 제자리 무술/훈련 모션
  */
 export const TRAINING = (creature, ctx, timestamp, world) => {
-  const t = timestamp * 0.01
+  const t = timestamp * 0.015
+  const punch = Math.sin(t * Math.PI) * 8
   
-  // 빠른 주먹질 & 기마 자세
-  const punchL = Math.sin(t) > 0 ? -6 : 2
-  const punchR = Math.sin(t) <= 0 ? -6 : 2
-  const bounce = Math.abs(Math.sin(t * 2)) * 3
+  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, 0, {
+    legL: 2, legR: 2,
+    armL: punch, armR: -punch,
+    bodyTilt: 0.05,
+    blinkPhase: 0
+  })
 
-  const animProps = {
-    legL: 4, 
-    legR: 4,  // 다리를 구부려 기마자세
-    armL: punchL,
-    armR: punchR,
-    bodyTilt: 0,
-    blinkPhase: 0 // 항상 집중
-  }
-
-  const drawSize = drawCreatureBody(creature, ctx, world, timestamp, bounce, animProps)
-
-  if (Math.sin(t * 3) > 0.8) {
-    ctx.fillStyle = '#e74c3c'
+  if (Math.abs(punch) > 6) {
     ctx.font = '10px Arial'
-    ctx.fillText('💪', creature.x + 8, creature.y - drawSize - 5)
+    ctx.fillText('👊', creature.x + (punch > 0 ? 10 : -10), creature.y - drawSize * 0.5)
   }
 }

@@ -13,6 +13,7 @@ import { FLEEING }    from './creature/Fleeing.js'
 import { EATING }     from './creature/Eating.js'
 import { DEPOSITING } from './creature/Depositing.js'
 import { SUFFERING }  from './creature/Suffering.js'
+import { MOVING }     from './creature/Moving.js'
 
 export const CreatureRenders = {
   WANDERING,
@@ -30,6 +31,7 @@ export const CreatureRenders = {
   EATING,
   DEPOSITING,
   SUFFERING,
+  MOVING,
   // 동의어 매핑 (상태명 차이 대응)
   IDLE:       WANDERING,
   TRADING:    RETURNING,

@@ -138,7 +138,7 @@ export class RenderSystem {
             const v = this.renderProxies.village
             world.bufferSyncSystem.hydrate(world, v, 'village', i, frontIndex)
             v.nation = { color: v.color, name: '국가' }
-            v.render(ctx)
+            v.render(ctx, world)
           }
         }
 
@@ -154,37 +154,98 @@ export class RenderSystem {
       const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
       if (frontIndex !== 0 && frontIndex !== 1) return
 
+      // [Nuclear Optimization] Y-버킷 정렬 및 SAB 직접 순회 (Zero-Allocation + Hard Clear)
+      this.poolIdx = 0
+      this.buckets.clear() // 매 프레임 버킷을 완전히 비워 잔상 원천 차단
+      let minY = 99999,
+        maxY = -99999
+
+      if (!this.nodePool) {
+        this.nodePool = []
+      }
+      this.nodePoolIdx = 0
+
       const viewRange = {
         x: world.camera.x - 50,
         y: world.camera.y - 50,
         width: world.camera.width / zoom + 100,
         height: world.camera.height / zoom + 100,
       }
-      const drawables = world.chunkManager.query(viewRange)
+      
+      const bounds = viewRange
+      const { globals, globalsInt32, sets } = world.views
+      const currentSet = sets[frontIndex]
 
-      // [Nuclear Optimization] Y-버킷 정렬 (Zero-Allocation + Hard Clear)
-      this.poolIdx = 0
-      this.buckets.clear() // 매 프레임 버킷을 완전히 비워 잔상 원천 차단
-      let minY = 99999,
-        maxY = -99999
-
-      for (let i = 0; i < drawables.length; i++) {
-        const obj = drawables[i]
-        const yKey = Math.floor(obj.y)
-        // [Hardening] 유효하지 않거나 무한대인 좌표 방어
-        if (!Number.isFinite(yKey)) continue
-
-        // [Hardening] 월드 경계 내로 키 제한 (루프 프리징 방지)
-        const clampedY = Math.max(0, Math.min(yKey, world.height || 3200))
-
-        let bucket = this.buckets.get(clampedY)
-        if (!bucket) {
-          bucket = this._getArrayFromPool()
-          this.buckets.set(clampedY, bucket)
+      const addDrawablesFromSAB = (typeName, countProp, viewArray, stride) => {
+        // [Bugfix] Float32Array 값의 비트를 Int32로 읽으면 10억 단위 값이 나오므로 일반 Float 값을 읽어야 합니다.
+        const count = globals[countProp]
+        for (let i = 0; i < count; i++) {
+          const offset = i * stride
+          // IS_ACTIVE가 1인지 확인
+          if (viewArray[offset] === 1) {
+            const tx = viewArray[offset + 1]
+            const ty = viewArray[offset + 2]
+            
+            // Camera Culling
+            if (tx >= bounds.x && tx <= bounds.x + bounds.width &&
+                ty >= bounds.y && ty <= bounds.y + bounds.height) {
+              
+              const yKey = Math.floor(ty)
+              if (!Number.isFinite(yKey)) continue
+              const clampedY = Math.max(0, Math.min(yKey, world.height || 3200))
+              
+              let bucket = this.buckets.get(clampedY)
+              if (!bucket) {
+                bucket = this._getArrayFromPool()
+                this.buckets.set(clampedY, bucket)
+              }
+              
+              // Zero-allocation 노드 생성
+              let node = this.nodePool[this.nodePoolIdx++]
+              if (!node) {
+                node = { _type: '', id: 0, x: 0, y: 0, size: 0, isConstructed: false }
+                this.nodePool.push(node)
+              }
+              node._type = typeName
+              node.id = i
+              node.x = tx
+              node.y = ty
+              node.size = viewArray[offset + 3] || 16 // SIZE: 3
+              node.isConstructed = typeName === 'building' ? viewArray[offset + 9] === 1 : true // IS_CONSTRUCTED: 9
+              
+              bucket.push(node)
+              if (clampedY < minY) minY = clampedY
+              if (clampedY > maxY) maxY = clampedY
+            }
+          }
         }
-        bucket.push(obj)
-        if (clampedY < minY) minY = clampedY
-        if (clampedY > maxY) maxY = clampedY
+      }
+
+      // SAB 순회 (Main Thread의 죽은 ChunkManager 대신 메모리를 직접 스캔)
+      addDrawablesFromSAB('creature', PROPS.GLOBALS.CREATURE_COUNT, currentSet.creatures, STRIDE.CREATURE)
+      addDrawablesFromSAB('animal', PROPS.GLOBALS.ANIMAL_COUNT, currentSet.animals, STRIDE.ANIMAL)
+      addDrawablesFromSAB('plant', PROPS.GLOBALS.PLANT_COUNT, currentSet.plants, STRIDE.PLANT)
+      addDrawablesFromSAB('resource', PROPS.GLOBALS.RESOURCE_COUNT, currentSet.resources, STRIDE.RESOURCE)
+      addDrawablesFromSAB('building', PROPS.GLOBALS.BUILDING_COUNT, currentSet.buildings, STRIDE.BUILDING)
+      addDrawablesFromSAB('mine', PROPS.GLOBALS.MINE_COUNT, currentSet.mines, STRIDE.MINE)
+      addDrawablesFromSAB('tornado', PROPS.GLOBALS.TORNADO_COUNT, currentSet.tornadoes, STRIDE.TORNADO)
+
+      // Lighting 및 Interaction 시스템을 위해 평면화된 drawables 배열 구성 (Zero-allocation)
+      if (!this.drawablesPool) {
+        this.drawablesPool = []
+      }
+      const drawables = this.drawablesPool
+      drawables.length = 0
+      
+      if (minY <= maxY) {
+        for (let y = minY; y <= Math.ceil(maxY); y++) {
+          const bucket = this.buckets.get(y)
+          if (bucket) {
+            for (let i = 0; i < bucket.length; i++) {
+              drawables.push(bucket[i])
+            }
+          }
+        }
       }
 
       // 그림자 선 렌더링 (모든 엔티티 통합)

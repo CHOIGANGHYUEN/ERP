@@ -18,4 +18,18 @@ export const TOKENS = {
   EntitySpawnerSystem: Symbol('EntitySpawnerSystem'),
   FamilySystem: Symbol('FamilySystem'),
   PathSystem: Symbol('PathSystem'),
+  
+  // [New AI Architecture Tokens]
+  EventBusService: Symbol('EventBusService'),
+  BlacklistService: Symbol('BlacklistService'),
+  TaskBoardService: Symbol('TaskBoardService'),
+  UtilityScoringService: Symbol('UtilityScoringService'),
+  PathfinderService: Symbol('PathfinderService'),
+  SteeringService: Symbol('SteeringService'),
+  MovementSystem: Symbol('MovementSystem'),
+  SquadSystem: Symbol('SquadSystem'),
+  WorkerAIAssignmentSystem: Symbol('WorkerAIAssignmentSystem'),
+  BehaviorSystem: Symbol('BehaviorSystem'),
+  PerceptionSystem: Symbol('PerceptionSystem'),
+  WorkSystem: Symbol('WorkSystem'),
 }

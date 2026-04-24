@@ -76,6 +76,7 @@ export class BufferSyncSystem {
       ],
       paths: new Float32Array(buffers.paths),
       terrain: new Uint8Array(buffers.terrain),
+      territory: new Uint8Array(buffers.territory),
     }
   }
 
@@ -115,6 +116,7 @@ export class BufferSyncSystem {
         creatures[offset + PROPS.CREATURE.LEVEL] = c.level || 1
         creatures[offset + PROPS.CREATURE.EXP] = c.exp || 0
         creatures[offset + PROPS.CREATURE.FAMILY_ID] = c.familyId || 0
+        creatures[offset + PROPS.CREATURE.ROTATION] = c.transform ? c.transform.rotation : 0
       })
 
       world.animals.forEach((a, i) => {

@@ -12,7 +12,7 @@ export const MAX_TORNADOES = 10
 
 export const STRIDE = {
   GLOBALS: 16,
-  CREATURE: 21,
+  CREATURE: 22,
   ANIMAL: 12,
   PLANT: 12,
   RESOURCE: 8,
@@ -63,6 +63,7 @@ export const PROPS = {
     LEVEL: 18,
     EXP: 19,
     FAMILY_ID: 20,
+    ROTATION: 21,
   },
   ANIMAL: {
     IS_ACTIVE: 0,
@@ -171,6 +172,7 @@ export const STATE_MAP = {
   MATING:     16,
   FLEEING:    17,
   IDLE:       18,
+  MOVING:     19,
 }
 export const WEATHER_MAP = { clear: 0, rain: 1, fog: 2 }
 export const SEASON_MAP = { SPRING: 0, SUMMER: 1, AUTUMN: 2, WINTER: 3 }
@@ -275,6 +277,7 @@ export function createSharedBuffers() {
     ],
     paths: new BufferType(200 * 200 * 4),
     terrain: new BufferType(200 * 200),
+    territory: new BufferType(200 * 200),
   }
 }
 

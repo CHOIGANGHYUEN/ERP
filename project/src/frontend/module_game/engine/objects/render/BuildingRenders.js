@@ -84,13 +84,21 @@ export const BuildingRenders = {
     ctx.restore()
 
     const iconMap = {
-      HOUSE: '🏠', SCHOOL: '🏫', FARM: '🌾', BARRACKS: '⛺',
+      TOWN_HALL: '🏛️', HOUSE: '🏠', SCHOOL: '🏫', FARM: '🌾', BARRACKS: '⛺',
       TEMPLE: '⚪', SMITHY: '⚒️', MARKET: '🏪'
     }
 
+    const level = building.level || building.tier || 1
     ctx.fillStyle = '#fff'
-    ctx.font = 'bold 10px Arial'
+    ctx.font = 'bold 11px Arial'
     ctx.textAlign = 'center'
-    ctx.fillText(`${iconMap[building.type] || '🏗️'} Lv.${building.tier}`, x, y - s - 5)
+    ctx.fillText(`${iconMap[building.type] || '🏗️'} Lv.${level}`, x, y - s - 10)
+    
+    // 💡 [Visual Progress] 레벨에 따라 지붕에 장식 추가 등 디테일 추가 가능
+    if (level > 1) {
+      ctx.strokeStyle = '#f1c40f'
+      ctx.lineWidth = 2
+      ctx.strokeRect(x - s/2 - 2, y - s/2 - 2, s + 4, s + 4)
+    }
   }
 }
