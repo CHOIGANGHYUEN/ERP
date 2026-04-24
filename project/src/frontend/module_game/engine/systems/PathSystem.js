@@ -2,6 +2,14 @@
 const pathFailCache = new Map()
 let lastCacheCleanup = Date.now()
 
+// 💡 [최적화] 프레임당 최대 길찾기 호출 수 제한 (Throttling)
+let globalPathCallCount = 0
+let lastGlobalTick = 0
+const MAX_GLOBAL_PATH_CALLS_PER_TICK = 30 // 한 틱(약 16ms) 동안 최대 30회만 정밀 길찾기 허용
+
+// 💡 [프리징 방어] 스로틀링 발생 시 경로 없음(null)과 구분하기 위한 상수
+export const PATH_THROTTLED = Symbol('PATH_THROTTLED')
+
 export class PathSystem {
   constructor() {
     this.width = 3200
@@ -131,6 +139,19 @@ class PriorityQueue {
  * Optimized version with Priority Queue
  */
 export function findPath(world, start, target) {
+  // 💡 [최적화] 글로벌 호출 횟수 체크 (부하 분산)
+  const currentTick = Math.floor(Date.now() / 16) // 약 60FPS 기준 틱 구분
+  if (currentTick !== lastGlobalTick) {
+    globalPathCallCount = 0
+    lastGlobalTick = currentTick
+  }
+
+  if (globalPathCallCount >= MAX_GLOBAL_PATH_CALLS_PER_TICK) {
+    // 이번 틱의 연산 한도 초과 시 PATH_THROTTLED 반환하여 나중에 다시 시도하게 함
+    return PATH_THROTTLED
+  }
+  globalPathCallCount++
+
   // 💡 [최적화] 10초마다 길찾기 실패 캐시를 주기적으로 비워줌
   const now = Date.now()
   if (now - lastCacheCleanup > 10000) {

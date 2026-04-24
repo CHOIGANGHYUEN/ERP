@@ -66,7 +66,7 @@ export class Entity {
         width: 100,
         height: 100
       }
-      const nearby = world.chunkManager.query(range)
+      const nearby = world.chunkManager.query(range, 'static')
       const radius = (this.size / 2)
       
       for (let i = 0; i < nearby.length; i++) {

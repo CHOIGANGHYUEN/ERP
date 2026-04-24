@@ -91,29 +91,41 @@ export const VillageActions = {
     }
     village.lastConstructionCheck = currentTime
 
-    console.groupCollapsed(`🛠️ [Village: ${village.name}] 건설 AI 변수 추적 디버깅`)
+    // [Intelligent Logging] 사용자 요청에 따라 로깅을 유지하되, 콘솔 과부하(프리징)를 방지하기 위해 
+    // 변화가 있거나 일정 주기(약 2초)마다만 상세 로그를 출력하도록 제어합니다.
+    const shouldLog = (world.tick % 120 === 0) || village._needsLog;
+    if (shouldLog) {
+      console.groupCollapsed(`🛠️ [Village: ${village.name}] 건설 AI 변수 추적 디버깅 (Tick: ${world.tick})`)
+      village._needsLog = false;
+    }
 
     try {
-      console.log(`[Step 1] 마을 인구 및 인벤토리 로드 시작`)
+      if (shouldLog) console.log(`[Step 1] 마을 인구 및 인벤토리 로드 시작`)
       const population = village.creatures.length
       const inv = village.inventory
-      console.log(`[Step 1] 통과 완료`)
+      if (shouldLog) console.log(`[Step 1] 통과 완료`)
 
-      console.log(`[Step 2] 주거 수용량(housingCapacity) 계산 시작`)
+      if (shouldLog) console.log(`[Step 2] 주거 수용량(housingCapacity) 계산 시작`)
       const housingCapacity = village.buildings
         .filter((b) => b.type === 'HOUSE' && b.isConstructed)
         .reduce((sum, b) => sum + (b.capacity || 2), 0)
-      console.log(`[Step 2] 통과 완료 (수용량: ${housingCapacity})`)
+      if (shouldLog) console.log(`[Step 2] 통과 완료 (수용량: ${housingCapacity})`)
 
-      console.log(`[Step 3] 현재 건설 중인 집(isBuildingHouse) 여부 확인 시작`)
-      const isBuildingHouse = village.buildings.some((b) => b.type === 'HOUSE' && !b.isConstructed)
-      console.log(`[Step 3] 통과 완료 (진행 중인 집: ${isBuildingHouse})`)
-
-      console.log(
-        `[상태 요약] 인구: ${population}/${housingCapacity} | 목재: ${inv.wood || 0} | 석재: ${inv.stone || 0}`,
+      if (shouldLog) console.log(`[Step 3] 현재 건설 중인 집(isBuildingHouse) 여부 확인 시작`)
+      // ✅ [버그 수정] isUnreachable 건물은 건설 중으로 카운트하지 않습니다.
+      // isUnreachable인 건물은 Builder가 절대 접근하지 않으므로, 새 건물 생성을 막아서는 안 됩니다.
+      const isBuildingHouse = village.buildings.some(
+        (b) => b.type === 'HOUSE' && !b.isConstructed && !b.isUnreachable,
       )
+      if (shouldLog) console.log(`[Step 3] 통과 완료 (진행 중인 집: ${isBuildingHouse})`)
 
-      console.log(`[Step 4] 🏠 집(HOUSE) 건설 조건 판단 진입`)
+      if (shouldLog) {
+        console.log(
+          `[상태 요약] 인구: ${population}/${housingCapacity} | 목재: ${inv.wood || 0} | 석재: ${inv.stone || 0}`,
+        )
+      }
+
+      if (shouldLog) console.log(`[Step 4] 🏠 집(HOUSE) 건설 조건 판단 진입`)
       // --- [HOUSE] 건설 로직 ---
       if (population > housingCapacity && !isBuildingHouse) {
         console.log(`[판단] 🏠 집 건설 필요 (인구 ${population} > 수용량 ${housingCapacity})`)
@@ -131,17 +143,24 @@ export const VillageActions = {
         console.log(`[Step 4-1] 탐색 완료`)
 
         if (builder) {
-          console.log(`[실행] ✅ 대기 중인 건축가(BUILDER) 발견 (ID: ${builder.id})`)
+          if (shouldLog) console.log(`[실행] ✅ 대기 중인 건축가(BUILDER) 발견 (ID: ${builder.id})`)
           const angle = Math.random() * Math.PI * 2
           const radius = 50 + Math.random() * (village.radius || 100) * 0.5
           const spawnX = village.x + Math.cos(angle) * radius
           const spawnY = village.y + Math.sin(angle) * radius
 
-          console.log(
-            `[실행] 📍 집 건설 스폰 좌표 설정: (${spawnX.toFixed(1)}, ${spawnY.toFixed(1)})`,
-          )
+          // 💡 [프리징 방지] NaN 좌표 발생 시 생성 원천 차단
+          if (isNaN(spawnX) || isNaN(spawnY)) {
+            console.error(`🚨 [VillageActions] 건물 생성 좌표가 NaN입니다! (${spawnX}, ${spawnY})`)
+            return
+          }
 
-          console.log(`[Step 4-2] world.spawnBuilding(HOUSE) 호출 직전! (여기서 멈추는지 확인)`)
+          if (shouldLog) {
+            console.log(
+              `[실행] 📍 집 건설 스폰 좌표 설정: (${spawnX.toFixed(1)}, ${spawnY.toFixed(1)})`,
+            )
+            console.log(`[Step 4-2] world.spawnBuilding(HOUSE) 호출 직전!`)
+          }
           // 건물 스폰 및 자원 차감
           world.spawnBuilding(spawnX, spawnY, 'HOUSE', village)
           inv.wood -= 30
@@ -157,16 +176,20 @@ export const VillageActions = {
       }
       console.log(`[Step 4] 🏠 집(HOUSE) 로직 완전 종료`)
 
-      console.log(`[Step 5] 🏪 시장(MARKET) 건설 조건 판단 진입`)
+      if (shouldLog) {
+        console.log(`[Step 5] 🏪 시장(MARKET) 건설 조건 판단 진입`)
+      }
       // --- [MARKET] 건설 로직 ---
       const hasMarket = village.buildings.some((b) => b.type === 'MARKET')
       const isBuildingMarket = village.buildings.some(
         (b) => b.type === 'MARKET' && !b.isConstructed,
       )
 
-      console.log(
-        `[변수] hasMarket(시장 보유): ${hasMarket} / isBuildingMarket(시장 건설 중): ${isBuildingMarket}`,
-      )
+      if (shouldLog) {
+        console.log(
+          `[변수] hasMarket(시장 보유): ${hasMarket} / isBuildingMarket(시장 건설 중): ${isBuildingMarket}`,
+        )
+      }
 
       if (population >= 10 && !hasMarket && !isBuildingMarket) {
         console.log(`[판단] 🏪 시장 건설 필요 (인구 10명 이상)`)
@@ -205,11 +228,11 @@ export const VillageActions = {
           console.log(`[거절] ❌ 시장 건설 자원 부족 (목재 100 / 석재 30 필요)`)
         }
       } else {
-        console.log(`[판단] 🏪 시장 건설 불필요 (인구 부족이거나 이미 보유 중)`)
+        if (shouldLog) console.log(`[판단] 🏪 시장(MARKET) 건설 불필요 (인구 부족이거나 이미 보유 중)`)
       }
-      console.log(`[Step 5] 🏪 시장(MARKET) 로직 완전 종료`)
+      if (shouldLog) console.log(`[Step 5] 🏪 시장(MARKET) 로직 완전 종료`)
     } finally {
-      console.groupEnd()
+      if (shouldLog) console.groupEnd()
     }
   },
 }

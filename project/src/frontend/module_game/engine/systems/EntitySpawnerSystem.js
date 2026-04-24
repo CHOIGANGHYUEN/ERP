@@ -104,6 +104,10 @@ export class EntitySpawnerSystem {
   }
 
   spawnCreature(world, x, y) {
+    if (isNaN(x) || isNaN(y)) {
+      console.error(`🚨 [Spawner] spawnCreature 실패: 좌표가 NaN입니다. (${x}, ${y})`)
+      return
+    }
     console.log(`🐣 [Spawner] spawnCreature 시작 (isHeadless: ${world.isHeadless})`, { x, y })
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_CREATURE', payload: { x, y } })
@@ -217,6 +221,10 @@ export class EntitySpawnerSystem {
   }
 
   spawnBuilding(world, x, y, type, village) {
+    if (isNaN(x) || isNaN(y)) {
+      console.error(`🚨 [Spawner] spawnBuilding 실패: 좌표가 NaN입니다. (${x}, ${y})`)
+      return
+    }
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({
         type: 'SPAWN_BUILDING',
@@ -227,7 +235,19 @@ export class EntitySpawnerSystem {
 
     // [Optimization] O(N) some() 체크 대신 ChunkManager 공간 쿼리 사용
     const queryRange = { x: snapX - 16, y: snapY - 16, width: 32, height: 32 }
-    const nearby = world.chunkManager.query(queryRange)
+    const nearby = world.chunkManager.query(queryRange, 'static')
+
+    // 💡 [프리징/중복 방어] 이미 해당 위치(스냅된 좌표)에 건물이 있는지 확인
+    const isOverlapping = nearby.some((item) => {
+      const isBuilding = item._type === 'building' || item instanceof Building
+      return isBuilding && !item.isDead && item.x === snapX && item.y === snapY
+    })
+
+    if (isOverlapping) {
+      console.log(`🏗️ [Spawner] (${snapX}, ${snapY}) 위치에 이미 건물이 존재합니다. 중복 생성을 방지합니다.`)
+      return
+    }
+
     const b = new Building(snapX, snapY, type)
     b.occupants = []
     b.capacity = type === 'HOUSE' ? 1 + (b.tier || 1) : 0
@@ -250,6 +270,7 @@ export class EntitySpawnerSystem {
 
     world.buildings.push(b)
     if (village) village.addBuilding(b)
+    world.needsFullChunkRefresh = true
   }
 
   spawnPlant(world, x, y, type) {
@@ -270,6 +291,7 @@ export class EntitySpawnerSystem {
         plant = new Plant(x, y, type)
       }
       world.plants.push(plant)
+      world.needsFullChunkRefresh = true
     }
   }
   removePlant(world, plant) {
@@ -280,6 +302,7 @@ export class EntitySpawnerSystem {
       world.plants.pop()
       if (!world.plantPool) world.plantPool = []
       world.plantPool.push(plant)
+      world.needsFullChunkRefresh = true
     }
   }
 
@@ -312,6 +335,7 @@ export class EntitySpawnerSystem {
     }
     if (RESOURCE_COLORS[type]) resource.color = RESOURCE_COLORS[type]
     world.resources.push(resource)
+    world.needsFullChunkRefresh = true
   }
   removeResource(world, resource) {
     const idx = world.resources.indexOf(resource)
@@ -319,7 +343,9 @@ export class EntitySpawnerSystem {
       resource.isActive = false
       world.resources[idx] = world.resources[world.resources.length - 1]
       world.resources.pop()
+      if (!world.resourcePool) world.resourcePool = []
       world.resourcePool.push(resource)
+      world.needsFullChunkRefresh = true
     }
   }
 

@@ -14,7 +14,6 @@ export const verifyToken = (req, res, next) => {
   try {
     let token = req.cookies?.token
 
-    // Fallback to Authorization header if cookie is not present
     if (!token) {
       const authHeader = req.headers.authorization
       if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -23,23 +22,26 @@ export const verifyToken = (req, res, next) => {
     }
 
     if (!token) {
-      logger.warn('인증 토큰이 누락되었습니다.')
+      console.warn(`[Auth] 인증 토큰 없음 - URL: ${req.originalUrl}`)
       return res
         .status(SysConstants.HTTP_STATUS.UNAUTHORIZED)
         .json({ message: '인증 토큰이 필요합니다.' })
     }
 
     const secret = process.env.JWT_SECRET || 'your_fallback_secret_key_123'
-    const decoded = jwt.verify(token, secret)
-
-    // req 객체에 사용자 정보 주입
-    req.user = decoded
-
-    next()
+    try {
+      const decoded = jwt.verify(token, secret)
+      req.user = decoded
+      console.log(`[Auth] 인증 성공: ${decoded.userId || decoded.email} (ID: ${decoded.id})`)
+      next()
+    } catch (jwtError) {
+      console.error(`[Auth] 토큰 검증 실패 - 이유: ${jwtError.message}`)
+      return res
+        .status(SysConstants.HTTP_STATUS.UNAUTHORIZED)
+        .json({ message: '유효하지 않은 토큰입니다.' })
+    }
   } catch (error) {
-    logger.error('토큰 검증 오류: ' + error.message)
-    return res
-      .status(SysConstants.HTTP_STATUS.UNAUTHORIZED)
-      .json({ message: '유효하지 않은 토큰입니다. 다시 로그인해주세요.' })
+    console.error(`[Auth] 미들웨어 시스템 에러: ${error.message}`)
+    return res.status(500).json({ message: '인증 처리 중 오류 발생' })
   }
 }

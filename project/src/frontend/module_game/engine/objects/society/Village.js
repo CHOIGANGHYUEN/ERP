@@ -36,7 +36,8 @@ export class Village extends Entity {
     this.buildingCounts = { total: 0, constructed: 0, unconstructed: 0 }
 
     this.radius = 200
-    this.tickTimer = 0
+    // [Staggering] 마을마다 업데이트 시점을 프레임별로 분산하여 성능 스파이크를 방지합니다.
+    this.tickTimer = Math.random() * 1000
 
     this.brain.init(this)
     console.log(`📊 초기 인벤토리:`, { ...this.inventory })

@@ -27,25 +27,28 @@ const user = ref(null)
 
 const fetchUserProfile = async () => {
   try {
-    const res = await fetch('/api/auth/me')
+    // credentials: 'include'를 명시하여 쿠키를 서버로 전송합니다.
+    const res = await fetch('/api/auth/me', { credentials: 'include' })
     if (res.ok) {
       const data = await res.json()
-      user.value = data.user
-      localStorage.setItem('user', JSON.stringify(data.user))
+      if (data.user) {
+        user.value = data.user
+        localStorage.setItem('user', JSON.stringify(data.user))
+        console.log('[AppHeader] 유저 정보 로드 성공:', data.user.name)
+      }
+    } else {
+      // 401 Unauthorized 등이 발생하면 로컬 스토리지 비우기
+      user.value = null
+      localStorage.removeItem('user')
     }
   } catch (error) {
-    console.error('Failed to fetch user profile:', error)
+    console.error('[AppHeader] 유저 정보 로드 실패:', error)
   }
 }
 
 onMounted(() => {
-  const userData = localStorage.getItem('user')
-  if (userData) {
-    user.value = JSON.parse(userData)
-  } else {
-    // localStorage에 정보가 없으면 백엔드에서 세션 정보를 확인합니다.
-    fetchUserProfile()
-  }
+  // 리다이렉트 후에는 서버 세션이 확실하므로 항상 정보를 한 번 더 확인합니다.
+  fetchUserProfile()
 })
 
 const logout = async () => {

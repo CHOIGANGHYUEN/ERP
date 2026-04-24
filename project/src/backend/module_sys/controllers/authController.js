@@ -49,10 +49,13 @@ const authController = {
       const now = new Date()
 
       // 로그 저장을 위한 공통 데이터 셋
+      const kstNow = new Date(new Date().getTime() + 9 * 60 * 60 * 1000) // 한국 시간 강제 교정
+
+      // 로그 저장을 위한 공통 데이터 셋
       const logData = {
-        loginDt: now,
+        loginDt: kstNow,
         userId: userId,
-        loginAt: now,
+        loginAt: kstNow,
         authorize: credential.substring(0, 255),
         createdBy: userId,
         changedBy: userId,
@@ -66,7 +69,8 @@ const authController = {
         return res.status(401).json({ message: 'Token has expired.' })
       }
 
-      // 4. 동시 로그인 방지 로직
+      // 4. 동시 로그인 방지/빠른 요청 차단 로직 (중복 DB 기록 방지)
+      // 3초 이내의 동일 유저 로그인 요청은 중복 요청으로 간주하여 차단합니다.
       const lastLog = await LogLoginUser.findOne({
         where: { userId: userId },
         order: [['loginAt', 'DESC']],
@@ -74,9 +78,10 @@ const authController = {
 
       if (lastLog) {
         const timeDiff = now.getTime() - new Date(lastLog.loginAt).getTime()
-        if (timeDiff < 1000) {
-          await LogLoginUser.create({ ...logData, logged: 'BLOCKED: RAPID_REQUESTS' })
-          return res.status(429).json({ message: 'Too many login attempts. Please wait a moment.' })
+        if (timeDiff < 3000) {
+          // 중복 클릭이 감지되었을 때 에러 로그만 남기고 응답 종료
+          console.warn(`[Auth] Blocked rapid login request for ${userId}. Time diff: ${timeDiff}ms`)
+          return res.status(429).json({ message: '이미 로그인 처리가 진행 중입니다. 잠시만 기다려주세요.' })
         }
       }
 
@@ -92,7 +97,12 @@ const authController = {
       // 6. DB 유저 확인 또는 신규 가입
       const user = await userService.findOrCreateUser({ googleId, email, name, picture })
 
-      // 7. 시스템 보안 설정(sysConfig) 동적 적용
+      // 7. 시스템 보안 설정(sysConfig) - [Temporary Bypass]
+      const timeoutMinutes = 60
+      const expiresIn = `60m`
+      const maxAge = 60 * 60 * 1000
+      const allowMultiLogin = true
+/*
       const timeoutConfig = await Config.findOne({
         where: { configId: 'SEC_SESSION_TIMEOUT', useYn: 1 },
       })
@@ -104,7 +114,7 @@ const authController = {
       const multiLoginConfig = await Config.findOne({
         where: { configId: 'SEC_ALLOW_MULTI_LOGIN', useYn: 1 },
       })
-      const allowMultiLogin = multiLoginConfig && multiLoginConfig.configVal === 'Y'
+      const allowMultiLogin = true // [Temporary] 강제 허용 처리 (사용자 요청: 중복 로그인 차단 기능 비활성화)
 
       if (!allowMultiLogin) {
         const lastActivity = await LogLoginUser.findOne({
@@ -121,6 +131,7 @@ const authController = {
           }
         }
       }
+*/
 
       const token = jwt.sign({ id: user.id, userId: user.userId, email: userId }, JWT_SECRET, {
         expiresIn,
@@ -129,12 +140,14 @@ const authController = {
       // 8. 로그인 최종 성공 로그 저장
       await LogLoginUser.create({ ...logData, logged: 'SUCCESS: LOGIN_OK' })
 
-      // 9. 쿠키 설정 및 응답
+      // 9. 쿠키 설정 및 응답 (path: '/' 설정을 통해 모든 API 경로에서 토큰 접근 가능하게 함)
+      // localhost 개발 환경에서의 안정성을 위해 secure 및 sameSite 설정을 유연하게 가져갑니다.
       res.cookie('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // 로컬 환경에서는 false로 고정하여 전송 보장
         sameSite: 'lax',
         maxAge,
+        path: '/',
       })
 
       console.log(`User ${user.userId} logged in successfully via Google OAuth.`)
@@ -190,20 +203,23 @@ const authController = {
 
   async getMe(req, res) {
     try {
-      // verifyToken 미들웨어로부터 req.user를 전달받음
-      const user = await userService.findUserByEmail(req.user.email)
+      // verifyToken 미들웨어로부터 req.user(디코딩된 토큰)를 전달받음
+      // 토큰에 담긴 DB 고유 ID(id)를 사용하여 사용자 정보를 조회합니다.
+      const user = await userService.getUserDetail(req.user.id)
       if (!user) {
         return res.status(404).json({ message: 'User not found' })
       }
       res.json({
         user: {
+          id: user.id,
           userId: user.userId,
-          email: user.email,
+          email: user.email || req.user.email,
           name: user.name,
           picture: user.picture,
         },
       })
     } catch (error) {
+      console.error('getMe error:', error.message)
       res.status(500).json({ message: error.message })
     }
   },

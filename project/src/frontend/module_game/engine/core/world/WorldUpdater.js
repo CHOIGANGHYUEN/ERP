@@ -12,10 +12,17 @@ export const WorldUpdater = {
         world.timeSystem.update(deltaTime)
         world.entitySystem.update(deltaTime, world)
 
-        // (A) 매 프레임 모든 청크 초기화 및 재삽입 (Ghosting 및 누적 방지)
-        world.chunkManager.clearAll()
+        // (A) 💡 [최적화] 매 프레임 정적 객체(건물, 자원)를 다시 삽입하지 않고, 변화가 있거나 일정 주기(1초)마다만 갱신
+        const needsStaticReset = world.needsFullChunkRefresh || (world.staticRefreshTimer || 0) > 1000
+        if (needsStaticReset) {
+          world.chunkManager.clearAll()
+          world.staticRefreshTimer = 0
+          world.needsFullChunkRefresh = false
+        } else {
+          world.chunkManager.clear() // 동적 객체만 매 프레임 비움
+        }
 
-        // 동적 객체 삽입
+        // 동적 객체 삽입 (매 프레임)
         for (let i = 0; i < world.creatures.length; i++)
           world.chunkManager.insert(world.creatures[i], false)
         for (let i = 0; i < world.animals.length; i++)
@@ -23,22 +30,20 @@ export const WorldUpdater = {
         for (let i = 0; i < world.disasterSystem.tornadoes.length; i++)
           world.chunkManager.insert(world.disasterSystem.tornadoes[i], false)
 
-        // 정적 객체 삽입 (매 프레임 수행하여 데이터 일관성 보장)
-        for (let i = 0; i < world.buildings.length; i++)
-          world.chunkManager.insert(world.buildings[i], true)
-        for (let i = 0; i < world.plants.length; i++)
-          world.chunkManager.insert(world.plants[i], true)
-        for (let i = 0; i < world.resources.length; i++)
-          world.chunkManager.insert(world.resources[i], true)
-        for (let i = 0; i < world.mines.length; i++) world.chunkManager.insert(world.mines[i], true)
-        for (let i = 0; i < world.villages.length; i++)
-          world.chunkManager.insert(world.villages[i], true)
+        // 정적 객체 삽입 (주기적 혹은 강제 갱신 시에만 수행)
+        if (needsStaticReset) {
+          for (let i = 0; i < world.buildings.length; i++)
+            world.chunkManager.insert(world.buildings[i], true)
+          for (let i = 0; i < world.plants.length; i++)
+            world.chunkManager.insert(world.plants[i], true)
+          for (let i = 0; i < world.resources.length; i++)
+            world.chunkManager.insert(world.resources[i], true)
+          for (let i = 0; i < world.mines.length; i++) world.chunkManager.insert(world.mines[i], true)
+          for (let i = 0; i < world.villages.length; i++)
+            world.chunkManager.insert(world.villages[i], true)
+        }
 
         world.staticRefreshTimer = (world.staticRefreshTimer || 0) + deltaTime
-        if (world.staticRefreshTimer > 1000 || world.needsFullChunkRefresh) {
-          world.staticRefreshTimer = 0
-          world.needsFullChunkRefresh = false
-        }
 
         // 10틱마다 업데이트 (약 160ms)
         if (world.tick % 10 === 0) {
@@ -103,8 +108,13 @@ export const WorldUpdater = {
         world._lastTotalCount = totalCount
 
         // (C) 메인 스레드 청크 매니저 업데이트 (렌더링 컬링용)
-        // [Security] clear() 대신 clearAll()을 사용하여 정적 객체 누적(Ghosting) 방지
-        world.chunkManager.clearAll()
+        const needsStaticReset = world.needsFullChunkRefresh || (world.staticRefreshTimer || 0) > 1000
+        if (needsStaticReset) {
+          world.chunkManager.clearAll()
+          // 세계 공통 타이머는 워커에서 관리하므로 메인 스레드는 상태 전이를 따름
+        } else {
+          world.chunkManager.clear()
+        }
 
         const pluralMap = {
           creature: 'creatures',
@@ -138,6 +148,14 @@ export const WorldUpdater = {
           const propSize = props.SIZE
           const isStatic = ['building', 'plant', 'mine', 'resource', 'village'].includes(type)
 
+          // 💡 [최적화] 정적 리셋 주기가 아닐 경우, 이미 그리드에 박혀있는 정적 객체 삽입 루프는 건너뜀
+          if (isStatic && !needsStaticReset) {
+            // (주의) 렌더링용 프록시 배열(spatialProxies)은 매 프레임 모든 활성 객체를 포함해야 하므로,
+            // 인덱스 계산을 위해 루프를 돌거나, 렌드링 시스템에 맞춰 쿼리 방식을 조율해야 함.
+            // 여기서는 렌더링 성능을 위해 일단 모든 활성 객체를 spatialProxies에 넣고, 
+            // chunkManager insert만 선별적으로 수행.
+          }
+
           for (let i = 0; i < count; i++) {
             const offset = i * stride
             if (view[offset] === 1) {
@@ -152,12 +170,14 @@ export const WorldUpdater = {
               proxy.y = view[offset + propY]
               proxy.size = view[offset + propSize]
 
+              if (!isStatic || needsStaticReset) {
+                world.chunkManager.insert(proxy, isStatic)
+              }
+
               // 💡 [건물 렌더링 수정] 조명 시스템(LightingSystem)에서 밤에 불을 밝힐 수 있도록 완공 여부 추가
               if (type === 'building') {
                 proxy.isConstructed = view[offset + PROPS.BUILDING.IS_CONSTRUCTED] === 1
               }
-
-              world.chunkManager.insert(proxy, isStatic)
             }
           }
         }
@@ -169,6 +189,12 @@ export const WorldUpdater = {
         world.pathSystem.initSharedState(world)
         world.particleSystem.update(deltaTime)
         world.interactionSystem.update(deltaTime, world)
+
+        world.staticRefreshTimer = (world.staticRefreshTimer || 0) + deltaTime
+        if (world.staticRefreshTimer > 1000 || world.needsFullChunkRefresh) {
+          world.staticRefreshTimer = 0
+          world.needsFullChunkRefresh = false
+        }
 
         world.bgUpdateTimer += deltaTime
         if (world.bgUpdateTimer >= 2000) {

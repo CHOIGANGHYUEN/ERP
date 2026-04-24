@@ -29,6 +29,7 @@ const router = createRouter({
         {
           path: 'sys',
           redirect: '/sys/syst00',
+          meta: { requiresAuth: true },
         },
         {
           path: 'sys/syst00',
@@ -144,6 +145,7 @@ const router = createRouter({
           path: 'game',
           name: 'game',
           component: () => import('@/frontend/module_game/GameView.vue'),
+          meta: { requiresAuth: true },
         },
         // Future routes like /fi, /hr will go here
       ],

@@ -46,23 +46,37 @@ export class ChunkManager {
     }
   }
 
-  query(range) {
+  /**
+   * 지정된 범위 내의 엔티티를 검색합니다.
+   * @param {Object} range {x, y, width, height}
+   * @param {String} layer 'static' | 'dynamic' | 'both' (부하 절감을 위해 선택적 쿼리 지원)
+   */
+  query(range, layer = 'both') {
     const result = []
     const startCol = Math.max(0, Math.floor(range.x / this.chunkSize))
     const startRow = Math.max(0, Math.floor(range.y / this.chunkSize))
     const endCol = Math.min(this.cols - 1, Math.floor((range.x + range.width) / this.chunkSize))
     const endRow = Math.min(this.rows - 1, Math.floor((range.y + range.height) / this.chunkSize))
 
+    const queryStatic = layer === 'static' || layer === 'both'
+    const queryDynamic = layer === 'dynamic' || layer === 'both'
+
     for (let r = startRow; r <= endRow; r++) {
       const rowOffset = r * this.cols
       for (let c = startCol; c <= endCol; c++) {
         const idx = rowOffset + c
-        // 정적 객체 추가
-        const sChunk = this.staticChunks[idx]
-        for (let i = 0; i < sChunk.length; i++) result.push(sChunk[i])
-        // 동적 객체 추가
-        const dChunk = this.dynamicChunks[idx]
-        for (let i = 0; i < dChunk.length; i++) result.push(dChunk[i])
+        
+        // 정적 객체 추가 (건물 등)
+        if (queryStatic) {
+          const sChunk = this.staticChunks[idx]
+          for (let i = 0; i < sChunk.length; i++) result.push(sChunk[i])
+        }
+
+        // 동적 객체 추가 (주민, 동물 등)
+        if (queryDynamic) {
+          const dChunk = this.dynamicChunks[idx]
+          for (let i = 0; i < dChunk.length; i++) result.push(dChunk[i])
+        }
       }
     }
     return result

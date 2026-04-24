@@ -13,11 +13,13 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppCard from '@/frontend/common/components/AppCard.vue'
 
 const router = useRouter()
+
+let checkGoogleLoaded = null
 
 onMounted(() => {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -26,21 +28,38 @@ onMounted(() => {
     return
   }
 
-  // Google SDK가 비동기로 로드되므로, window.google 객체가 생성될 때까지 폴링(기다림)합니다.
-  const checkGoogleLoaded = setInterval(() => {
+  // 중복 초기화 방지를 위해 전역 플래그를 확인합니다.
+  if (window._googleInitialized) {
+    renderGoogleButton()
+    return
+  }
+
+  // Google SDK가 비동기로 로드되므로, window.google 객체가 생성될 때까지 폴링합니다.
+  checkGoogleLoaded = setInterval(() => {
     if (window.google) {
       clearInterval(checkGoogleLoaded)
       window.google.accounts.id.initialize({
         client_id: clientId,
-        ux_mode: 'redirect', // 핵심: 팝업 대신 리다이렉트 사용
-        login_uri: import.meta.env.VITE_GOOGLE_REDIRECT_URI, // .env에서 로드
+        ux_mode: 'redirect',
+        login_uri: import.meta.env.VITE_GOOGLE_REDIRECT_URI,
       })
-      window.google.accounts.id.renderButton(document.getElementById('google-login-btn'), {
-        theme: 'outline',
-        size: 'large',
-        width: 360,
-      })
+      window._googleInitialized = true
+      renderGoogleButton()
     }
   }, 100)
+})
+
+const renderGoogleButton = () => {
+  if (window.google && document.getElementById('google-login-btn')) {
+    window.google.accounts.id.renderButton(document.getElementById('google-login-btn'), {
+      theme: 'outline',
+      size: 'large',
+      width: 360,
+    })
+  }
+}
+
+onUnmounted(() => {
+  if (checkGoogleLoaded) clearInterval(checkGoogleLoaded)
 })
 </script>

@@ -1,6 +1,6 @@
 import { MoveTask } from '../../tasks/MoveTask.js'
 import { BuildTask } from '../../tasks/BuildTask.js'
-import { findPath } from '../../../systems/PathSystem.js'
+import { findPath, PATH_THROTTLED } from '../../../systems/PathSystem.js'
 import { JobAssigner } from '../JobAssigner.js'
 
 export const BUILDER = (creature, world, _candidates) => {
@@ -10,6 +10,16 @@ export const BUILDER = (creature, world, _candidates) => {
     console.log(`[Builder Debug: ${creature.id}] 소속 마을 없음. 배회로 전환`)
     return creature.wander(world)
   }
+
+  // 💡 [자동 복구] 30초 이상 isUnreachable 상태인 건물을 재시도 가능 상태로 복구
+  const staleThreshold = 30000
+  creature.village.buildings.forEach((b) => {
+    if (b.isUnreachable && b._unreachableAt && Date.now() - b._unreachableAt > staleThreshold) {
+      b.isUnreachable = false
+      b._unreachableAt = null
+      console.log(`[Builder] ♻️ 건물(${b.id}) isUnreachable 해제 (30초 경과, 재시도 허용)`)
+    }
+  })
 
   // 💡 [프리징 차단] 부지 탐색에 연달아 실패한 건축가는 5초간 탐색을 쉬게 하여 A* 길찾기 연산 폭주를 원천 차단합니다.
   const now = Date.now()
@@ -112,15 +122,23 @@ export const BUILDER = (creature, world, _candidates) => {
             `[탐색 ${attempts}/3] 좌표: (${Math.floor(spawnX)}, ${Math.floor(spawnY)}), 지형 코드: ${terrainType}`,
           )
 
+          // 💡 [프리징 방어] NaN 좌표가 시스템에 유입되는 것을 원천 차단
+          if (isNaN(spawnX) || isNaN(spawnY)) {
+            console.error(`🚨 [Builder: ID ${creature.id}] NaN 좌표 발생! (${spawnX}, ${spawnY})`);
+            validTerrain = false;
+          }
+
           if (validTerrain) {
             console.log(`[탐색 ${attempts}/3] 지형 검증 통과. 길찾기(findPath) 시도...`)
             const path = findPath(world, creature, { x: spawnX, y: spawnY })
-            if (path !== null) {
+            if (path && path !== PATH_THROTTLED) {
               success = true
               console.log(
                 `[결과 ${attempts}/3] ✅ 지형 유효 & 길찾기 도달 가능 확인! (경로 길이: ${path.length})`,
               )
               break
+            } else if (path === PATH_THROTTLED) {
+              console.log(`[결과 ${attempts}/3] ⏳ 길찾기 엔진 부하로 판단 보류. 다음 틱에 재시도합니다.`)
             } else {
               console.log(
                 `[결과 ${attempts}/3] ❌ 지형은 유효하나, 현재 위치에서 길찾기로 도달 불가능함`,
@@ -174,7 +192,8 @@ export const BUILDER = (creature, world, _candidates) => {
     )
     const path = findPath(world, creature, targetBuilding)
 
-    if (path !== null) {
+    if (path && path !== PATH_THROTTLED) {
+      // ✅ 경로 찾기 성공
       console.log(
         `[Builder Debug: ${creature.id}] 기존 미완공 건물 도달 가능 (경로 확인). 태스크 큐 길이: ${creature.taskQueue.length}`,
       )
@@ -185,11 +204,17 @@ export const BUILDER = (creature, world, _candidates) => {
       } else {
         console.log(`[Builder Debug: ${creature.id}] 이미 태스크 진행 중`)
       }
+    } else if (path === PATH_THROTTLED) {
+      // ⏳ 스로틀링은 일시적 상태 → isUnreachable 설정 없이 다음 틱에 재시도
+      console.log(`[Builder Debug: ${creature.id}] ⏳ 길찾기 엔진 부하. 다음 틱에 재시도합니다.`)
+      creature.wander(world)
     } else {
+      // ❌ 진짜 도달 불가능 (null) → isUnreachable 설정
       console.log(
         `[Builder Debug: ${creature.id}] ❌ 미완공 건물 도달 불가능. isUnreachable = true 설정 후 배회`,
       )
       targetBuilding.isUnreachable = true
+      targetBuilding._unreachableAt = Date.now() // 30초 후 자동 재시도용 타임스탬프
       creature.wander(world)
     }
   }
