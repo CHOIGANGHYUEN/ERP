@@ -19,6 +19,14 @@ export function useGameTools(getWorldInstance) {
     }
   })
 
+  const showVillageArea = ref(true)
+  watch(showVillageArea, (val) => {
+    const worldInstance = getWorldInstance()
+    if (worldInstance && worldInstance.settings) {
+      worldInstance.settings.showVillageArea = val
+    }
+  })
+
   const toggleTool = (toolName) => {
     if (activeTool.value === toolName) {
       activeTool.value = null
@@ -58,6 +66,7 @@ export function useGameTools(getWorldInstance) {
     showLogsPanel,
     showMinimapPanel,
     showTerritoryLayer,
+    showVillageArea,
     toggleTool,
     handleAction
   }

@@ -26,9 +26,9 @@ export const VillageSet = {
     }
   },
 
-  render: (village, ctx) => {
+  render: (village, ctx, world) => {
     try {
-      VillageRenders.render(village, ctx)
+      VillageRenders.render(village, ctx, world)
     } catch (e) {
       console.error(`[VillageSet Render Error] ID ${village?.id}:`, e)
     }

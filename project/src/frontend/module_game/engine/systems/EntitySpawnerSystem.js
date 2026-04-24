@@ -130,9 +130,35 @@ export class EntitySpawnerSystem {
     }
 
     if (!joinedVillage) {
-      console.log('🆕 [Spawner] 새로운 마을 생성을 시작합니다...')
+      // 💡 [지형 유효성 검사] 마을은 오직 평지(Terrain 0)에서만 생성 가능
+      const cols = Math.ceil((world.width || 3200) / 16)
+      const gX = Math.floor(x / 16), gY = Math.floor(y / 16)
+      const terrainType = world.terrain ? world.terrain[gY * cols + gX] : 0
+      
+      if (terrainType !== 0) {
+        // 평지가 아니면 근처 평지 검색 (최대 100px)
+        let foundFlat = false
+        for (let r = 1; r < 6; r++) {
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dy = -r; dy <= r; dy++) {
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+              const nx = gX + dx, ny = gY + dy
+              if (nx >= 0 && nx < cols && ny >= 0 && ny < 200) {
+                if (world.terrain[ny * cols + nx] === 0) {
+                  x = nx * 16 + 8; y = ny * 16 + 8; foundFlat = true; break
+                }
+              }
+            }
+            if (foundFlat) break
+          }
+          if (foundFlat) break
+        }
+        if (!foundFlat) return // 평지를 도저히 못찾으면 마을 생성 포기
+      }
+
+      // New village logs removed
       const newVillage = new Village(x, y, `마을 ${world.villages.length + 1}`)
-      console.log(`🆕 [Spawner] 새로운 마을 생성 완료: ${newVillage.name}`)
+
       world.villages.push(newVillage)
       newVillage.addCreature(creature)
 

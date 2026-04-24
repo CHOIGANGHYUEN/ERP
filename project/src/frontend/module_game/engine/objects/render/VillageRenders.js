@@ -1,16 +1,15 @@
 export const VillageRenders = {
-  render: (village, ctx) => {
+  render: (village, ctx, world) => {
     const rx = village.radius
     const x = village.x
     const y = village.y
     const color = village.nation ? village.nation.color : '#ffffff'
 
     ctx.save()
-    // 💡 [Grid Territory Rendering] 반경 기반 원형 렌더링을 완전히 제거하고, 
-    // Grid 맵에서 내 마을에 해당하는 셀들을 하나의 거대한 폴리곤망처럼 일괄(batching) 렌더링합니다.
+    // 💡 [Bugfix] world 인자 누락으로 인한 설정 조회 실패 해결
     if (world && world.settings && world.settings.showTerritory === false) {
        ctx.restore()
-       // 이름은 항상 표시
+       // 이름만 표시
        ctx.fillStyle = '#fff'
        ctx.font = 'bold 12px Arial'
        ctx.textAlign = 'center'

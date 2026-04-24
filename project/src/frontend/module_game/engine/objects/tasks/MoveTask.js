@@ -1,78 +1,55 @@
 import { BaseTask } from './BaseTask.js'
 
 export class MoveTask extends BaseTask {
-  /**
-   * @param {Object} target 이동할 목표 엔티티 (x, y와 size를 가짐)
-   * @param {Number} threshold 도달했다고 판단할 거리
-   */
   constructor(target, threshold = 10) {
     super('MOVE')
     this.target = target
     this.threshold = threshold
-    this._startedAt = Date.now() // ⏱️ 타임아웃 감지용 시작 시간
+    this.startTime = Date.now()
   }
 
-  execute(creature, deltaTime, world) {
-    this.status = 'RUNNING'
+  onEnter(creature, world) {
+    if (!this.target || this.target.x === undefined) throw new Error('Invalid movement target')
+    
+    // 타겟 지향 렌더링을 위해 타겟 설정
+    creature.target = this.target
+    
+    const path = world.pathfinderService.findPath(
+      world, creature.x, creature.y, this.target.x, this.target.y
+    )
 
-    // 1) 초기화 및 경로 탐색 (Enter)
-    if (!creature.movement.isMoving && creature.movement.path.length === 0) {
-      if (
-        !this.target ||
-        this.target.isDead ||
-        this.target.x === undefined ||
-        this.target.y === undefined
-      ) {
-        this.status = 'FAILED'
-        return this.status
-      }
-
-      const path = world.pathfinderService.findPath(
-        world, 
-        creature.x, 
-        creature.y, 
-        this.target.x, 
-        this.target.y
-      )
-
-      if (path === 'THROTTLED') {
-        // [Throttle 방어] 연산 한도 도달 시 다음 틱을 기다림
-        return 'RUNNING'
-      }
-
-      if (!path || path === 'FAILED' || (Array.isArray(path) && path.length === 0)) {
-        this.status = 'FAILED'
-        return this.status
-      }
-
-      creature.movement.path = path
-      creature.movement.currentWaypointIndex = 0
-      creature.movement.isMoving = true
-      creature.state = 'MOVING'
+    if (!path || path === 'FAILED' || (Array.isArray(path) && path.length === 0)) {
+      throw new Error('Pathfinding failed')
     }
 
-    // 2) 타임아웃 감시 (Running)
-    if (Date.now() - this._startedAt > 20000) {
-      this.status = 'FAILED'
-      creature.movement.isMoving = false
-      creature.movement.path = []
-      return this.status
+    if (path === 'THROTTLED') {
+      this._initialized = false // 다음 틱에 다시 onEnter 시도
+      return
     }
 
-    // 3) 성공 체크 (Completed)
-    // MovementSystem이 성공적으로 도달하면 isMoving을 false로 바꿈
-    if (!creature.movement.isMoving && creature.movement.path.length > 0) {
-      const dist = creature.distanceTo({ x: this.target.x, y: this.target.y })
-      if (dist <= this.threshold + (this.target.size || 0)) {
-        this.status = 'COMPLETED'
-        creature.movement.path = []
-      } else {
-        // 경로의 끝에 도달했는데 타겟과 멀다면 장애물 등으로 막힌 것임 (Failed)
-        this.status = 'FAILED'
-        creature.movement.path = []
-      }
+    creature.movement.path = path
+    creature.movement.currentWaypointIndex = 0
+    creature.movement.isMoving = true
+    creature.state = 'MOVING' // 적극적인 이동 상태로 변경
+  }
+
+  onRunning(creature, deltaTime, world) {
+    // 타임아웃 20초
+    if (Date.now() - this.startTime > 20000) return 'FAILED'
+
+    // 도달 체크 (MovementSystem이 isMoving을 false로 만들었을 때)
+    if (!creature.movement.isMoving) {
+      const dist = creature.distanceTo(this.target)
+      const range = this.threshold + (this.target.size || 0)
+      return (dist <= range) ? 'COMPLETED' : 'FAILED'
     }
 
-    return this.status
+    return 'RUNNING'
+  }
+
+  onFailed(creature, world, reason) {
+    creature.movement.isMoving = false
+    creature.movement.path = []
+    creature.target = null
   }
 }

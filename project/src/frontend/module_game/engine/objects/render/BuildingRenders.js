@@ -20,9 +20,26 @@ export const BuildingRenders = {
     const s = building.size
     const x = building.x
     const y = building.y
-    const progress = building.progress / building.maxProgress
+    const progress = (building.progress || 0) / (building.maxProgress || 100)
 
-    // 건설 중인 비계(Scaffolding) 느낌
+    if (progress <= 0) {
+      // 💡 [건축 대기중] - 아직 인부가 도착하지 않은 '부지 확보' 단계 (말뚝만 표시)
+      ctx.strokeStyle = 'rgba(127, 140, 141, 0.5)'
+      ctx.setLineDash([2, 4])
+      ctx.strokeRect(x - s / 2, y - s / 2, s, s)
+      ctx.setLineDash([])
+
+      // 네 귀퉁이에 말뚝 표시
+      ctx.fillStyle = '#8B4513'
+      const stakeSize = 3
+      ctx.fillRect(x - s / 2 - 1, y - s / 2 - 1, stakeSize, stakeSize)
+      ctx.fillRect(x + s / 2 - 2, y - s / 2 - 1, stakeSize, stakeSize)
+      ctx.fillRect(x - s / 2 - 1, y + s / 2 - 2, stakeSize, stakeSize)
+      ctx.fillRect(x + s / 2 - 2, y + s / 2 - 2, stakeSize, stakeSize)
+      return
+    }
+
+    // 💡 [건축 중] - 비계(Scaffolding) 및 진행 상황 표시
     ctx.strokeStyle = '#7f8c8d'
     ctx.lineWidth = 2
     ctx.strokeRect(x - s / 2, y - s / 2, s, s)

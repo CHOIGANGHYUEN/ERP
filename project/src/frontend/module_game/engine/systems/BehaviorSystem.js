@@ -40,7 +40,7 @@ export class BehaviorSystem {
       }
 
       // 18. 생동감 배회 (Idle Wandering)
-      if (creature.state === 'IDLE' || !creature.currentTask) {
+      if (creature.state === 'IDLE' && !creature.currentTask && !creature.movement.isMoving && !creature.target) {
         if (Math.random() < 0.01) {
           creature.wander(world)
         }

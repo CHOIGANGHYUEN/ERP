@@ -82,10 +82,10 @@ export class BufferSyncSystem {
 
   syncToSharedBuffer(world) {
     if (!world.isHeadless || !world.views) return
-    const globals = world.views.globals
-    const renderIndex = globals[PROPS.GLOBALS.RENDER_BUFFER_INDEX]
+    const { globals, globalsInt32, sets } = world.views
+    const renderIndex = Atomics.load(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
     const writeIndex = renderIndex === 0 ? 1 : 0
-    const backBuffer = world.views.sets[writeIndex]
+    const backBuffer = sets[writeIndex]
 
     try {
       const { creatures, animals, plants, buildings, villages, tornadoes, mines, resources } =
@@ -217,15 +217,17 @@ export class BufferSyncSystem {
         resources[offset + PROPS.RESOURCE.TYPE] = RESOURCE_TYPE_MAP[r.type] || 0
       })
 
-      // [Atomic Swap] 모든 작업이 끝난 후에만 가용한 버퍼 인덱스를 교체
-      globals[PROPS.GLOBALS.CREATURE_COUNT] = world.creatures.length
-      globals[PROPS.GLOBALS.ANIMAL_COUNT] = world.animals.length
-      globals[PROPS.GLOBALS.PLANT_COUNT] = world.plants.length
-      globals[PROPS.GLOBALS.RESOURCE_COUNT] = world.resources.length
-      globals[PROPS.GLOBALS.BUILDING_COUNT] = world.buildings.length
-      globals[PROPS.GLOBALS.VILLAGE_COUNT] = world.villages.length
-      globals[PROPS.GLOBALS.TORNADO_COUNT] = world.disasterSystem.tornadoes.length
-      globals[PROPS.GLOBALS.MINE_COUNT] = world.mines.length
+      // [Atomic Store] 개체 수를 Int32 형식으로 안전하게 저장 (RenderSystem의 무한 루프 방지)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.CREATURE_COUNT, world.creatures.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.ANIMAL_COUNT, world.animals.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.PLANT_COUNT, world.plants.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.RESOURCE_COUNT, world.resources.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.BUILDING_COUNT, world.buildings.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.VILLAGE_COUNT, world.villages.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.TORNADO_COUNT, world.disasterSystem.tornadoes.length)
+      Atomics.store(globalsInt32, PROPS.GLOBALS.MINE_COUNT, world.mines.length)
+
+      // 기타 시뮬레이션 상태 동기화 (Float 값들은 그대로 유지 가능하나 가독성을 위해 명시)
       globals[PROPS.GLOBALS.FERTILITY] = world.currentFertility
       globals[PROPS.GLOBALS.TIME_OF_DAY] = world.timeSystem.timeOfDay
       globals[PROPS.GLOBALS.SEASON] = SEASON_MAP[world.timeSystem.season]
@@ -236,8 +238,8 @@ export class BufferSyncSystem {
     } catch (error) {
       console.error('🚨 [BufferSyncSystem] 버퍼 동기화 중 오류 발생 (Freezing 방어):', error)
     } finally {
-      // 💡 [Freezing 방어] 오류가 나더라도 무조건 버퍼 인덱스를 스왑하여 메인 스레드(화면)가 영원히 멈추는 것을 방지
-      Atomics.store(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX, writeIndex)
+      // [Atomic Swap] 모든 작업이 끝난 후에만 가용한 버퍼 인덱스를 교체
+      Atomics.store(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX, writeIndex)
     }
   }
 

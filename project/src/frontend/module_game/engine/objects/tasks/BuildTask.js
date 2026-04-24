@@ -1,4 +1,5 @@
 import { BaseTask } from './BaseTask.js'
+import { MoveTask } from './MoveTask.js'
 
 export class BuildTask extends BaseTask {
   constructor(targetBuilding) {
@@ -11,57 +12,64 @@ export class BuildTask extends BaseTask {
 
   onEnter(creature, world) {
     if (!this.target || this.target.isDead) throw new Error('Building target missing')
+    creature.target = this.target
+    this.target.isTargeted = true
     this.lastPos = { x: creature.x, y: creature.y }
   }
 
   onRunning(creature, deltaTime, world) {
     if (this.target.isConstructed) return 'COMPLETED'
+    if (this.target.isDead) return 'FAILED'
 
-    // 엣지 케이스 2: 갇힘 / 정체 체크
-    if (creature.movement.isMoving) {
-      const dx = creature.x - this.lastPos.x
-      const dy = creature.y - this.lastPos.y
-      if (Math.sqrt(dx * dx + dy * dy) < 0.1) {
-        this.stuckTimer += deltaTime
-        if (this.stuckTimer > 3000) { // 3초간 제자리
-          console.warn(`[BuildTask] Stuck detected for ${creature.id}`)
-          return 'FAILED'
-        }
-      } else {
-        this.stuckTimer = 0
-        this.lastPos = { x: creature.x, y: creature.y }
-      }
+    // 1) 갇힘 / 정체 체크 - 8초로 상향 (군집 이동 시의 약간의 병목 허용)
+    const dx = creature.x - this.lastPos.x
+    const dy = creature.y - this.lastPos.y
+    if (Math.sqrt(dx * dx + dy * dy) < 0.1) {
+      this.stuckTimer += deltaTime
+      if (this.stuckTimer > 8000) return 'FAILED'
+    } else {
+      this.stuckTimer = 0
+      this.lastPos = { x: creature.x, y: creature.y }
     }
 
-    // 전역 타임아웃
-    if (Date.now() - this.startTime > 30000) return 'FAILED'
+    // 2) 전역 타임아웃 상향 (대규모 건축물 대응)
+    if (Date.now() - this.startTime > 300000) return 'FAILED'
 
+    // 3) 거리 체크 및 행동 수행 (훨씬 엄격하게 조정: 10px 이내)
     const dist = creature.distanceTo(this.target)
-    if (dist <= creature.size + (this.target.size || 20)) {
+    const buildRange = (this.target.size || 20) * 0.8 
+
+    if (dist <= buildRange) {
       creature.state = 'BUILDING'
-      this.target.progress += deltaTime * 0.05
+      // 건축 속도: 크리처 효율성 반영
+      const speed = 0.05 * (creature.workEfficiency || 1.0)
+      this.target.progress += deltaTime * speed
       
       if (this.target.progress >= (this.target.maxProgress || 100)) {
+        this.target.isConstructed = true
         return 'COMPLETED'
       }
     } else {
-      creature.moveToTarget(this.target.x, this.target.y, deltaTime, world)
+      // 💡 [건축 집중력] 거리가 멀어지면 FAILED를 즉시 뱉지 않고 
+      // 잠시 기다리거나 MoveTask로 다시 돌아가도록 유도 (WorkSystem에서 보완)
+      return 'FAILED'
     }
 
     return 'RUNNING'
   }
 
   onComplete(creature, world) {
-    if (this.target.isConstructed && this.target.village) {
-      this.target.village.updateBuildingStatus(true)
+    if (this.target) {
+      this.target.isTargeted = false
+      if (this.target.village) this.target.village.updateBuildingStatus(true)
+      world.broadcastEvent(`🏗️ ${this.target.type} 건설 완료!`, '#2ecc71')
     }
+    creature.target = null
   }
 
   onFailed(creature, world, reason) {
+    if (this.target) this.target.isTargeted = false
     creature.state = 'IDLE'
-    // 갇혔을 경우 블랙리스트에 추가하여 다른 작업 유도
-    if (this.target && world.blacklistService) {
-      world.blacklistService.add(this.target.id)
-    }
+    creature.target = null
   }
 }

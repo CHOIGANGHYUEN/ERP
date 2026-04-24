@@ -42,6 +42,7 @@ export const drawCreatureBody = (creature, ctx, world, timestamp, yOffset = 0, a
   const {
     legL = 0, legR = 0, armL = 0, armR = 0,
     bodyTilt = 0, blinkPhase = 0, lean = 0,
+    bounce = 0, squash = 1, stretch = 1,
     toolOffset = null
   } = animProps
 
@@ -49,7 +50,6 @@ export const drawCreatureBody = (creature, ctx, world, timestamp, yOffset = 0, a
   const rotation = creature.rotation ?? creature.transform?.rotation ?? (Math.PI / 2)
   const norm = (rotation + Math.PI * 2) % (Math.PI * 2)
   const dIdx = Math.floor((norm + Math.PI / 8) / (Math.PI / 4)) % 8
-  // dIdx: 0:E, 1:SE, 2:S, 3:SW, 4:W, 5:NW, 6:N, 7:NE
   const DIR_MAP = [2, 3, 4, 5, 6, 7, 0, 1] 
   const faceDir = DIR_MAP[dIdx]
 
@@ -64,13 +64,14 @@ export const drawCreatureBody = (creature, ctx, world, timestamp, yOffset = 0, a
 
   const swimOffset = isSwimming ? S * 0.4 : 0
   const bx = creature.x + lean
-  const by = creature.y + yOffset + swimOffset
+  const by = creature.y + yOffset + swimOffset - (bounce * P)
 
   // 1. 그림자
   if (!isSwimming) {
     ctx.save()
     ctx.globalAlpha = 0.22; ctx.fillStyle = '#000'; ctx.beginPath()
-    ctx.ellipse(creature.x, creature.y + P, S * 0.4, P * 0.8, 0, 0, Math.PI * 2)
+    const shadowStretch = 1 + bounce * 0.1
+    ctx.ellipse(creature.x, creature.y + P, S * 0.4 * shadowStretch, P * 0.8, 0, 0, Math.PI * 2)
     ctx.fill(); ctx.restore()
   }
 
@@ -82,15 +83,14 @@ export const drawCreatureBody = (creature, ctx, world, timestamp, yOffset = 0, a
   const isBack = faceDir === 0 || faceDir === 1 || faceDir === 7
   const isFront = faceDir === 4 || faceDir === 3 || faceDir === 5
   const isSide = faceDir === 2 || faceDir === 6
-  const isDiag = !isSide && !isFront && !isBack // (실제로 isBack/isFront에 포함됨)
 
-  // 몸통 너비 보정 (측면일수록 좁아짐)
-  let bW = S * 0.7
+  // Squash & Stretch 적용
+  let bW = S * 0.7 * (1/squash)
   if (isSide) bW *= 0.6
   else if (faceDir === 1 || faceDir === 3 || faceDir === 5 || faceDir === 7) bW *= 0.85 // 대각선
   
-  const bH = S * 0.5
-  const bX = -bW / 2, bY = -S * 0.4
+  const bH = S * 0.5 * squash
+  const bX = -bW / 2, bY = -S * 0.4 * squash
 
   // 3. 다리 (Legs)
   const lW = P * 2, lH = S * 0.5

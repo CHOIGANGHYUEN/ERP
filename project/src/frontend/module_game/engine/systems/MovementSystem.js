@@ -19,7 +19,7 @@ export class MovementSystem {
       if (creature.isDead || !creature.movement.isMoving) return
 
       const m = creature.movement
-
+      
       // 1.1) 경로 자동 생성 방어 로직: path가 비어있으면 직접 타겟으로 향하는 노드 생성
       if (m.path.length === 0) {
         if (creature.targetPos) {
@@ -43,7 +43,7 @@ export class MovementSystem {
       const dy = target.y - creature.y
       const distSq = dx * dx + dy * dy
 
-      if (distSq < 25) { // 5픽셀(Threshold) 이내인가?
+      if (distSq < 64) { // 8픽셀(Threshold) 이내인가?
         m.currentWaypointIndex++
         if (m.currentWaypointIndex >= m.path.length) {
           m.isMoving = false
@@ -52,57 +52,97 @@ export class MovementSystem {
         }
       }
 
-      // 3) 지형 패널티 적용
+      // 3) 지형 기반 이동 속도 및 이동 제한 (TerrainSystem 인덱스 준수)
       let speedMultiplier = 1.0
-      if (world.views && world.views.terrain) {
-        const tx = Math.floor(creature.x / 16)
-        const ty = Math.floor(creature.y / 16)
-        if (tx >= 0 && tx < 200 && ty >= 0 && ty < 200) {
-          const t = world.views.terrain[ty * 200 + tx]
-          switch (t) {
-            case 1: speedMultiplier = 0.7; break; // 숲
-            case 2: speedMultiplier = 0.4; break; // 늪/얕은 물
-            case 3: speedMultiplier = 0.2; break; // 산맥(가로지를 경우)
-            // 도로는 0번 타일 중 트래픽이 높은 곳 등으로 추가 가능
-          }
+      const terrain = (world.views && world.views.terrain) || world.terrain
+      
+      const tx = Math.floor(creature.x / 16)
+      const ty = Math.floor(creature.y / 16)
+      if (terrain && tx >= 0 && tx < 200 && ty >= 0 && ty < 200) {
+        const t = terrain[ty * 200 + tx]
+        switch (t) {
+          case 1: speedMultiplier = 0.6; break; // 낮은 산 (속도 저하)
+          case 2: case 3: case 4: case 5: 
+            speedMultiplier = 0.1; break; // 높은 산/물 진입 시 극도의 저항 (사실상 차단)
         }
       }
 
-      // 4) 최종 벡터 연산 및 좌표 이동 (Divide by zero 방지 및 정규화)
+      // 4) [Inertial Smoothing] 속도 벡터 보간 (갑작스러운 방향 전환 방지 및 부드러운 코너링)
       const dist = Math.sqrt(distSq)
-      let vx = dist > 0.1 ? (dx / dist) : 0
-      let vy = dist > 0.1 ? (dy / dist) : 0
-
-      // Steering (로컬 회피) 합산 (0.5 가중치)
+      const desiredVx = dist > 0.1 ? (dx / dist) : 0
+      const desiredVy = dist > 0.1 ? (dy / dist) : 0
+      
+      // Steering (로컬 회피) 합산
+      let steerX = 0, steerY = 0
       if (this.steer && dist > 1) {
         const neighbors = world.chunkManager.query({
           x: creature.x - 30, y: creature.y - 30,
           width: 60, height: 60
         })
         const avoid = this.steer.calculateAvoidanceVector(creature, neighbors)
-        vx += avoid.x * 0.5
-        vy += avoid.y * 0.5
+        steerX = avoid.x * 0.5
+        steerY = avoid.y * 0.5
       }
 
+      // 최종 목표 벡터
+      const finalTargetVx = desiredVx + steerX
+      const finalTargetVy = desiredVy + steerY
+
+      // [Smooth Step] 이전 프레임의 실제 속도와 현재 목표 속도를 보간 (관성 효과)
+      const smoothing = 0.3 // 유연하면서도 즉각적인 반응성 확보 (0.15 -> 0.3)
+      let vx = (creature.velocity?.x || 0) * (1 - smoothing) + finalTargetVx * smoothing
+      let vy = (creature.velocity?.y || 0) * (1 - smoothing) + finalTargetVy * smoothing
+      
       // 벡터 정규화
       const mag = Math.sqrt(vx * vx + vy * vy)
-      if (mag > 0) {
+      if (mag > 0.01) {
         vx /= mag
         vy /= mag
       }
 
+      // 다음 프레임을 위한 가속도 데이터 보존
+      creature.velocity = { x: vx, y: vy }
       m.velocity = { x: vx, y: vy }
 
-      // 좌표 이동
+      // 💡 [지형 충돌 판정] 성분별 이동 시도를 통해 해안선을 따라 흐르듯 이동(Sliding)하게 함
       const moveStep = m.speed * speedMultiplier * (deltaTime / 1000)
-      creature.x += vx * moveStep
-      creature.y += vy * moveStep
+      const nextX = creature.x + vx * moveStep
+      const nextY = creature.y + vy * moveStep
+      
+      const cols = 200
+      // [Hotfix] 중복 선언된 terrain 변수 제거 (상단에서 이미 선언됨)
+      
+      if (terrain) {
+        // 1. X축 이동 시도
+        const nextGX = Math.floor(nextX / 16)
+        const currentGY = Math.floor(creature.y / 16)
+        const tX = terrain[currentGY * cols + nextGX]
+        if (tX === 0 || tX === 1) {
+          creature.x = nextX
+        }
 
-      // 엔티티 transform 데이터 동기화 (rotation 포함)
+        // 2. Y축 이동 시도
+        const currentGX = Math.floor(creature.x / 16)
+        const nextGY = Math.floor(nextY / 16)
+        const tY = terrain[nextGY * cols + currentGX]
+        if (tY === 0 || tY === 1) {
+          creature.y = nextY
+        }
+      } else {
+        // 지형 정보가 없을 때만 단순 이동 (Fallback)
+        creature.x = nextX
+        creature.y = nextY
+      }
+
+      // 6) Transform 동기화 (Lerp를 통한 회전 부드럽게)
       if (creature.transform) {
         creature.transform.x = creature.x
         creature.transform.y = creature.y
-        creature.transform.rotation = Math.atan2(vy, vx)
+        const targetRot = Math.atan2(vy, vx)
+        const diff = targetRot - creature.transform.rotation
+        // 각도 차이 정규화 (-PI ~ PI)
+        const normalizedDiff = Math.atan2(Math.sin(diff), Math.cos(diff))
+        creature.transform.rotation += normalizedDiff * 0.15 
       }
     })
   }

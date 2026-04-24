@@ -26,7 +26,6 @@ import { UtilityScoringService } from '../../engine/services/UtilityScoringServi
 import { PathfinderService } from '../../engine/services/PathfinderService.js'
 import { SteeringService } from '../../engine/services/SteeringService.js'
 import { MovementSystem } from '../../engine/systems/MovementSystem.js'
-import { WorkerAIAssignmentSystem } from '../../engine/systems/WorkerAIAssignmentSystem.js'
 import { BehaviorSystem } from '../../engine/systems/BehaviorSystem.js'
 import { PerceptionSystem } from '../../engine/systems/PerceptionSystem.js'
 import { WorkSystem } from '../../engine/systems/WorkSystem.js'
@@ -64,7 +63,6 @@ export function setupDI() {
   container.register(TOKENS.PathfinderService, PathfinderService)
   container.register(TOKENS.SteeringService, SteeringService)
   container.register(TOKENS.MovementSystem, MovementSystem)
-  container.register(TOKENS.WorkerAIAssignmentSystem, WorkerAIAssignmentSystem)
   container.register(TOKENS.BehaviorSystem, BehaviorSystem)
   container.register(TOKENS.PerceptionSystem, PerceptionSystem)
   container.register(TOKENS.WorkSystem, WorkSystem)

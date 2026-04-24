@@ -4,7 +4,7 @@ import { FamilySystem } from '../../systems/FamilySystem.js'
 
 export class Creature extends Entity {
   init(x, y) {
-    console.log('🧬 [Creature] init 시작:', { x, y });
+    // init log removed
     super.init(x, y)
     
     // ■ 1단계: 순수 데이터 계층 (Entity Component)
@@ -184,21 +184,52 @@ export class Creature extends Entity {
   }
 
   wander(world, customRadius = null) {
+    // [Override Guard] 이미 명확한 목표가 있거나 이동 중이라면 배회하지 않음
+    if (this.currentTask || this.movement.isMoving || (this.state !== 'IDLE' && this.state !== 'WANDERING')) {
+      return
+    }
+
     // 지그재그 버그 수정: 배회 중에 새로운 일거리가 없다면, 아직 배회 목적지에 도착하지 않은 상태에서 목적지를 랜덤하게 덮어쓰지 않음
     if (this.state === 'WANDERING' && this.targetX != null && this.distanceTo({ x: this.targetX, y: this.targetY }) > 20) {
       return
     }
 
-    // 능동적 탐색을 위해 배회 반경을 평소보다 1.5 ~ 2배 넓게 설정
-    const radius = customRadius || (this.village ? this.village.radius * 2.0 : 300)
-    if (this.village && Math.random() < 0.7) {
-      // 마을 세력권 밖으로도 과감히 나설 수 있게 확장
-      this.targetX = this.village.x + (Math.random() - 0.5) * radius * 2.0
-      this.targetY = this.village.y + (Math.random() - 0.5) * radius * 2.0
-    } else {
-      this.targetX = this.x + (Math.random() - 0.5) * radius
-      this.targetY = this.y + (Math.random() - 0.5) * radius
+    // [Step 2] 부지 선정 및 신규 건설 계획 (Phased Progression)
+    const isScout = ['WARRIOR', 'EXPLORER', 'LEADER'].includes(this.profession)
+    const radius = customRadius || (this.village ? this.village.radius * 0.9 : 100)
+    
+    let tx, ty
+    const maxAttempts = 10
+    let found = false
+
+    if (this.village && !isScout && world.territory) {
+      const vIdx = world.villages ? world.villages.indexOf(this.village) + 1 : 0
+      
+      for (let i = 0; i < maxAttempts; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const dist = Math.random() * radius
+        const candidateX = this.village.x + Math.cos(angle) * dist
+        const candidateY = this.village.y + Math.sin(angle) * dist
+        
+        // 영토 밖으로 배회하는지 최종 검증
+        const gX = Math.floor(candidateX / 16), gY = Math.floor(candidateY / 16)
+        if (world.territory[gY * 200 + gX] === vIdx) {
+          tx = candidateX
+          ty = candidateY
+          found = true
+          break
+        }
+      }
     }
+    
+    if (!found) {
+      const freeRadius = customRadius || 500
+      tx = this.x + (Math.random() - 0.5) * freeRadius
+      ty = this.y + (Math.random() - 0.5) * freeRadius
+    }
+    
+    this.targetX = tx
+    this.targetY = ty
     this.state = 'WANDERING'
   }
 

@@ -45,114 +45,90 @@ export class RenderSystem {
     if (world.isHeadless || !world.views) return
 
     try {
-      world.ctx.clearRect(0, 0, world.canvas.width, world.canvas.height)
-      world.ctx.imageSmoothingEnabled = false
-      world.ctx.save()
-
       const zoom = world.camera.zoom || 1
-      world.ctx.scale(zoom, zoom)
-      world.ctx.translate(-world.camera.x, -world.camera.y)
-      world.disasterSystem.applyCameraShake(world.ctx)
+      const ctx = world.ctx
+      ctx.clearRect(0, 0, world.canvas.width, world.canvas.height)
+      ctx.imageSmoothingEnabled = false
+      ctx.save()
+      ctx.scale(zoom, zoom)
+      ctx.translate(-world.camera.x, -world.camera.y)
+      world.disasterSystem.applyCameraShake(ctx)
 
-      // ── 0. 정적 지형 레이어 업데이트 (수만 개의 타일 사전 렌더링) ─────────────────
+      // [Atomic Load] 메인 렌더 패스를 위한 데이터 고정 (Tearing 방지)
+      const { globals, globalsInt32, sets } = world.views
+      const frontIndex = Atomics.load(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
+      if (frontIndex !== 0 && frontIndex !== 1) return
+      
+      const currentSet = sets[frontIndex]
+      const villageView = currentSet.villages
+      const villageCount = Atomics.load(globalsInt32, PROPS.GLOBALS.VILLAGE_COUNT)
+
+      // ── 0단계: 정적 지형 (배경 이미지) ──────────────────────────────────
       if (world.needsStaticTerrainUpdate && world.terrain) {
         const sCtx = world.bgStaticCtx
         sCtx.clearRect(0, 0, world.width, world.height)
-
-        const tileSize = 16
-        const cols = world.width / tileSize
-        const colors = [
-          '#27ae60', // 0: GRASS
-          '#7f8c8d', // 1: LOW_MOUNTAIN
-          '#bdc3c7', // 2: HIGH_MOUNTAIN
-          '#3498db', // 3: SHALLOW_SEA
-          '#2980b9', // 4: DEEP_SEA
-          '#2c3e50', // 5: ABYSS
-        ]
-
+        const cols = world.width / 16
+        const colors = ['#27ae60', '#7f8c8d', '#bdc3c7', '#3498db', '#2980b9', '#2c3e50']
         for (let i = 0; i < world.terrain.length; i++) {
-          const type = world.terrain[i]
-          sCtx.fillStyle = colors[type] || colors[0]
-          const tx = (i % cols) * tileSize
-          const ty = Math.floor(i / cols) * tileSize
-          sCtx.fillRect(tx, ty, tileSize, tileSize)
+          sCtx.fillStyle = colors[world.terrain[i]] || colors[0]
+          sCtx.fillRect((i % cols) * 16, Math.floor(i / cols) * 16, 16, 16)
         }
         world.needsStaticTerrainUpdate = false
       }
+      ctx.drawImage(world.bgStaticCanvas, 0, 0)
 
-      // ── 1. 동적 배경 업데이트 (길, 건물 등 자주 변하는 요소) ───────────────
-      if (world.needsBackgroundUpdate) {
-        // [Atomic Load] 배경 업데이트 시에도 워커와의 동기화를 위해 원자적 읽기 수행 (프레임 내 고정 index 사용)
-        const { globals, globalsInt32 } = world.views
-        const frontIndex = Atomics.load(globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
-        if (frontIndex !== 0 && frontIndex !== 1) return
-
-        const currentSet = world.views.sets[frontIndex]
-        if (!currentSet) return
-
-        const villageView = currentSet.villages
-        const villageCount = Atomics.load(globalsInt32, PROPS.GLOBALS.VILLAGE_COUNT)
-        const buildingView = currentSet.buildings
-        const buildingCount = Atomics.load(globalsInt32, PROPS.GLOBALS.BUILDING_COUNT)
-        const ctx = world.bgBufferCtx
-
-        ctx.clearRect(0, 0, world.width, world.height)
-
-        // (A) 사전 렌더링된 정적 지형 복사 (가장 빠름)
-        ctx.drawImage(world.bgStaticCanvas, 0, 0)
-
-        // (B) Desire Path (자연생성된 길) 그리기 - 2중 루프로 연산 최적화
-        if (world.pathSystem && world.pathSystem.paths) {
-          const paths = world.pathSystem.paths
-          const gridSize = world.pathSystem.gridSize
-          const pCols = world.pathSystem.cols
-          const pRows = world.pathSystem.rows
-
-          // 💡 [렌더링 최적화] 수만 번의 fillRect 호출을 단 2번의 일괄(Batch) 렌더링으로 압축하여 Main Thread 프레임 드랍(멈춤) 원천 방지
-          ctx.fillStyle = 'rgba(160, 120, 60, 0.4)'
-          ctx.beginPath()
-          for (let i = 0; i < paths.length; i++) {
-            if (paths[i] > 100 && paths[i] <= 500) {
-              const tx = (i % pCols) * gridSize
-              const ty = Math.floor(i / pCols) * gridSize
-              ctx.rect(tx, ty, gridSize, gridSize)
+      // ── 1단계: 정치적 영토 (Political Grid) ───────────────────────────────
+      const territory = world.views?.territory || world.territory
+      if (world.settings?.showTerritory !== false && territory) {
+        for (let ty = 0; ty < 200; ty++) {
+          for (let tx = 0; tx < 200; tx++) {
+            const vIdx = territory[ty * 200 + tx]
+            if (vIdx > 0 && vIdx <= villageCount) {
+              const vOffset = (vIdx - 1) * STRIDE.VILLAGE
+              const r = Math.round(villageView[vOffset + PROPS.VILLAGE.R] * 255)
+              const g = Math.round(villageView[vOffset + PROPS.VILLAGE.G] * 255)
+              const b = Math.round(villageView[vOffset + PROPS.VILLAGE.B] * 255)
+              ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.3)`
+              ctx.fillRect(tx * 16, ty * 16, 16, 16)
             }
           }
-          ctx.fill()
-
-          ctx.fillStyle = 'rgba(120, 100, 80, 0.7)'
-          ctx.beginPath()
-          for (let i = 0; i < paths.length; i++) {
-            if (paths[i] > 500) {
-              const tx = (i % pCols) * gridSize
-              const ty = Math.floor(i / pCols) * gridSize
-              ctx.rect(tx, ty, gridSize, gridSize)
-            }
-          }
-          ctx.fill()
         }
-
-        for (let i = 0; i < villageCount; i++) {
-          const offset = i * STRIDE.VILLAGE
-          if (villageView[offset + PROPS.VILLAGE.IS_ACTIVE] === 1) {
-            const v = this.renderProxies.village
-            world.bufferSyncSystem.hydrate(world, v, 'village', i, frontIndex)
-            v.nation = { color: v.color, name: '국가' }
-            v.render(ctx, world)
-          }
-        }
-
-        // 버퍼 내용을 실제 배경 캔버스로 복사
-        world.bgCtx.clearRect(0, 0, world.width, world.height)
-        world.bgCtx.drawImage(world.bgBufferCanvas, 0, 0)
-        world.needsBackgroundUpdate = false
       }
 
-      world.ctx.drawImage(world.bgCanvas, 0, 0)
+      // ── 2단계: 마을 영역 (Influence Radius) ─────────────────────────────
+      if (world.settings?.showVillageArea !== false) {
+        for (let i = 0; i < villageCount; i++) {
+          const vOffset = i * STRIDE.VILLAGE
+          if (villageView[vOffset + PROPS.VILLAGE.IS_ACTIVE] === 1) {
+            const r = Math.round(villageView[vOffset + PROPS.VILLAGE.R] * 255)
+            const g = Math.round(villageView[vOffset + PROPS.VILLAGE.G] * 255)
+            const b = Math.round(villageView[vOffset + PROPS.VILLAGE.B] * 255)
+            const vx = villageView[vOffset + PROPS.VILLAGE.X]
+            const vy = villageView[vOffset + PROPS.VILLAGE.Y]
+            const vr = villageView[vOffset + PROPS.VILLAGE.RADIUS] || 100
 
-      // [Atomic Load] 메인 렌더 패스에서도 프레임 시작 시점에 인덱스 고정 (Tearing 방지)
-      const frontIndex = Atomics.load(world.views.globalsInt32, PROPS.GLOBALS.RENDER_BUFFER_INDEX)
-      if (frontIndex !== 0 && frontIndex !== 1) return
+            ctx.beginPath()
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.3)`
+            ctx.lineWidth = 4
+            ctx.arc(vx, vy, vr, 0, Math.PI * 2)
+            ctx.stroke()
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.05)`
+            ctx.fill()
+          }
+        }
+      }
+
+      // ── 3단계: 지면 경로 (Paths) ──────────────────────────────────────
+      if (world.pathSystem && world.pathSystem.paths) {
+        ctx.fillStyle = 'rgba(120, 100, 80, 0.4)'
+        ctx.beginPath()
+        for (let i = 0; i < world.pathSystem.paths.length; i++) {
+          if (world.pathSystem.paths[i] > 200) {
+            ctx.rect((i % 200) * 16, Math.floor(i / 200) * 16, 16, 16)
+          }
+        }
+        ctx.fill()
+      }
 
       // [Nuclear Optimization] Y-버킷 정렬 및 SAB 직접 순회 (Zero-Allocation + Hard Clear)
       this.poolIdx = 0
@@ -165,41 +141,36 @@ export class RenderSystem {
       }
       this.nodePoolIdx = 0
 
-      const viewRange = {
+      const bounds = {
         x: world.camera.x - 50,
         y: world.camera.y - 50,
         width: world.camera.width / zoom + 100,
         height: world.camera.height / zoom + 100,
       }
-      
-      const bounds = viewRange
-      const { globals, globalsInt32, sets } = world.views
-      const currentSet = sets[frontIndex]
 
       const addDrawablesFromSAB = (typeName, countProp, viewArray, stride) => {
-        // [Bugfix] Float32Array 값의 비트를 Int32로 읽으면 10억 단위 값이 나오므로 일반 Float 값을 읽어야 합니다.
-        const count = globals[countProp]
+        const count = Atomics.load(globalsInt32, countProp)
         for (let i = 0; i < count; i++) {
           const offset = i * stride
           // IS_ACTIVE가 1인지 확인
           if (viewArray[offset] === 1) {
             const tx = viewArray[offset + 1]
             const ty = viewArray[offset + 2]
-            
+
             // Camera Culling
             if (tx >= bounds.x && tx <= bounds.x + bounds.width &&
-                ty >= bounds.y && ty <= bounds.y + bounds.height) {
-              
+              ty >= bounds.y && ty <= bounds.y + bounds.height) {
+
               const yKey = Math.floor(ty)
               if (!Number.isFinite(yKey)) continue
               const clampedY = Math.max(0, Math.min(yKey, world.height || 3200))
-              
+
               let bucket = this.buckets.get(clampedY)
               if (!bucket) {
                 bucket = this._getArrayFromPool()
                 this.buckets.set(clampedY, bucket)
               }
-              
+
               // Zero-allocation 노드 생성
               let node = this.nodePool[this.nodePoolIdx++]
               if (!node) {
@@ -212,7 +183,7 @@ export class RenderSystem {
               node.y = ty
               node.size = viewArray[offset + 3] || 16 // SIZE: 3
               node.isConstructed = typeName === 'building' ? viewArray[offset + 9] === 1 : true // IS_CONSTRUCTED: 9
-              
+
               bucket.push(node)
               if (clampedY < minY) minY = clampedY
               if (clampedY > maxY) maxY = clampedY
@@ -236,7 +207,7 @@ export class RenderSystem {
       }
       const drawables = this.drawablesPool
       drawables.length = 0
-      
+
       if (minY <= maxY) {
         for (let y = minY; y <= Math.ceil(maxY); y++) {
           const bucket = this.buckets.get(y)
@@ -300,7 +271,7 @@ export class RenderSystem {
       )
       try {
         world.ctx.restore()
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 }

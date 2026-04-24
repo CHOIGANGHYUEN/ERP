@@ -51,6 +51,7 @@
         v-model:showLogsPanel="showLogsPanel"
         v-model:showMinimapPanel="showMinimapPanel"
         v-model:showTerritoryLayer="showTerritoryLayer"
+        v-model:showVillageArea="showVillageArea"
         :activeTool="activeTool"
         @toggleTool="toggleTool"
         @handleAction="handleAction"
@@ -152,6 +153,7 @@ const {
   showLogsPanel,
   showMinimapPanel,
   showTerritoryLayer,
+  showVillageArea,
   toggleTool,
   handleAction,
 } = useGameTools(getWorldInstance)

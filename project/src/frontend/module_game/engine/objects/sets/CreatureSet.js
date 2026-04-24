@@ -10,7 +10,6 @@ export const CreatureSet = {
   assigner: JobAssigner,
 
   init: (creature) => {
-    console.log(`🐣 [Creature: ${creature.id}] 초기화됨`)
     CreatureEmotion.init(creature)
   },
 
@@ -18,9 +17,6 @@ export const CreatureSet = {
     try {
       // 💡 [프리징 원천 차단 3] 붕괴된 NaN 좌표를 가진 개체가 공간 탐색 엔진을 마비시키는 것을 사전에 방어하고 소거
       if (Number.isNaN(creature.x) || Number.isNaN(creature.y)) {
-        console.error(
-          `🚨 [NaN Poisoning] ID ${creature.id} 좌표 붕괴 감지. 강제 제거하여 시스템을 보호합니다.`,
-        )
         creature.isDead = true
         return
       }
@@ -33,7 +29,6 @@ export const CreatureSet = {
         creature.aiTickTimer = 500 + Math.random() * 500
 
         // --- AI TICK 시작 ---
-        // console.groupCollapsed(`🧠 [AI TICK] Creature: ${creature.id} (${creature.profession})`);
 
         // 직업 자동 배정
         JobAssigner.assignProfession(creature, world)
@@ -129,8 +124,10 @@ export const CreatureSet = {
           }
         }
       } else {
-        if (creature.state === 'WANDERING' && creature.targetX != null) {
-          if (creature.distanceTo({ x: creature.targetX, y: creature.targetY }) > 5) {
+        // [Hotfix] 활성 작업(taskQueue)이 없을 때만 기본 배회(WANDERING) 타겟을 추적하도록 수정
+        // 이를 통해 MoveTask의 경로가 배회 타겟X/Y에 의해 덮어씌워지는 현상 방지
+        if (creature.taskQueue.length === 0 && creature.state === 'WANDERING' && creature.targetX != null) {
+          if (creature.distanceTo({ x: creature.targetX, y: creature.targetY }) > 20) {
             creature.moveToTarget(creature.targetX, creature.targetY, deltaTime, world)
           } else {
             creature.state = 'IDLE'
@@ -145,10 +142,6 @@ export const CreatureSet = {
     } catch (e) {
       if (creature) {
         creature._errorCount = (creature._errorCount || 0) + 1
-        console.error(
-          `🚨 [CreatureSet Update Error] ID: ${creature.id} (누적: ${creature._errorCount})`,
-          e,
-        )
 
         if (creature._errorCount < 3) {
           creature.taskQueue = []

@@ -54,6 +54,9 @@ export const VillageActions = {
         village._territoryTiles++
         ops--
 
+        // 영토 변화 시 배경 렌더링 갱신 트리거
+        world.needsBackgroundUpdate = true
+
         // 상하좌우 빈 칸을 다시 영토 확장 후보에 넣음
         if (ty > 0) village._fringe.push({ x: tx, y: ty - 1 })
         if (ty < 199) village._fringe.push({ x: tx, y: ty + 1 })
@@ -121,13 +124,14 @@ export const VillageActions = {
     }
   },
 
-  // 3. 건설 AI
+  // 3. 건설 AI (Phased Planning: CAMPFIRE -> MARKET -> HOUSE)
   handleConstructionAI: (village, world) => {
     const taskBoard = world.taskBoardService
     const vId = world.villages.indexOf(village)
+    const buildings = village.buildings
 
-    // 3.1) 기존 마을 건물들 중 미완성인 건물들을 작업 게시판에 등록 (중복 방지는 Service가 처리)
-    village.buildings.forEach(b => {
+    // 3.1) 기존 마을 건물들 중 미완성인 건물들을 작업 게시판에 등록
+    buildings.forEach(b => {
       if (!b.isConstructed && !b.isDead) {
         taskBoard?.publishTask(vId, {
           id: `build-${b.id}`,
@@ -140,28 +144,64 @@ export const VillageActions = {
       }
     })
 
-    // 3.2) 인구 대비 집이 부족하면 새로운 부지 선정 (건설 고스트 생성)
+    // 3.2) 부지 선정 및 신규 건설 계획 (Phased Progression)
     const currentTime = Date.now()
-    if (village.lastConstructionCheck && currentTime - village.lastConstructionCheck < 5000) return
+    if (village.lastConstructionCheck && currentTime - village.lastConstructionCheck < 8000) return
     village.lastConstructionCheck = currentTime
 
-    const housingCapacity = village.buildings
-      .filter((b) => b.type === 'HOUSE' && b.isConstructed)
-      .reduce((sum, b) => sum + (b.capacity || 4), 0)
+    const hasIncomplete = buildings.some(b => !b.isConstructed)
+    if (hasIncomplete) return // 이미 짓고 있는 건물이 있으면 추가 부지 선정 보류
 
-    if (village.creatures.length > housingCapacity && village.inventory.wood >= 20) {
-      // 마을 중심부 근처 영토 내에 빈 공간 찾기
+    const hasCampfire = buildings.some(b => b.type === 'TOWN_HALL' || b.type === 'BARRACKS') // CAMPFIRE 대용
+    const hasMarket = buildings.some(b => b.type === 'MARKET') // WAREHOUSE 대용
+
+    // 유효한 부지 선정 함수
+    const findPlot = () => {
       const angle = Math.random() * Math.PI * 2
-      const dist = 50 + Math.random() * 100
+      const dist = 40 + Math.random() * 80
       const tx = village.x + Math.cos(angle) * dist
       const ty = village.y + Math.sin(angle) * dist
-      
-      // 타일 유효성 검사 (아키텍처 1번 원칙: 지형 데이터 활용)
       const gx = Math.floor(tx / 16), gy = Math.floor(ty / 16)
       if (gx >= 0 && gx < 200 && gy >= 0 && gy < 200) {
         if (world.territory[gy * 200 + gx] === (vId + 1) && world.terrain[gy * 200 + gx] < 2) {
-          world.spawnBuilding(tx, ty, 'HOUSE', village)
-          village.inventory.wood -= 20
+          return { x: tx, y: ty }
+        }
+      }
+      return null
+    }
+
+    // [Step 1] 캠프파이어 (TOWN_HALL 역할) 우선 구축
+    if (!hasCampfire) {
+      const plot = findPlot()
+      if (plot) world.spawnBuilding(plot.x, plot.y, 'TOWN_HALL', village)
+      return
+    }
+
+    // [Step 2] 저장고 (MARKET 역할) 구축
+    if (!hasMarket) {
+      if (village.inventory.wood >= 10) {
+         const plot = findPlot()
+         if (plot) {
+           world.spawnBuilding(plot.x, plot.y, 'MARKET', village)
+           village.inventory.wood -= 10
+         }
+      }
+      return
+    }
+
+    // [Step 3] 거주지 (HOUSE) 건설 - 자원 여유가 있을 때만 진행
+    const housingCapacity = buildings
+      .filter((b) => b.type === 'HOUSE' && b.isConstructed)
+      .reduce((sum, b) => sum + (b.capacity || 4), 0)
+
+    if (village.creatures.length > housingCapacity) {
+      // 거주지는 자원이 더 넉넉할 때 (나무 30, 식량 10 이상) 건설 시작
+      if (village.inventory.wood >= 30 && village.inventory.food >= 10) {
+        const plot = findPlot()
+        if (plot) {
+          world.spawnBuilding(plot.x, plot.y, 'HOUSE', village)
+          village.inventory.wood -= 30
+          village.inventory.food -= 10
         }
       }
     }

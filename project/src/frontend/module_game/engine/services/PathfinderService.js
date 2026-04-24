@@ -64,10 +64,17 @@ export class PathfinderService {
         const nIdx = neighbor.y * 200 + neighbor.x
         if (closedList[nIdx]) continue
 
-        // 이동 가능 여부 체크 (건물 부지 포함)
+        // 이동 가능 여부 체크 (성능을 위해 미리 선별)
         if (!this._isWalkable(world, neighbor.x, neighbor.y)) continue
 
-        const gScore = current.g + neighbor.cost
+        // 지형에 따른 추가 가중치 (낮은 산: 5.0배)
+        let terrainMultiplier = 1.0
+        if (world.views && world.views.terrain) {
+           const t = world.views.terrain[nIdx]
+           if (t === 1) terrainMultiplier = 5.0
+        }
+
+        const gScore = current.g + neighbor.cost * terrainMultiplier
         const existingNode = openList.find(n => n.x === neighbor.x && n.y === neighbor.y)
 
         if (!existingNode || gScore < existingNode.g) {

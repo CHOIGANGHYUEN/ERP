@@ -5,7 +5,7 @@ import { BuildTask } from '../objects/tasks/BuildTask.js'
 export class WorkSystem {
   constructor(di) {
     this.di = di
-    this.processRate = 500 // 0.5초마다 일감 검출 (성능 최적화)
+    this.processRate = 1000 // 1초마다 의사결정 (성능 최적화 및 행동 지속성 강화)
     this.timers = new Map()
   }
 
@@ -14,10 +14,12 @@ export class WorkSystem {
     if (!taskBoard) return
 
     world.creatures.forEach(creature => {
-      // 1) 고장 방지: 죽었거나 아기가 아니며, 현재 수행중인 작업이 없을 때만 개입
-      if (creature.isDead || !creature.isAdult || creature.taskQueue.length > 0) return
+      // 1) 상태 및 쿨다운 검사
+      if (creature.isDead || !creature.isAdult) return
+      
+      // 💡 [지속성 강화] 이미 중요한 일을 하고 있으면 의사결정 스킵 (딴짓 방지)
+      if (creature.taskQueue.length > 0) return
 
-      // 2) 성능 최적화: 개체별로 루프 주기를 다르게 가져감
       let timer = (this.timers.get(creature.id) || 0) + deltaTime
       if (timer < this.processRate) {
         this.timers.set(creature.id, timer)
@@ -25,64 +27,144 @@ export class WorkSystem {
       }
       this.timers.set(creature.id, 0)
 
-      // 3) UtilityScoring 연동: 현재 상태가 'WORK'인 경우에만 일감 찾기
-      if (creature.state !== 'WORK' && creature.state !== 'IDLE' && creature.state !== 'WANDERING') return
+      // 2) [인지 및 판단 트리거]
+      if (!['WORK', 'IDLE', 'WANDERING'].includes(creature.state)) return
 
-      const villageId = creature.villageId
-      if (villageId === undefined) return
+      const villageId = world.villages.indexOf(creature.village)
+      if (villageId === -1) return
 
-      // 4) 게시판에서 가용 작업 조회
-      const tasks = taskBoard.getAvailableTasks(villageId)
-      if (tasks.length === 0) {
-        // 일감이 없으면 가끔 배회 (Idle Behavioral wandering)
-        if (Math.random() < 0.1) creature.wander(world)
-        return
+      // 3) [타겟 스캔 로직]
+      const nearbyTasks = taskBoard.getAvailableTasks(villageId)
+      let bestTask = null
+
+      // 💡 [건축 우선 원칙] 마을 발전을 위해 미완성 건물을 무조건 최우선으로 처리함
+      // 개인 채집 활동(Harvest)보다 건축(Build)이 지리적으로 조금 멀더라도 건축에 우선 전념함
+      if (nearbyTasks.length > 0) {
+        bestTask = this.findBestTask(creature, nearbyTasks)
+      } 
+      
+      // 공용 업무(건축 등)가 없을 때만 개인 직업 활동 수행
+      if (!bestTask) {
+        bestTask = this.perceivePersonalTask(creature, world)
       }
 
-      // 5) 가장 가까운 작업 선택 (Proximity-based selection)
-      let bestTask = null
-      let minDist = Infinity
-      
-      tasks.forEach(t => {
-        const dx = t.position.x - creature.x
-        const dy = t.position.y - creature.y
-        const dSq = dx * dx + dy * dy
-        if (dSq < minDist) {
-          minDist = dSq
-          bestTask = t
-        }
-      })
-
+      // 4) [타겟 매칭 & 큐 할당]
       if (bestTask) {
-        const claimed = taskBoard.claimTask(villageId, bestTask.id, creature.id)
+        const claimed = bestTask.isPersonal 
+          ? bestTask 
+          : taskBoard.claimTask(villageId, bestTask.id, creature.id)
+
         if (claimed) {
           this.assignTaskChain(creature, claimed, world)
         }
+      } else {
+        // 일감이 없으면 가끔 배회 (Fallback)
+        if (Math.random() < 0.1) creature.wander(world)
       }
     })
   }
 
+  findBestTask(creature, tasks) {
+    let best = null
+    let minDist = Infinity
+    tasks.forEach(t => {
+      const dx = t.position.x - creature.x
+      const dy = t.position.y - creature.y
+      const dSq = dx * dx + dy * dy
+      if (dSq < minDist) {
+        minDist = dSq
+        best = t
+      }
+    })
+    return best
+  }
+
+  perceivePersonalTask(creature, world) {
+    const jobTargets = {
+      GATHERER: ['plant', 'fruit', 'crop'],
+      LUMBERJACK: ['tree'],
+      MINER: ['mine', 'stone', 'iron', 'gold'],
+      FARMER: ['crop']
+    }
+    const myTargets = jobTargets[creature.profession]
+    if (!myTargets) return null
+
+    const scanRange = creature.perceptionRadius || 500
+    const candidates = world.chunkManager.query({
+      x: creature.x - scanRange, y: creature.y - scanRange,
+      width: scanRange * 2, height: scanRange * 2
+    })
+
+    let bestResource = null
+    let minDist = Infinity
+
+    candidates.forEach(obj => {
+      if (myTargets.includes(obj.type || obj._type)) {
+        if (obj.isTargeted || obj.isDead) return
+
+        if (world.terrain) {
+          const cols = Math.ceil((world.width || 3200) / 16)
+          const tx = Math.floor(obj.x / 16), ty = Math.floor(obj.y / 16)
+          const terrainType = world.terrain[ty * cols + tx]
+          if (terrainType === 2 || terrainType >= 3) return 
+
+          // 💡 [활동 범위 제한] 전사나 탐험가가 아니면 마을 영토 밖의 자원은 무시
+          const isScout = ['WARRIOR', 'EXPLORER'].includes(creature.profession)
+          if (!isScout && world.territory) {
+            const vIdx = world.villages.indexOf(creature.village) + 1
+            if (world.territory[ty * cols + tx] !== vIdx) return
+          }
+        }
+
+        const dx = obj.x - creature.x
+        const dy = obj.y - creature.y
+        const dSq = dx * dx + dy * dy
+        if (dSq < minDist) {
+          minDist = dSq
+          bestResource = obj
+        }
+      }
+    })
+
+    if (bestResource) {
+      bestResource.isTargeted = true
+      return {
+        id: `personal-${bestResource.id}`,
+        type: 'HARVEST',
+        targetId: bestResource.id,
+        targetType: bestResource._type || bestResource.type,
+        position: { x: bestResource.x, y: bestResource.y },
+        isPersonal: true
+      }
+    }
+    return null
+  }
+
   assignTaskChain(creature, task, world) {
-    // 💡 [핵심 원칙 1: 아키텍처 엄수] Task Chain 주입
-    // MoveTask (이동) -> 구체적 행동(Build/Harvest) 순서로 큐에 삽입
-    
-    // 타겟 엔티티 가져오기
     const target = world.getEntityById(task.targetId, task.targetType)
     if (!target) return
 
-    // 1. 이동 작업
+    creature.taskQueue = []
+    
+    // 💡 [AI Communication] 콘솔 로그 대신 실시간 인게임 이벤트로 방송
+    const shortId = creature.id.substring(0, 4)
+    const targetInfo = task.targetType || '대상'
+    const msg = `[${creature.profession}] ${shortId} -> ${task.type} (${targetInfo})`
+    world.broadcastEvent(msg, '#f1c40f')
+    
+    // 말풍선으로도 표현하여 현장감 극대화
+    world.showSpeechBubble(creature.id, 'creature', `${targetInfo} ${task.type}!`)
+
     const range = creature.size + (target.size || 10)
     creature.taskQueue.push(new MoveTask(target, range))
 
-    // 2. 구체적 행동 작업 연동
     if (task.type === 'BUILD') {
       creature.taskQueue.push(new BuildTask(target))
-    } else if (task.type === 'HARVEST' || task.type === 'COLLECT') {
+    } else {
       creature.taskQueue.push(new HarvestTask(target))
     }
     
-    // 상태 동기화
-    creature.state = 'WORK'
     creature.currentTask = creature.taskQueue[0]
+    creature.state = 'WORK'
   }
 }

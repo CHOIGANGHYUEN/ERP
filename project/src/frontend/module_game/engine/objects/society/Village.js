@@ -133,7 +133,7 @@ export class Village extends Entity {
     this.brain.update(this, deltaTime, world)
   }
 
-  render(ctx) {
-    this.brain.render(this, ctx)
+  render(ctx, world) {
+    this.brain.render(this, ctx, world)
   }
 }
