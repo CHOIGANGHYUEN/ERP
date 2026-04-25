@@ -56,19 +56,23 @@ export const CreatureSet = {
         // 1. 생존 욕구 평가 및 주입
         const survivalDrive = CreatureEmotion.evaluateSurvivalNeeds(creature, world)
         if (survivalDrive && survivalDrive.type !== DRIVE.NONE) {
-          // 💡 [핵심 버그 수정] 이미 taskQueue에 작업이 있으면 생존 드라이브가 덮어쓰지 않음
-          // 단, PANIC(육식동물 위협)은 예외적으로 즉시 중단
-          const hasActiveTasks = creature.taskQueue.length > 0
-          const isPanic = survivalDrive.type === DRIVE.PANIC
-          if (!hasActiveTasks || isPanic) {
-            if (isPanic) creature.taskQueue = [] // 패닉일 때만 큐 비움지
+          // 💡 [공포 영향 제거] 이미 작업(taskQueue)이 있는 경우 어떤 생존 드라이브(PANIC 포함)도 무시합니다.
+          const hasActiveTasks = creature.taskQueue && creature.taskQueue.length > 0
+          if (!hasActiveTasks) {
             const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
             if (injector) injector(creature, survivalDrive.payload, world)
           }
         }
         // 2. 생존 우선순위가 아니면 업무 시스템(WorkSystem)이 새로운 작업을 할당할 때까지 대기
-        else if (creature.taskQueue.length === 0 && (creature.state === 'IDLE' || creature.state === 'WORK')) {
-           if (Math.random() < 0.05) creature.wander(world)
+        else if (creature.taskQueue.length === 0) {
+           // 💡 [안전 장치] 배회 중인데 목표 좌표가 없으면 IDLE로 복귀시켜 재탐색 유도
+           if (creature.state === 'WANDERING' && creature.targetX == null) {
+             creature.state = 'IDLE'
+           }
+           
+           if (creature.state === 'IDLE' || creature.state === 'WORK') {
+             if (Math.random() < 0.05) creature.wander(world)
+           }
         }
       }
 

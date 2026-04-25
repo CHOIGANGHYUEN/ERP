@@ -76,8 +76,8 @@ export class World {
     this.isRunning = false
     this.chunkManager = new ChunkManager(this.width, this.height, 320)
     this.quadTree = this.chunkManager
-    this.maxFertility = 50000
-    this.currentFertility = 50000
+    this.maxFertility = 5000
+    this.currentFertility = 5000
     
     // [System Limits] 개체 생성 제한수 동기화
     this.maxCreatures = 2000
@@ -100,6 +100,9 @@ export class World {
     this.needsBackgroundUpdate = true
     this.needsStaticTerrainUpdate = true
     this.terrainSystem = new TerrainSystem(this.width, this.height, 16)
+    if (this.terrain) {
+      this.terrainSystem.setTerrainData(this.terrain)
+    }
     this.brain = WorldSet
     this.brain.init(this)
 
@@ -126,6 +129,9 @@ export class World {
     this.terrain = new Uint8Array(buffers.terrain)
     this.territory = new Uint8Array(buffers.territory)
     this.bufferSyncSystem.initSharedState(this, buffers)
+    if (this.terrainSystem) {
+      this.terrainSystem.setTerrainData(this.terrain)
+    }
   }
 
   broadcastEvent(text, color) { this.brain.spawner.broadcastEvent(this, text, color) }

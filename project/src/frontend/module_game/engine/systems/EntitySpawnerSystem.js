@@ -303,6 +303,13 @@ export class EntitySpawnerSystem {
   spawnPlant(world, x, y, type) {
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_PLANT', payload: { x, y, type } })
+    
+    // 💡 [경제/비옥도 시스템 개편] 식물 스폰 시 고정 비용(Up-front Cost) 차감
+    const cost = type === 'tree' ? 10 : 1 // tree는 10, crop/grass는 1
+    if (world.currentFertility < cost) {
+      return // 비옥도 부족 시 번식 및 스폰 실패
+    }
+
     const limit = world.maxPlants || MAX_PLANTS
     if (
       world.plants.length < limit &&
@@ -311,6 +318,9 @@ export class EntitySpawnerSystem {
       y > 10 &&
       y < world.height - 10
     ) {
+      // 비용 차감 확정
+      world.currentFertility -= cost
+
       let plant
       if (world.plantPool && world.plantPool.length > 0) {
         plant = world.plantPool.pop()

@@ -4,7 +4,7 @@ export function useGameCamera(worldInstanceReady, getWorldInstance, gameCanvas) 
   const isClickDrag = ref(false)
   let lastSyncTime = 0
 
-  const syncCameraToWorker = () => {
+  const syncCameraToWorker = (payload) => {
     // 💡 [버퍼 오버플로우 방지] 마우스 이벤트가 Worker 메시지 큐를 무한정 채우는 현상 방지 (약 60FPS 제한)
     const currentTime = Date.now()
     if (currentTime - lastSyncTime < 16) return
@@ -12,6 +12,14 @@ export function useGameCamera(worldInstanceReady, getWorldInstance, gameCanvas) 
 
     const worldInstance = getWorldInstance()
     if (worldInstance && worldInstance.onProxyAction) {
+      if (payload && payload.x !== undefined) {
+        worldInstance.camera.x = payload.x
+        worldInstance.camera.y = payload.y
+        if (typeof worldInstance.camera.clamp === 'function') {
+          worldInstance.camera.clamp()
+        }
+      }
+
       worldInstance.onProxyAction({
         type: 'CAMERA_UPDATE',
         payload: {

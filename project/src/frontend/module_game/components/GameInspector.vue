@@ -195,7 +195,7 @@
 <script setup>
 import { defineProps } from 'vue'
 
-const props = defineProps({
+defineProps({
   entityData: {
     type: Object,
     required: true,

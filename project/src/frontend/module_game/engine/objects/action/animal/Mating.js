@@ -9,8 +9,18 @@ export const MATING = (animal, deltaTime, world) => {
   // 대상 동물을 향해 이동
   animal.moveToTarget(animal.target.x, animal.target.y, deltaTime, world)
 
+  // 💡 [무한 루프 방지] 번식 시도 타임아웃 (10초 지나면 포기)
+  animal._matingTimer = (animal._matingTimer || 0) + deltaTime
+  if (animal._matingTimer > 10000) {
+    animal._matingTimer = 0
+    animal.state = 'WANDERING'
+    animal.target = null
+    return
+  }
+
   // 서로 접근 시 번식 로직 (10 단위 이내) 트리거
   if (animal.distanceTo(animal.target) < 10) {
+    animal._matingTimer = 0 // 성공 시 타이머 초기화
     // 쿨타임 및 행복도 소모
     animal.emotions.happy -= 50
     animal.target.emotions.happy -= 50

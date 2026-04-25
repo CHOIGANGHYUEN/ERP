@@ -26,6 +26,7 @@ export class ParticleSystem {
       p.color = config.color || '#ffffff'
       p.size = config.size || 3
       p.friction = config.friction || 0.95
+      p.spriteId = config.spriteId || null
       this.particles.push(p)
     }
   }
@@ -48,11 +49,28 @@ export class ParticleSystem {
     }
   }
 
-  render(ctx) {
+  render(ctx, world) {
     if (this.particles.length === 0) return
     ctx.save()
     this.particles.forEach((p) => {
       ctx.globalAlpha = Math.max(0, p.life / p.maxLife)
+      
+      // 💡 [Texture Particle] SpriteManager에 연동된 고품질 프로시저럴 텍스처 렌더링
+      if (p.spriteId && world && world.spriteManager) {
+        const tex = world.spriteManager.getProceduralTexture(p.spriteId)
+        if (tex) {
+          if (p.spriteId.includes('fire') || p.spriteId.includes('magic')) {
+             ctx.globalCompositeOperation = 'lighter' // Bloom Effect
+          } else {
+             ctx.globalCompositeOperation = 'source-over'
+          }
+          ctx.drawImage(tex, p.x - p.size, p.y - p.size, p.size * 2, p.size * 2)
+          return
+        }
+      }
+
+      // Fallback: 단색 원형 렌더링
+      ctx.globalCompositeOperation = 'source-over'
       ctx.fillStyle = p.color
       ctx.beginPath()
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)

@@ -15,7 +15,7 @@ export const EATING = (creature, ctx, timestamp, world) => {
     bodyTilt: 0.05,
     toolOffset: {
       x: 0,
-      y: -headS * 0.5 + chew,
+      y: -2 + chew,
       rotation: 0,
       color: '#e67e22' // 빵(Bread) 색상
     }

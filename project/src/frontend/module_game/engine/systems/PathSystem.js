@@ -1,3 +1,5 @@
+import { TERRAIN_COST } from './TerrainSystem.js'
+
 // 💡 [프리징 방어] 도달 불가능한 경로 스팸 요청 차단을 위한 캐시 맵
 const pathFailCache = new Map()
 let lastCacheCleanup = Date.now()
@@ -193,13 +195,13 @@ export function findPath(world, start, target) {
   const cols = Math.ceil(world.width / gridSize)
   const rows = Math.ceil(world.height / gridSize)
 
-  const startCoord = {
-    x: Math.floor(start.x / gridSize),
-    y: Math.floor(start.y / gridSize),
-  }
-  const targetCoord = {
-    x: Math.floor(target.x / gridSize),
-    y: Math.floor(target.y / gridSize),
+  const startCoord = findNearestValidTile(world, Math.floor(start.x / gridSize), Math.floor(start.y / gridSize), cols, rows)
+  const targetCoord = findNearestValidTile(world, Math.floor(target.x / gridSize), Math.floor(target.y / gridSize), cols, rows)
+
+  if (!startCoord || !targetCoord) {
+    // 도저히 근처에서 유효한 타일을 찾을 수 없는 경우 (심해 한가운데 등)
+    pathFailCache.set(`${Math.floor(start.x/16)},${Math.floor(start.y/16)}->${Math.floor(target.x/16)},${Math.floor(target.y/16)}`, now)
+    return null
   }
 
   // 💡 [프리징 원천 차단] 2초 이내에 길찾기에 실패했던 동일한 경로면 연산 없이 즉시 null 반환 (호출 스팸 방어)
@@ -218,7 +220,7 @@ export function findPath(world, start, target) {
   pq.enqueue(heuristic(startCoord, targetCoord), startCoord)
 
   let iterationCount = 0
-  const MAX_ITERATIONS = 500 // Performance limit for real-time simulation
+  const MAX_ITERATIONS = 4000 // 💡 [안정화] 탐색 한도를 4000으로 대폭 상향 (맵 전체 탐색 능력 강화)
 
   while (!pq.isEmpty()) {
     iterationCount++
@@ -237,11 +239,17 @@ export function findPath(world, start, target) {
       return path
     }
 
+    // 💡 [8방향 탐색] 상하좌우 + 대각선 4방향 추가
     const neighbors = [
-      { x: current.x + 1, y: current.y },
-      { x: current.x - 1, y: current.y },
-      { x: current.x, y: current.y + 1 },
-      { x: current.x, y: current.y - 1 },
+      { x: current.x + 1, y: current.y, cost: 1.0, isDiag: false },
+      { x: current.x - 1, y: current.y, cost: 1.0, isDiag: false },
+      { x: current.x, y: current.y + 1, cost: 1.0, isDiag: false },
+      { x: current.x, y: current.y - 1, cost: 1.0, isDiag: false },
+      // 대각선 (비용: √2 ≒ 1.414)
+      { x: current.x + 1, y: current.y + 1, cost: 1.414, isDiag: true, side1: {x: 1, y: 0}, side2: {x: 0, y: 1} },
+      { x: current.x - 1, y: current.y + 1, cost: 1.414, isDiag: true, side1: {x: -1, y: 0}, side2: {x: 0, y: 1} },
+      { x: current.x + 1, y: current.y - 1, cost: 1.414, isDiag: true, side1: {x: 1, y: 0}, side2: {x: 0, y: -1} },
+      { x: current.x - 1, y: current.y - 1, cost: 1.414, isDiag: true, side1: {x: -1, y: 0}, side2: {x: 0, y: -1} },
     ]
 
     const currentG = gScore.get(posKey(current))
@@ -249,30 +257,64 @@ export function findPath(world, start, target) {
     for (const neighbor of neighbors) {
       if (neighbor.x < 0 || neighbor.x >= cols || neighbor.y < 0 || neighbor.y >= rows) continue
 
-      // Terrain Collision
-      if (world.terrain) {
-        const type = world.terrain[neighbor.y * cols + neighbor.x]
-        if (type >= 2) continue // HIGH_MOUNTAIN and SEA blocking
+      // 💡 [결함 방어] 대각선 이동 시 사이 타일이 벽이면 통과 불가 (Corner Clipping 방지)
+      if (neighbor.isDiag) {
+        const s1Type = world.terrain ? world.terrain[(current.y + neighbor.side1.y) * cols + (current.x + neighbor.side1.x)] : 0
+        const s2Type = world.terrain ? world.terrain[(current.y + neighbor.side2.y) * cols + (current.x + neighbor.side2.x)] : 0
+        const isS1Wall = (TERRAIN_COST[s1Type] === Infinity)
+        const isS2Wall = (TERRAIN_COST[s2Type] === Infinity)
+        
+        // 동적 장애물(건물) 체크
+        let isS1Obs = false, isS2Obs = false
+        if (world.pathSystem && world.pathSystem.obstacles) {
+          isS1Obs = world.pathSystem.obstacles[(current.y + neighbor.side1.y) * cols + (current.x + neighbor.side1.x)] === 1
+          isS2Obs = world.pathSystem.obstacles[(current.y + neighbor.side2.y) * cols + (current.x + neighbor.side2.x)] === 1
+        }
+        
+        if ((isS1Wall || isS1Obs) && (isS2Wall || isS2Obs)) continue // 양쪽이 막히면 대각선 통과 불가
       }
 
-      // 💡 [Dynamic Collision] 생성된 동적 충돌 맵 적용
+      // 💡 [Cost Map] 지형 정보에 따른 이동 비용 차등 연산
+      let terrainCost = neighbor.cost // 기본 비용 (1.0 or 1.414)
+      if (world.terrain) {
+        const type = world.terrain[neighbor.y * cols + neighbor.x]
+        const costWeight = TERRAIN_COST[type] ?? 1.0
+        if (costWeight === Infinity) continue // 💡 [장애물 판정] 이동 불가 지형은 제외
+        terrainCost *= costWeight // 지형 가중치 곱산
+      }
+
+      // 💡 [Dynamic Collision] 생성된 동적 충돌 맵 적용 (건물 등)
       if (world.pathSystem && world.pathSystem.obstacles) {
         if (world.pathSystem.obstacles[neighbor.y * cols + neighbor.x] === 1) {
-          // 목표지점이 바로 장애물 안에 있는 경우는 도착을 허용해야 함
-          // (예: 목적지가 집 중심인 경우 집 주변 1칸은 열어줌)
           if (Math.abs(neighbor.x - targetCoord.x) > 1 || Math.abs(neighbor.y - targetCoord.y) > 1) {
             continue
           }
         }
       }
 
-      const tentativeGScore = currentG + 1
+      // 💡 [Phase 5: Path Integration] 누적된 우회로(Pheromone)를 반영하여 비용 절감
+      if (world.pathSystem && world.pathSystem.paths) {
+        // neighbor는 그리드 좌표이므로 gridSize를 곱해줌
+        const traffic = world.pathSystem.getTraffic(neighbor.x * gridSize, neighbor.y * gridSize)
+        if (traffic > 50) {
+          // 트래픽이 높을수록 길찾기 비용 감소 (최대 0.5 감소, 페로몬 유도)
+          const discount = Math.min(0.5, traffic / 2000)
+          terrainCost = Math.max(0.1, terrainCost - discount)
+        }
+      }
+
+      // g(n) = 현재까지 실제 비용(currentG) + 이동할 타일의 지형 비용(terrainCost)
+      const tentativeGScore = currentG + terrainCost
       const neighborKey = posKey(neighbor)
 
       if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
         cameFrom.set(neighborKey, current)
         gScore.set(neighborKey, tentativeGScore)
-        const f = tentativeGScore + heuristic(neighbor, targetCoord)
+        
+        // 💡 [Octile Heuristic] 8방향 이동에 최적화된 예상 잔여 비용
+        const h = heuristic(neighbor, targetCoord)
+        // f(n) = g(n) + h(n) * 1.001 (미세한 타이브레이커 추가로 직선 주행 유도)
+        const f = tentativeGScore + h * 1.001
         pq.enqueue(f, neighbor)
       }
     }
@@ -283,7 +325,12 @@ export function findPath(world, start, target) {
 }
 
 function heuristic(a, b) {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
+  // Octile Distance: 8방향 최적 휴리스틱
+  const dx = Math.abs(a.x - b.x)
+  const dy = Math.abs(a.y - b.y)
+  const D = 1.0
+  const D2 = 1.414
+  return D * (dx + dy) + (D2 - 2 * D) * Math.min(dx, dy)
 }
 
 function reconstructPath(cameFrom, current, gridSize) {
@@ -300,4 +347,35 @@ function reconstructPath(cameFrom, current, gridSize) {
     curr = cameFrom.get(posKey(curr))
   }
   return path.reverse()
+}
+
+/**
+ * 💡 [지능형 스냅] 시작/목표 지점이 바다나 건물 내부일 경우, 주변 3x3 영역에서 가장 가까운 육지 타일을 찾습니다.
+ */
+function findNearestValidTile(world, gx, gy, cols, rows) {
+  const isPosValid = (x, y) => {
+    if (x < 0 || x >= cols || y < 0 || y >= rows) return false
+    if (world.terrain) {
+      const type = world.terrain[y * cols + x]
+      if (TERRAIN_COST[type] === Infinity) return false
+    }
+    if (world.pathSystem && world.pathSystem.obstacles) {
+      if (world.pathSystem.obstacles[y * cols + x] === 1) return false
+    }
+    return true
+  }
+
+  if (isPosValid(gx, gy)) return { x: gx, y: gy }
+
+  // 주변 8방향(1칸 거리) 우선 검색
+  for (let r = 1; r <= 5; r++) { // 💡 검색 범위를 5칸(80px)까지 대폭 확장
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+        const nx = gx + dx, ny = gy + dy
+        if (isPosValid(nx, ny)) return { x: nx, y: ny }
+      }
+    }
+  }
+  return null
 }

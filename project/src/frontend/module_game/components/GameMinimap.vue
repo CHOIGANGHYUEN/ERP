@@ -167,16 +167,10 @@ const moveCameraFromMinimap = (e) => {
   const viewW = canvasWidth / zoom
   const viewH = canvasHeight / zoom
 
-  props.world.camera.x = worldX - viewW / 2
-  props.world.camera.y = worldY - viewH / 2
-
-  // 화면 밖으로 이탈 방지
-  if (typeof props.world.camera.clamp === 'function') {
-    props.world.camera.clamp()
-  }
-
-  // 메인 컴포넌트(GameView)로 카메라 동기화 이벤트 트리거
-  emit('sync-camera')
+  emit('sync-camera', {
+    x: worldX - viewW / 2,
+    y: worldY - viewH / 2
+  })
 }
 
 const handleMinimapMouseDown = (e) => {

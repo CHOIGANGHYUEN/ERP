@@ -63,15 +63,42 @@ export class RenderSystem {
       const villageView = currentSet.villages
       const villageCount = Atomics.load(globalsInt32, PROPS.GLOBALS.VILLAGE_COUNT)
 
-      // ── 0단계: 정적 지형 (배경 이미지) ──────────────────────────────────
+      // ── 0단계: 정적 지형 (배경 타일맵 통합 렌더링) ──────────────────────────────────
       if (world.needsStaticTerrainUpdate && world.terrain) {
         const sCtx = world.bgStaticCtx
         sCtx.clearRect(0, 0, world.width, world.height)
         const cols = world.width / 16
-        const colors = ['#27ae60', '#7f8c8d', '#bdc3c7', '#3498db', '#2980b9', '#2c3e50']
+        const rows = world.height / 16
+        const TS = 16
+
         for (let i = 0; i < world.terrain.length; i++) {
-          sCtx.fillStyle = colors[world.terrain[i]] || colors[0]
-          sCtx.fillRect((i % cols) * 16, Math.floor(i / cols) * 16, 16, 16)
+          const tx = i % cols
+          const ty = Math.floor(i / cols)
+          const type = world.terrain[i]
+
+          // 1) 기본 텍스처 타일 렌더링
+          const tex = world.spriteManager.getProceduralTexture(`terrain_${type}`)
+          if (tex) {
+            sCtx.drawImage(tex, tx * TS, ty * TS, TS, TS)
+          } else {
+            const colors = ['#27ae60', '#7f8c8d', '#bdc3c7', '#3498db', '#2980b9', '#2c3e50']
+            sCtx.fillStyle = colors[type] || colors[0]
+            sCtx.fillRect(tx * TS, ty * TS, TS, TS)
+          }
+
+          // 2) 오토타일링(Autotiling) - 해안선 자연스러운 블렌딩 처리
+          if (type < 3) { // 현재 타일이 육지(Grass, Mountain)일 경우
+             const nTop = ty > 0 ? world.terrain[(ty - 1) * cols + tx] : 0
+             const nRight = tx < cols - 1 ? world.terrain[ty * cols + tx + 1] : 0
+             const nBottom = ty < rows - 1 ? world.terrain[(ty + 1) * cols + tx] : 0
+             const nLeft = tx > 0 ? world.terrain[ty * cols + tx - 1] : 0
+
+             sCtx.fillStyle = 'rgba(236, 240, 241, 0.4)' // 하얀 물보라 효과
+             if (nTop >= 3)    sCtx.fillRect(tx * TS, ty * TS, TS, 3)
+             if (nRight >= 3)  sCtx.fillRect(tx * TS + TS - 3, ty * TS, 3, TS)
+             if (nBottom >= 3) sCtx.fillRect(tx * TS, ty * TS + TS - 3, TS, 3)
+             if (nLeft >= 3)   sCtx.fillRect(tx * TS, ty * TS, 3, TS)
+          }
         }
         world.needsStaticTerrainUpdate = false
       }
@@ -249,7 +276,7 @@ export class RenderSystem {
       }
 
       // ... selection ring, particles, UI render lines ...
-      world.particleSystem.render(world.ctx)
+      world.particleSystem.render(world.ctx, world)
       world.weather.render(world.ctx)
       world.interactionSystem.render(world.ctx, drawables, world)
       world.ctx.restore()
@@ -271,7 +298,9 @@ export class RenderSystem {
       )
       try {
         world.ctx.restore()
-      } catch (e) { }
+      } catch (e) {
+        // ignore
+      }
     }
   }
 }

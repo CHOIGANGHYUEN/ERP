@@ -22,12 +22,17 @@ export class BaseTask {
       if (!this._initialized) {
         this.onEnter(creature, world)
         this._initialized = true
-        this.status = 'RUNNING'
+        // onEnter에서 상태를 직접 변경(FAILED/COMPLETED)하지 않은 경우에만 RUNNING으로 설정
+        if (this.status === 'PENDING') {
+          this.status = 'RUNNING'
+        }
       }
 
-      // 2. 실행 (Running)
-      const result = this.onRunning(creature, deltaTime, world)
-      this.status = result || 'RUNNING'
+      // 2. 실행 (Running) - 이미 종료된 상태면 건너뜀
+      if (this.status === 'RUNNING') {
+        const result = this.onRunning(creature, deltaTime, world)
+        this.status = result || 'RUNNING'
+      }
 
       // 3. 완료 처리
       if (this.status === 'COMPLETED') {

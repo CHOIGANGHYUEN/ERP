@@ -62,22 +62,30 @@ export class CreatureEmotion {
   // 순수하게 감정/욕구만 평가하여 DRIVE(충동/의도) 상태를 반환
   static evaluateSurvivalNeeds(creature, world) {
     // 1. 위협 감지 및 공포 상승
+    // 💡 [공포 영향 제거] 작업 중(taskQueue 보유)인 경우 위협을 감지하지 않고 작업에만 집중합니다.
+    const isBusy = creature.taskQueue && creature.taskQueue.length > 0
     const searchRange = { x: creature.x - 200, y: creature.y - 200, width: 400, height: 400 }
     const candidates = world.chunkManager.query(searchRange)
-    const threat = candidates.find(
-      (c) =>
-        (c.type === 'CARNIVORE' && !c.isDead) ||
-        (creature.profession !== 'WARRIOR' &&
-          c.profession === 'WARRIOR' &&
-          c.village?.nation &&
-          creature.village?.nation &&
-          creature.village.nation.getRelation(c.village.nation).status === 'WAR'),
-    )
-    if (threat) {
-      creature.emotions.fear = 100
-      return { type: DRIVE.PANIC, payload: { threat } }
+
+    if (!isBusy) {
+      const threat = candidates.find(
+        (c) =>
+          (c.type === 'CARNIVORE' && !c.isDead) ||
+          (creature.profession !== 'WARRIOR' &&
+            c.profession === 'WARRIOR' &&
+            c.village?.nation &&
+            creature.village?.nation &&
+            creature.village.nation.getRelation(c.village.nation).status === 'WAR'),
+      )
+      if (threat) {
+        creature.emotions.fear = 100
+        return { type: DRIVE.PANIC, payload: { threat } }
+      } else {
+        creature.emotions.fear = Math.max(0, creature.emotions.fear - 0.1)
+      }
     } else {
-      creature.emotions.fear = Math.max(0, creature.emotions.fear - 0.1)
+      // 작업 중이면 공포 수치가 자연스럽게 빠르게 감소하도록 하여 평온 유지
+      creature.emotions.fear = Math.max(0, creature.emotions.fear - 0.5)
     }
 
     // 2. 짝짓기 욕구 (생존이 안정적일 때만)

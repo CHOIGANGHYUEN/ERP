@@ -1,3 +1,5 @@
+import { TERRAIN_COST } from '../systems/TerrainSystem.js'
+
 export class Entity {
   constructor(x, y, ...args) {
     this.init(x, y, ...args)
@@ -52,9 +54,10 @@ export class Entity {
 
       if (nextTileX >= 0 && nextTileX < cols && nextTileY >= 0 && nextTileY < Math.ceil((world.height || 3200) / 16)) {
         const nextType = world.terrain[nextTileY * cols + nextTileX]
-        if (nextType === 2) canMove = false
-        else if (nextType === 1) finalSpeedMult = 0.5
-        else if (nextType >= 3) finalSpeedMult = 0.3 // 수영 시 감속
+        const cost = TERRAIN_COST[nextType] ?? 1.0
+        
+        if (cost === Infinity) canMove = false
+        else if (cost > 1.0) finalSpeedMult = 1.0 / cost
       }
     }
 

@@ -61,7 +61,14 @@ export class BuildTask extends BaseTask {
   onComplete(creature, world) {
     if (this.target) {
       this.target.isTargeted = false
-      if (this.target.village) this.target.village.updateBuildingStatus(true)
+      if (this.target.village) {
+        this.target.village.updateBuildingStatus(true)
+        // 💡 게시판에서 작업 제거 (중복 할당 방지 핵심)
+        if (world.taskBoardService) {
+          const vIdx = world.villages.indexOf(this.target.village)
+          world.taskBoardService.completeTask(vIdx, this.target.id)
+        }
+      }
       world.broadcastEvent(`🏗️ ${this.target.type} 건설 완료!`, '#2ecc71')
     }
     creature.target = null

@@ -44,22 +44,51 @@ export class TerrainSystem {
 
       const elevation = this._getNoise(cx, cy, seed)
 
-      let type = 0 // GRASS
       if (elevation < 0.1) {
-        type = 5 // ABYSS
+        terrainBufferArray[index] = 5 // ABYSS
       } else if (elevation < 0.25) {
-        type = 4 // DEEP_SEA
+        terrainBufferArray[index] = 4 // DEEP_SEA
       } else if (elevation < 0.35) {
-        type = 3 // SHALLOW_SEA
+        terrainBufferArray[index] = 3 // SHALLOW_SEA
       } else if (elevation < 0.65) {
-        type = 0 // GRASS
+        terrainBufferArray[index] = 0 // GRASS
       } else if (elevation < 0.75) {
-        type = 1 // LOW_MOUNTAIN
+        terrainBufferArray[index] = 1 // LOW_MOUNTAIN
       } else {
-        type = 2 // HIGH_MOUNTAIN
+        terrainBufferArray[index] = 2 // HIGH_MOUNTAIN
       }
-
-      terrainBufferArray[index] = type
     }
   }
+
+  setTerrainData(terrainData) {
+    this.terrainData = terrainData
+  }
+
+  isObstacle(x, y) {
+    if (!this.terrainData) return false
+
+    const cx = Math.floor(x / this.tileSize)
+    const cy = Math.floor(y / this.tileSize)
+
+    if (cx < 0 || cx >= this.cols || cy < 0 || cy >= this.rows) {
+      return true // 화면 밖이나 유효하지 않은 좌표는 이동 불가
+    }
+
+    const index = cy * this.cols + cx
+    const tileType = this.terrainData[index]
+
+    // 💡 TERRAIN_COST 참조하여 이동 비용이 무한(Infinity)인 곳은 장애물로 판별
+    // 2: HIGH_MOUNTAIN, 4: DEEP_SEA, 5: ABYSS
+    return TERRAIN_COST[tileType] === Infinity
+  }
+}
+
+// 💡 [Cost Map] 지형별 A* 길찾기 비용 정의
+export const TERRAIN_COST = {
+  0: 1.0,      // GRASS: 표준 이동 (비용 1.0)
+  1: 2.0,      // LOW_MOUNTAIN: 이동 효율 저하 (비용 2.0)
+  2: Infinity, // HIGH_MOUNTAIN: 이동 불가
+  3: 15.0,     // SHALLOW_SEA: 수영 가능 (비용 15.0 - 육로가 없을 때만 선택)
+  4: Infinity, // DEEP_SEA: 이동 불가
+  5: Infinity  // ABYSS: 이동 불가
 }

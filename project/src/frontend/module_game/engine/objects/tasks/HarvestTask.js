@@ -50,7 +50,14 @@ export class HarvestTask extends BaseTask {
   }
 
   onComplete(creature, world) {
-    if (this.target) this.target.isTargeted = false
+    if (this.target) {
+      this.target.isTargeted = false
+      // 💡 게시판에서 작업 제거 (personal task는 targetId 기반 id 형식을 따름)
+      if (world.taskBoardService && creature.village) {
+        const vIdx = world.villages.indexOf(creature.village)
+        world.taskBoardService.completeTask(vIdx, `personal-${this.target.id}`)
+      }
+    }
     creature.target = null
   }
 

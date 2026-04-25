@@ -77,8 +77,6 @@
 <script setup>
 import { ref, shallowRef, onMounted } from 'vue'
 import AppPageTitle from '../common/components/AppPageTitle.vue'
-import AppCard from '../common/components/AppCard.vue'
-import AppButton from '../common/components/AppButton.vue'
 import { saveWorld, loadWorlds } from './api/gameApi.js'
 
 // Sub-components
@@ -178,24 +176,6 @@ const handleLoad = async () => {
     savedWorlds.value = response.data?.data || response.data || []
   } catch (error) {
     console.error(error)
-  }
-}
-
-const loadWorldData = (world) => {
-  const worldInstance = getWorldInstance()
-  if (!worldInstance) return
-  if (world.worldData && Array.isArray(world.worldData)) {
-    worldInstance.loadCreatures(world.worldData)
-  } else {
-    // 💡 [병목 개선] 개체를 하나씩 소환하여 수천 개의 Worker 메시지를 쏘는 대신 일괄(Batch) 배열로 전달
-    const dummyData = []
-    for (let i = 0; i < world.population; i++) {
-      dummyData.push({
-        x: Math.random() * worldInstance.width,
-        y: Math.random() * worldInstance.height,
-      })
-    }
-    worldInstance.loadCreatures(dummyData)
   }
 }
 

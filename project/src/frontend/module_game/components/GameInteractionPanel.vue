@@ -153,7 +153,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { PROPS, STRIDE } from '../engine/core/SharedState.js'
 
 const props = defineProps({
@@ -291,11 +291,7 @@ const fetchOverallStatus = () => {
 
   // 직업 및 기타 상세 통계
   const professions = {}
-  let totalAge = 0
-  let totalLevel = 0
   let maxLevel = 1
-  let totalHappiness = 0
-  let activeCreatureCount = 0
 
   const professionReverseMap = {
     0: 'NONE',
@@ -311,27 +307,15 @@ const fetchOverallStatus = () => {
   for (let i = 0; i < creatureCount; i++) {
     const offset = i * STRIDE.CREATURE
     if (creatures[offset + PROPS.CREATURE.IS_ACTIVE] === 1) {
-      activeCreatureCount++
       const profId = creatures[offset + PROPS.CREATURE.PROFESSION]
       const profName = professionReverseMap[profId] || 'NONE'
       professions[profName] = (professions[profName] || 0) + 1
       
-      const age = creatures[offset + PROPS.CREATURE.AGE]
       const level = creatures[offset + PROPS.CREATURE.LEVEL] || 1
-      const hunger = creatures[offset + PROPS.CREATURE.NEEDS_HUNGER]
-      const fatigue = creatures[offset + PROPS.CREATURE.NEEDS_FATIGUE]
-      const happiness = Math.max(0, 100 - (hunger + fatigue) / 2)
       
-      totalAge += age
-      totalLevel += level
       if (level > maxLevel) maxLevel = level
-      totalHappiness += happiness
     }
   }
-  
-  const avgAge = activeCreatureCount > 0 ? (totalAge / activeCreatureCount).toFixed(1) : 0
-  const avgLevel = activeCreatureCount > 0 ? (totalLevel / activeCreatureCount).toFixed(1) : 0
-  const avgHappiness = activeCreatureCount > 0 ? (totalHappiness / activeCreatureCount).toFixed(1) : 0
 
   // 건물 종류별 통계
   const buildingTypes = {}

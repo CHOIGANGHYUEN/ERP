@@ -28,7 +28,7 @@ export class Creature extends Entity {
     this.profession = 'NONE' // NONE, GATHERER, LUMBERJACK, FARMER, BUILDER, SCHOLAR, WARRIOR, MINER, LEADER
 
     this.speed = 1.0 + Math.random() * 0.5
-    this.state = 'WANDERING' // WANDERING, GATHERING, HARVESTING, BUILDING, STUDYING, RETURNING, ATTACKING, MINING, TRAINING, RESTING, MATING, FLEEING
+    this.state = 'IDLE' // 💡 [버그 수정] 스폰 시 즉시 행동 판단을 받기 위해 IDLE로 시작
     this.target = null
     this.village = null // 所属 마을
 
@@ -80,10 +80,22 @@ export class Creature extends Entity {
       this.lastFrameTime = 0
     }
 
-    // 수명 시스템 제거 (연산 부하 절감)
+    // 수명 및 성장 시스템
+    this.age += deltaTime / 1000 // 1초에 1살씩 먹음 (테스트를 위해 빠르게 설정)
+    
     if (!this.isAdult) {
-      this.isAdult = true
-      this.brain.assigner.assignProfession(this, world)
+      this.size = 8 // 아기 크기 (성인의 절반)
+      if (this.age >= 18) { // 18세가 되면 성인으로 성장
+        this.isAdult = true
+        this.size = 16
+        this.brain.assigner.assignProfession(this, world)
+        
+        // 성장 알림
+        const idx = world.creatures.indexOf(this)
+        if (idx !== -1) {
+          world.showSpeechBubble(idx, 'creature', `✨ 성인이 되었습니다!`, 3000)
+        }
+      }
     }
 
     // 자연 회복
