@@ -1,0 +1,28 @@
+{
+    "resources": [
+        {
+            "id": "grass",
+            "name": "Grass",
+            "color": "#4CAF50",
+            "nutrition": 10,
+            "regenerationRate": 0.05,
+            "type": "food"
+        },
+        {
+            "id": "fertilizer",
+            "name": "Fertilizer",
+            "color": "#795548",
+            "nutrition": 0,
+            "regenerationRate": 0,
+            "soilNutrition": 20,
+            "type": "manure"
+        },
+        {
+            "id": "water",
+            "name": "Water",
+            "color": "#2196F3",
+            "nutrition": 5,
+            "type": "resource"
+        }
+    ]
+}

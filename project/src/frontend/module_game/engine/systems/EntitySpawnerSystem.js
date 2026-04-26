@@ -29,8 +29,8 @@ export class EntitySpawnerSystem {
       if (tx >= 0 && tx < cols && ty >= 0 && ty < Math.ceil(world.height / 16)) {
         const type = world.terrain[ty * cols + tx]
 
-        // 3 이상은 바다, 2는 대산맥 (이곳은 무조건 제외)
-        if (type >= 3 || type === 2) continue
+        // 4 이상은 깊은 바다, 2는 대산맥 (이곳은 무조건 제외)
+        if (type === 2 || type >= 4) continue
 
         // 우선순위가 있는 경우 (예: 광물은 1번(낮은 산) 강하게 선호)
         if (preferTerrainType !== -1) {
@@ -134,7 +134,7 @@ export class EntitySpawnerSystem {
       const cols = Math.ceil((world.width || 3200) / 16)
       const gX = Math.floor(x / 16), gY = Math.floor(y / 16)
       const terrainType = world.terrain ? world.terrain[gY * cols + gX] : 0
-      
+
       if (terrainType !== 0) {
         // 평지가 아니면 근처 평지 검색 (최대 100px)
         let foundFlat = false
@@ -156,41 +156,9 @@ export class EntitySpawnerSystem {
         if (!foundFlat) return // 평지를 도저히 못찾으면 마을 생성 포기
       }
 
-      // New village logs removed
-      const newVillage = new Village(x, y, `마을 ${world.villages.length + 1}`)
-
-      world.villages.push(newVillage)
-      newVillage.addCreature(creature)
-
-      let assignedNation = null
-      for (const nation of world.nations) {
-        if (nation.villages.length === 0) continue
-
-        // [Hardening] 스프레드 연산자(...) 대신 reduce를 사용하여 콜스택 초과 방지 (Stack Overflow 방어)
-        const closestVillageDist = nation.villages.reduce((minDist, v) => {
-          const dist = v.distanceTo(newVillage)
-          return dist < minDist ? dist : minDist
-        }, Infinity)
-
-        if (closestVillageDist < 500) {
-          assignedNation = nation
-          break
-        }
-      }
-
-      if (assignedNation) assignedNation.addVillage(newVillage)
-      else {
-        const nationColors = ['#9b59b6', '#3498db', '#e74c3c', '#2ecc71', '#f1c40f']
-        const newNation = new Nation(
-          `왕국 ${world.nations.length + 1}`,
-          nationColors[world.nations.length % nationColors.length],
-        )
-        world.nations.push(newNation)
-        newNation.addVillage(newVillage)
-        world.broadcastEvent(
-          `새로운 국가 [${newNation.name}]이(가) 건국되었습니다!`,
-          newNation.color,
-        )
+      // 💡 [Refactoring] 마을 생성 및 초대 촌장 임명 로직을 VillageSystem으로 통합
+      if (world.villageSystem) {
+        world.villageSystem.createVillage(world, x, y, creature)
       }
     }
   }
@@ -285,7 +253,7 @@ export class EntitySpawnerSystem {
       const tx = Math.floor(snapX / 16)
       const ty = Math.floor(snapY / 16)
       const terrainType = world.terrain[ty * cols + tx]
-      if (terrainType === 2 || terrainType >= 3) {
+      if (terrainType === 2 || terrainType >= 4) {
         console.warn(`[EntitySpawnerSystem] ${type} 소환 위치가 산이나 바다입니다. 취소합니다.`, {
           snapX,
           snapY,
@@ -303,7 +271,7 @@ export class EntitySpawnerSystem {
   spawnPlant(world, x, y, type) {
     if (!world.isHeadless && world.onProxyAction)
       return world.onProxyAction({ type: 'SPAWN_PLANT', payload: { x, y, type } })
-    
+
     // 💡 [경제/비옥도 시스템 개편] 식물 스폰 시 고정 비용(Up-front Cost) 차감
     const cost = type === 'tree' ? 10 : 1 // tree는 10, crop/grass는 1
     if (world.currentFertility < cost) {
@@ -385,6 +353,12 @@ export class EntitySpawnerSystem {
       world.resourcePool.push(resource)
       world.needsFullChunkRefresh = true
     }
+  }
+
+  setTimeOfDay(world, time) {
+    if (!world.isHeadless && world.onProxyAction)
+      return world.onProxyAction({ type: 'SET_TIME', payload: { time } })
+    if (world.timeSystem) world.timeSystem.timeOfDay = time
   }
 
   loadCreatures(world, creaturesData) {

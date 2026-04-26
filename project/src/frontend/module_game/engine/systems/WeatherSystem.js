@@ -3,7 +3,7 @@ export class WeatherSystem {
     this.width = width
     this.height = height
     this.windSpeed = 2
-    this.weatherType = 'clear' // 'clear', 'rain', 'fog'
+    this.weatherType = 'clear' // 'clear', 'rain', 'fog', 'snow'
     this.weatherTimer = 0
     this.particles = []
     this.pool = [] // [Optimization] GC 방지를 위한 입자 풀링
@@ -15,24 +15,28 @@ export class WeatherSystem {
       // 주기적으로 날씨와 바람 변경
       this.weatherTimer = 15000 + Math.random() * 20000
       const rand = Math.random()
-      if (rand < 0.3) this.weatherType = 'rain'
-      else if (rand < 0.6) this.weatherType = 'fog'
+      if (rand < 0.25) this.weatherType = 'rain'
+      else if (rand < 0.5) this.weatherType = 'snow'
+      else if (rand < 0.7) this.weatherType = 'fog'
       else this.weatherType = 'clear'
 
       // 바람 세기 조정 (-5 ~ 5)
       this.windSpeed = (Math.random() - 0.5) * 10
     }
 
-    if (this.weatherType === 'rain') {
-      // 빗물 파티클 생성
-      for (let i = 0; i < 5; i++) {
+    if (this.weatherType === 'rain' || this.weatherType === 'snow') {
+      const isSnow = this.weatherType === 'snow'
+      const spawnCount = isSnow ? 2 : 5
+      for (let i = 0; i < spawnCount; i++) {
         if (Math.random() < 0.5) {
           const p = this.pool.length > 0 ? this.pool.pop() : {}
           p.x = Math.random() * this.width
           p.y = -10
-          p.vx = this.windSpeed * 0.5
-          p.vy = 10 + Math.random() * 10
-          p.life = 100
+          // 눈은 바람에 더 많이 흩날리고 천천히 떨어짐
+          p.vx = this.windSpeed * (isSnow ? 0.8 : 0.5) + (isSnow ? (Math.random() - 0.5) * 2 : 0)
+          p.vy = isSnow ? (3 + Math.random() * 3) : (15 + Math.random() * 10)
+          p.life = isSnow ? 250 : 100
+          p.isSnow = isSnow
           this.particles.push(p)
         }
       }
@@ -54,15 +58,22 @@ export class WeatherSystem {
   }
 
   render(ctx) {
-    if (this.weatherType === 'rain') {
+    if (this.weatherType === 'rain' || this.weatherType === 'snow') {
       ctx.strokeStyle = 'rgba(173, 216, 230, 0.4)'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
       ctx.lineWidth = 1.5
       ctx.beginPath()
       for (let p of this.particles) {
-        ctx.moveTo(p.x, p.y)
-        ctx.lineTo(p.x - p.vx * 2, p.y - p.vy * 2)
+        if (p.isSnow) {
+          ctx.moveTo(p.x, p.y)
+          ctx.arc(p.x, p.y, 2, 0, Math.PI * 2)
+        } else {
+          ctx.moveTo(p.x, p.y)
+          ctx.lineTo(p.x - p.vx * 1.5, p.y - p.vy * 1.5)
+        }
       }
-      ctx.stroke()
+      if (this.weatherType === 'snow') ctx.fill()
+      else ctx.stroke()
     } else if (this.weatherType === 'fog') {
       ctx.fillStyle = 'rgba(200, 210, 220, 0.35)'
       ctx.fillRect(0, 0, this.width, this.height)

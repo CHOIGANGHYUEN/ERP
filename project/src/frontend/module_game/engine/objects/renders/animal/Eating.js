@@ -12,13 +12,14 @@ export const EATING = (animal, ctx, timestamp, world) => {
   const animProps = {
     legFL: 2, // 다리 약간 낮춤
     legFR: 2,
-    legBL: 3, 
+    legBL: 3,
     legBR: 3,
     tailAngle: 0.2 + Math.sin(t * 4) * 0.1, // 꼬리 살랑살랑
     bodyTilt: 0.3, // 고개 푹 숙임
-    blinkPhase: (Math.sin(t * 0.5) + 1) * 0.5
+    blinkPhase: (Math.sin(t * 0.5) + 1) * 0.5,
+    headBob: Math.abs(Math.sin(t * 5)) * 4 // 고개를 격렬하게 흔들며 뜯음
   }
-  
+
   const drawSize = drawAnimalBody(animal, ctx, world, timestamp, bounce, animProps)
 
   // 먹는 즐거움 이펙트

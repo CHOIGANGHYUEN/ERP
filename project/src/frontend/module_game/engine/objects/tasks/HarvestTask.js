@@ -4,16 +4,19 @@ import { CreatureEmotion } from '../emotions/CreatureEmotion.js'
 export class HarvestTask extends BaseTask {
   constructor(target) {
     super('HARVEST')
+    this.name = '채집 중'
     this.target = target
     this.checkTimer = 0
+    this.accumulatedProgress = 0
+    this.tickThreshold = 50 // 50 에너지를 소모할 때마다 자원 흭득
   }
 
   onEnter(creature, world) {
     if (!this.target || this.target.isDead) {
       throw new Error('Target already dead or missing')
     }
-    creature.target = this.target // 8방향 렌더링을 위한 타겟 고정
-    this.target.isTargeted = true // 타겟 선점 (중복 방지)
+    creature.target = this.target
+    this.target.isTargeted = true
   }
 
   onRunning(creature, deltaTime, world) {
@@ -31,28 +34,77 @@ export class HarvestTask extends BaseTask {
     if (dist <= interactRange) {
       this.updateStateByTarget(creature)
 
+      // 에너지가 없는 단순 아이템인 경우 (기존 로직 유지)
       if (this.target.energy === undefined) {
         this.collectItem(creature, world)
         return 'COMPLETED'
       }
 
-      this.target.energy -= deltaTime * 0.05 * (creature.workEfficiency || 1.0)
+      // 💡 [단계별 채취 로직]
+      const workAmount = deltaTime * 0.05 * (creature.workEfficiency || 1.0)
+      this.target.energy -= workAmount
+      this.accumulatedProgress += workAmount
+
+      // 임계치를 넘을 때마다 자원 획득 (Tick)
+      if (this.accumulatedProgress >= this.tickThreshold) {
+        this.accumulatedProgress -= this.tickThreshold
+        this.harvestTick(creature, world)
+      }
+
       if (this.target.energy <= 0) {
-        this.collectResource(creature, world)
+        // 마지막 남은 자취 처리 (있는 경우)
+        if (this.accumulatedProgress > this.tickThreshold * 0.5) {
+          this.harvestTick(creature, world)
+        }
+        this.target.die(world, 'Harvested')
         return 'COMPLETED'
       }
     } else {
-      // 거리가 벌어지면 다시 이동 위임 (실패 처리 후 WorkSystem이 재할당)
       return 'FAILED'
     }
 
     return 'RUNNING'
   }
 
+  /**
+   * 🪵 단위 작업 완료 시 실행되는 자원 획득 루틴
+   */
+  harvestTick(creature, world) {
+    const t = this.target.type || this.target._type
+    let resourceType = 'biomass'
+    let amount = 1
+    let icon = '📦'
+
+    if (['crop', 'grass', 'food'].includes(t)) {
+      resourceType = 'food'
+      icon = '🍎'
+      if (creature.needs?.hunger > 60) {
+        CreatureEmotion.fulfillHunger(creature)
+        icon = '😋'
+      }
+    } else if (t === 'tree' || t === 'wood') {
+      resourceType = 'wood'
+      icon = '🪵'
+    } else if (['iron', 'stone', 'gold', 'mine'].includes(t)) {
+      resourceType = (t === 'mine' ? this.target.type : t)
+      icon = '💎'
+    }
+
+    // 인벤토리 추가 및 경험치 보너스
+    creature.inventory[resourceType] = (creature.inventory[resourceType] || 0) + amount
+    if (creature.gainExp) {
+      creature.gainExp(2, world) // 틱당 소량의 경험치 즉시 지급
+    }
+
+    // 시각적 피드백
+    if (world.showSpeechBubble) {
+      world.showSpeechBubble(creature.id, 'creature', `${icon} +${amount}`, 1000)
+    }
+  }
+
   onComplete(creature, world) {
     if (this.target) {
       this.target.isTargeted = false
-      // 💡 게시판에서 작업 제거 (personal task는 targetId 기반 id 형식을 따름)
       if (world.taskBoardService && creature.village) {
         const vIdx = world.villages.indexOf(creature.village)
         world.taskBoardService.completeTask(vIdx, `personal-${this.target.id}`)
@@ -81,19 +133,5 @@ export class HarvestTask extends BaseTask {
     const t = this.target.type || this.target._type
     creature.inventory[t] = (creature.inventory[t] || 0) + 1
     this.target.die(world, 'Collected')
-  }
-
-  collectResource(creature, world) {
-    const t = this.target.type || this.target._type
-    let amount = 2
-    if (['crop', 'grass', 'food'].includes(t)) {
-      if (creature.needs?.hunger > 50) CreatureEmotion.fulfillHunger(creature)
-      else creature.inventory.food = (creature.inventory.food || 0) + 3
-    } else if (t === 'tree' || t === 'wood') {
-      creature.inventory.wood = (creature.inventory.wood || 0) + amount
-    } else {
-      creature.inventory.biomass = (creature.inventory.biomass || 0) + amount
-    }
-    this.target.die(world, 'Harvested')
   }
 }

@@ -22,8 +22,13 @@ export const MATING = (animal, deltaTime, world) => {
   if (animal.distanceTo(animal.target) < 10) {
     animal._matingTimer = 0 // 성공 시 타이머 초기화
     // 쿨타임 및 행복도 소모
-    animal.emotions.happy -= 50
-    animal.target.emotions.happy -= 50
+    animal.emotions.happy -= 30
+    if (animal.target && animal.target.emotions) animal.target.emotions.happy -= 30
+
+    // 💡 작은 동물은 빠르게, 큰 동물은 느리게 쿨타임(BaseSize 비례) 적용
+    const baseCooldown = (animal.baseSize || 10) * 2000 // 예: 토끼(6)=12초, 코끼리(25)=50초
+    animal.matingCooldown = baseCooldown + Math.random() * 5000
+    if (animal.target) animal.target.matingCooldown = baseCooldown + Math.random() * 5000
 
     // 번식 스폰 (개체 수 제한 체크)
     if (world.animals.length < MAX_ANIMALS) {
@@ -37,17 +42,18 @@ export const MATING = (animal, deltaTime, world) => {
         baby.color = animal.color
         baby.size = baby.baseSize * 0.5
         baby.age = 0
+        baby.parent = animal // 부모 기억 (졸졸이 따라다니기 용도)
       } else {
-         // 메인 렌더 스레드 강제 소환 명령(일반적으로 사용 안 함)
-         world.spawnAnimal(animal.x, animal.y, animal.type)
+        // 메인 렌더 스레드 강제 소환 명령(일반적으로 사용 안 함)
+        world.spawnAnimal(animal.x, animal.y, animal.type)
       }
 
       // 하트 이펙트 효과 (이벤트)
       if (world.broadcastEvent) {
-         world.broadcastEvent('❤️ 아기 동물이 태어났습니다!', '#e74c3c')
+        world.broadcastEvent('❤️ 아기 동물이 태어났습니다!', '#e74c3c')
       }
     }
-    
+
     animal.state = 'WANDERING'
     animal.target = null
   }

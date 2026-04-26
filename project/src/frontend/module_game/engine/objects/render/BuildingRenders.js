@@ -12,6 +12,7 @@ export const BuildingRenders = {
     if (!building.isConstructed) {
       BuildingRenders.renderConstruction(building, ctx, world)
     } else {
+      if (building.type === 'FARM') BuildingRenders.renderFarmCrops(building, ctx)
       BuildingRenders.renderFinished(building, ctx, world)
     }
   },
@@ -22,22 +23,26 @@ export const BuildingRenders = {
     const y = building.y
     const progress = (building.progress || 0) / (building.maxProgress || 100)
 
+    // 💡 [건축 중/대기] - 게이지를 항상 표시하여 부지 상태임을 알림
     if (progress <= 0) {
-      // 💡 [건축 대기중] - 아직 인부가 도착하지 않은 '부지 확보' 단계 (말뚝만 표시)
+      // 건축 대기중 (말뚝 표시)
       ctx.strokeStyle = 'rgba(127, 140, 141, 0.5)'
       ctx.setLineDash([2, 4])
       ctx.strokeRect(x - s / 2, y - s / 2, s, s)
       ctx.setLineDash([])
-
-      // 네 귀퉁이에 말뚝 표시
+      
       ctx.fillStyle = '#8B4513'
       const stakeSize = 3
       ctx.fillRect(x - s / 2 - 1, y - s / 2 - 1, stakeSize, stakeSize)
       ctx.fillRect(x + s / 2 - 2, y - s / 2 - 1, stakeSize, stakeSize)
       ctx.fillRect(x - s / 2 - 1, y + s / 2 - 2, stakeSize, stakeSize)
       ctx.fillRect(x + s / 2 - 2, y + s / 2 - 2, stakeSize, stakeSize)
-      return
     }
+
+    // 전용 진행바 렌더링
+    RenderUtils.drawBar(ctx, x, y - s / 2 - 10, s, 6, progress, '#34495e', '#f1c40f')
+    
+    if (progress <= 0) return
 
     // 💡 [건축 중] - 비계(Scaffolding) 및 진행 상황 표시
     ctx.strokeStyle = '#7f8c8d'
@@ -101,7 +106,7 @@ export const BuildingRenders = {
     ctx.restore()
 
     const iconMap = {
-      TOWN_HALL: '🏛️', HOUSE: '🏠', SCHOOL: '🏫', FARM: '🌾', BARRACKS: '⛺',
+      TOWN_HALL: '🏛️', CAMPFIRE: '🔥', HOUSE: '🏠', SCHOOL: '🏫', FARM: '🌾', BARRACKS: '⛺',
       TEMPLE: '⚪', SMITHY: '⚒️', MARKET: '🏪'
     }
 
@@ -117,5 +122,36 @@ export const BuildingRenders = {
       ctx.lineWidth = 2
       ctx.strokeRect(x - s/2 - 2, y - s/2 - 2, s + 4, s + 4)
     }
-  }
+  },
+
+  renderFarmCrops: (building, ctx) => {
+    if (!building.crops) return
+    const x = building.x, y = building.y
+    const cellSize = 8 
+    const offset = -cellSize * 5
+
+    ctx.save()
+    building.crops.forEach(crop => {
+      const col = crop.id % 10
+      const row = Math.floor(crop.id / 10)
+      const cx = x + offset + col * cellSize
+      const cy = y + offset + row * cellSize
+
+      ctx.fillStyle = crop.moisture > 30 ? '#5d4037' : '#8d6e63'
+      ctx.fillRect(cx, cy, cellSize - 1, cellSize - 1)
+
+      if (crop.status !== 'EMPTY') {
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.font = '6px Arial'
+        
+        let emoji = '🌱' 
+        if (crop.status === 'PLANTED') emoji = '🟤' 
+        if (crop.status === 'RIPE') emoji = '🌾' 
+
+        ctx.fillText(emoji, cx + cellSize / 2, cy + cellSize / 2)
+      }
+    })
+    ctx.restore()
+  },
 }

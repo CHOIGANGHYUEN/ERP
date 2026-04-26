@@ -7,12 +7,15 @@ export const WANDERING = (animal, deltaTime, world) => {
     const candidates = world.quadTree.query(searchRange)
 
     // 감정(공포, 공격성)과 욕구(허기) 모듈을 통한 판단
-    const survivalAction = AnimalEmotion.evaluateSurvivalNeeds(animal, candidates)
+    const survivalAction = AnimalEmotion.evaluateSurvivalNeeds(animal, candidates, world)
     if (survivalAction) {
       if (survivalAction.action === 'FLEE') {
-        animal.targetX = animal.x + (animal.x - survivalAction.target.x)
-        animal.targetY = animal.y + (animal.y - survivalAction.target.y)
-        animal.moveToTarget(animal.targetX, animal.targetY, deltaTime, world, 1.5)
+        animal.state = 'FLEEING'
+        animal.target = survivalAction.target
+        return
+      } else if (survivalAction.action === 'HIDE') {
+        animal.state = 'HIDING'
+        animal.target = survivalAction.target
         return
       } else {
         animal.target = survivalAction.target

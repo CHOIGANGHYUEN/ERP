@@ -2,7 +2,7 @@ import { ref, watch } from 'vue'
 
 export function useGameTools(getWorldInstance) {
   const activeTool = ref(null)
-  
+
   const showToolMenu = ref(false)
   const showTopUI = ref(false)
   const showInspectorPanel = ref(true)
@@ -51,8 +51,23 @@ export function useGameTools(getWorldInstance) {
       case 'weather_rain':
         worldInstance.setWeather('rain')
         break
+      case 'weather_snow':
+        worldInstance.setWeather('snow')
+        break
       case 'weather_fog':
         worldInstance.setWeather('fog')
+        break
+      case 'time_morning':
+        if (worldInstance.setTimeOfDay) worldInstance.setTimeOfDay(6000)
+        break
+      case 'time_noon':
+        if (worldInstance.setTimeOfDay) worldInstance.setTimeOfDay(12000)
+        break
+      case 'time_sunset':
+        if (worldInstance.setTimeOfDay) worldInstance.setTimeOfDay(18000)
+        break
+      case 'time_night':
+        if (worldInstance.setTimeOfDay) worldInstance.setTimeOfDay(0)
         break
     }
   }

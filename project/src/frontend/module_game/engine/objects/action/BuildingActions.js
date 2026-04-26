@@ -30,7 +30,23 @@ export const BuildingActions = {
 
     switch (building.type) {
       case 'FARM':
-        inv.food = (inv.food || 0) + tier * 3
+        // 💡 [농사 시뮬레이션] 각 칸의 작물 성장 및 토양 수분 증발
+        if (building.crops) {
+          building.crops.forEach(crop => {
+            if (crop.status === 'GROWING' || crop.status === 'PLANTED') {
+              if (crop.moisture > 0) {
+                crop.status = 'GROWING'
+                crop.growth += 0.2 // 성장 속도
+                if (crop.growth >= 100) {
+                  crop.status = 'RIPE'
+                  crop.growth = 100
+                }
+              }
+              // 초당 수분 증발
+              crop.moisture = Math.max(0, crop.moisture - 0.025)
+            }
+          })
+        }
         break
       case 'SMITHY':
         if (inv.iron >= 1) {

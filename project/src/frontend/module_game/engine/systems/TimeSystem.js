@@ -20,22 +20,8 @@ export class TimeSystem {
   }
 
   renderOverlay(ctx, width, height) {
-    if (this.season === 'WINTER') {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
-      ctx.fillRect(0, 0, width, height)
-    }
-
-    let alpha = 0
-    if (this.timeOfDay >= 18000 && this.timeOfDay < 20000)
-      alpha = ((this.timeOfDay - 18000) / 2000) * 0.65 // Sunset
-    else if (this.timeOfDay >= 20000 || this.timeOfDay < 4000)
-      alpha = 0.65 // Night
-    else if (this.timeOfDay >= 4000 && this.timeOfDay < 6000)
-      alpha = 0.65 - ((this.timeOfDay - 4000) / 2000) * 0.65 // Sunrise
-
-    if (alpha > 0) {
-      ctx.fillStyle = `rgba(10, 10, 30, ${alpha})`
-      ctx.fillRect(0, 0, width, height)
-    }
+    // 💡 [자연 변화 실감 개선] 
+    // 시간 및 날씨에 따른 하늘, 별빛, 노을, 조명 오버레이 연산은 모두 
+    // LightingSystem.js 의 applyColorGrading으로 일원화되어 더 사실적으로 처리됩니다.
   }
 }

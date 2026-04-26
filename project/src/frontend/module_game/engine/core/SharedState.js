@@ -135,6 +135,7 @@ export const PROPS = {
     B: 6,
     POPULATION: 7,
     BUILDING_COUNT: 8,
+    LEADER_ID: 9,
     // Name and inventory are not shared for performance, only read on Inspector click
   },
 }
@@ -153,28 +154,28 @@ export const PROFESSION_MAP = {
   MERCHANT: 9,
 }
 export const STATE_MAP = {
-  WANDERING:  0,
-  GATHERING:  1,
+  WANDERING: 0,
+  GATHERING: 1,
   HARVESTING: 2,
-  BUILDING:   3,
-  STUDYING:   4,
-  RETURNING:  5,
-  ATTACKING:  6,
-  MINING:     7,
-  TRAINING:   8,
-  RESTING:    9,
-  EATING:     10,
-  HUNTING:    11,
-  GROWING:    12,
-  TRADING:    13,
+  BUILDING: 3,
+  STUDYING: 4,
+  RETURNING: 5,
+  ATTACKING: 6,
+  MINING: 7,
+  TRAINING: 8,
+  RESTING: 9,
+  EATING: 10,
+  HUNTING: 11,
+  GROWING: 12,
+  TRADING: 13,
   DEPOSITING: 14,  // 창고에 자원 납부 중
-  SUFFERING:  15,  // 극심한 허기/고통 (죽기 직전)
-  MATING:     16,
-  FLEEING:    17,
-  IDLE:       18,
-  MOVING:     19,
+  SUFFERING: 15,  // 극심한 허기/고통 (죽기 직전)
+  MATING: 16,
+  FLEEING: 17,
+  IDLE: 18,
+  MOVING: 19,
 }
-export const WEATHER_MAP = { clear: 0, rain: 1, fog: 2 }
+export const WEATHER_MAP = { clear: 0, rain: 1, fog: 2, snow: 3 }
 export const SEASON_MAP = { SPRING: 0, SUMMER: 1, AUTUMN: 2, WINTER: 3 }
 export const PLANT_TYPE_MAP = { grass: 0, tree: 1, crop: 2 }
 
@@ -251,7 +252,7 @@ export function createSharedBuffers() {
   const BufferType = isSharedSupported ? SharedArrayBuffer : ArrayBuffer
 
   return {
-    globals: new BufferType(STRIDE.GLOBALS * 4), 
+    globals: new BufferType(STRIDE.GLOBALS * 4),
     // Double sets of entity buffers to prevent flickering
     sets: [
       {
@@ -286,9 +287,9 @@ export function hexToRgb(hex) {
   let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
   return result
     ? {
-        r: parseInt(result[1], 16) / 255,
-        g: parseInt(result[2], 16) / 255,
-        b: parseInt(result[3], 16) / 255,
-      }
+      r: parseInt(result[1], 16) / 255,
+      g: parseInt(result[2], 16) / 255,
+      b: parseInt(result[3], 16) / 255,
+    }
     : { r: 1, g: 1, b: 1 }
 }

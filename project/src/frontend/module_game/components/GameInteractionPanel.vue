@@ -30,7 +30,17 @@
         <div class="flex-row">
           <button class="btn btn-secondary flex-1" @click="setWeather('clear')">맑음 ☀️</button>
           <button class="btn btn-secondary flex-1" @click="setWeather('rain')">비 🌧️</button>
+          <button class="btn btn-secondary flex-1" @click="setWeather('snow')">눈 ❄️</button>
           <button class="btn btn-secondary flex-1" @click="setWeather('fog')">안개 🌫️</button>
+        </div>
+      </div>
+      <div class="modern-form time-form">
+        <h4 class="sub-title" style="color: #f39c12;">⏳ 시간 통제</h4>
+        <div class="flex-row">
+          <button class="btn btn-secondary flex-1" @click="setTimeOfDay(6000)">아침 🌅</button>
+          <button class="btn btn-secondary flex-1" @click="setTimeOfDay(12000)">정오 ☀️</button>
+          <button class="btn btn-secondary flex-1" @click="setTimeOfDay(18000)">노을 🌇</button>
+          <button class="btn btn-secondary flex-1" @click="setTimeOfDay(0)">밤 🌙</button>
         </div>
       </div>
       <div class="modern-form disaster-form">
@@ -153,7 +163,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { PROPS, STRIDE } from '../engine/core/SharedState.js'
 
 const props = defineProps({
@@ -262,6 +272,11 @@ const setWeather = (type) => {
   props.world.setWeather(type)
 }
 
+const setTimeOfDay = (time) => {
+  if (!props.world) return
+  if (props.world.setTimeOfDay) props.world.setTimeOfDay(time)
+}
+
 const spawnTornado = () => {
   if (!props.world) return
   const x = props.world.camera.x + props.world.canvas.width / 2
@@ -291,7 +306,11 @@ const fetchOverallStatus = () => {
 
   // 직업 및 기타 상세 통계
   const professions = {}
+  let totalAge = 0
+  let totalLevel = 0
   let maxLevel = 1
+  let totalHappiness = 0
+  let activeCreatureCount = 0
 
   const professionReverseMap = {
     0: 'NONE',
@@ -307,15 +326,27 @@ const fetchOverallStatus = () => {
   for (let i = 0; i < creatureCount; i++) {
     const offset = i * STRIDE.CREATURE
     if (creatures[offset + PROPS.CREATURE.IS_ACTIVE] === 1) {
+      activeCreatureCount++
       const profId = creatures[offset + PROPS.CREATURE.PROFESSION]
       const profName = professionReverseMap[profId] || 'NONE'
       professions[profName] = (professions[profName] || 0) + 1
       
+      const age = creatures[offset + PROPS.CREATURE.AGE]
       const level = creatures[offset + PROPS.CREATURE.LEVEL] || 1
+      const hunger = creatures[offset + PROPS.CREATURE.NEEDS_HUNGER]
+      const fatigue = creatures[offset + PROPS.CREATURE.NEEDS_FATIGUE]
+      const happiness = Math.max(0, 100 - (hunger + fatigue) / 2)
       
+      totalAge += age
+      totalLevel += level
       if (level > maxLevel) maxLevel = level
+      totalHappiness += happiness
     }
   }
+  
+  const avgAge = activeCreatureCount > 0 ? (totalAge / activeCreatureCount).toFixed(1) : 0
+  const avgLevel = activeCreatureCount > 0 ? (totalLevel / activeCreatureCount).toFixed(1) : 0
+  const avgHappiness = activeCreatureCount > 0 ? (totalHappiness / activeCreatureCount).toFixed(1) : 0
 
   // 건물 종류별 통계
   const buildingTypes = {}
@@ -417,7 +448,8 @@ const fetchOverallStatus = () => {
 .control-form {
   gap: 12px;
 }
-.disaster-form {
+.disaster-form,
+.time-form {
   gap: 12px;
   margin-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);

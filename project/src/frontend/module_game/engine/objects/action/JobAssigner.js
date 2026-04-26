@@ -4,16 +4,19 @@ export class JobAssigner {
   static lastResetTime = Date.now()
 
   // 💡 [중복/충돌 방지] 직업 변경 로직을 한 곳으로 통합하여 안전하게 처리
-  static changeProfession(creature, newJob, isTemporary = false) {
+  static changeProfession(creature, newJob, isTemporary = false, force = false) {
     if (!creature || creature.profession === newJob) return
 
     const oldJob = creature.profession
 
     if (isTemporary) {
-      if (!creature.originalProfession) creature.originalProfession = oldJob // 본업 최초 1회만 기억
+      if (!creature.originalProfession) creature.originalProfession = oldJob
     } else {
-      creature.originalProfession = null // 정식 발령이면 본업 기억 초기화
+      creature.originalProfession = null
     }
+
+    // 💡 [중요] 이미 진행 중인 작업이 있다면 업무의 연속성을 위해 직업 변경을 유보함 (초기화 방지)
+    if (!force && creature.taskQueue && creature.taskQueue.length > 0) return
 
     creature.profession = newJob
 
@@ -21,17 +24,18 @@ export class JobAssigner {
       creature.village.updateProfessionCount(oldJob, newJob)
     }
 
-    // 💡 [실시간 연결] 직업 변경 시 현재 진행 중인 태스크를 즉시 취소하여 상태 불일치 방지
-    if (creature.currentTask && typeof creature.currentTask.onFailed === 'function') {
-      creature.currentTask.onFailed(creature, null, 'JobChanged')
+    // 💡 [실시간 연결] 직업 변경 시에도 하던 일(taskQueue)은 가급적 유지하고, 강제 변경 시에만 초기화
+    if (force) {
+      creature.taskQueue = []
+      creature.state = 'WANDERING'
+      creature.target = null
     }
-    creature.taskQueue = []
-    creature.currentTask = null
-    creature.state = 'WANDERING'
-    creature.target = null
   }
 
   static assignProfession(creature, world) {
+    // 💡 [종신제 유지] 촌장은 자동으로 직업이 변경되지 않도록 보호
+    if (creature.profession === 'LEADER') return
+
     try {
       const currentTime = Date.now()
 
@@ -47,11 +51,13 @@ export class JobAssigner {
         return
       }
 
-      const hasLeader = (creature.village.professionCounts?.['LEADER'] || 0) > 0
+      // 💡 [중복 리더 방지] 장부(Counts)뿐만 아니라 실제 주민 리스트를 전수 조사하여 물리적 검증
+      const hasLeader = (creature.village.professionCounts?.['LEADER'] || 0) > 0 ||
+                        creature.village.creatures.some(c => c.profession === 'LEADER')
 
-      // 리더 부재 시 조건부 리더 임명
-      if (!hasLeader && creature.age >= 4 && creature.profession !== 'LEADER') {
-        JobAssigner.changeProfession(creature, 'LEADER')
+      // 리더 부재 시 조건부 리더 임명 (성인 우선)
+      if (!hasLeader && creature.isAdult && creature.profession !== 'LEADER') {
+        JobAssigner.changeProfession(creature, 'LEADER', false, true) // 강제 임명
         return
       }
 
@@ -62,6 +68,9 @@ export class JobAssigner {
   }
 
   static forceAssignJob(world, creature) {
+    // 💡 [종신제 유지] 촌장은 강제 재배정 대상에서 제외
+    if (creature.profession === 'LEADER') return
+
     try {
       const currentTime = Date.now()
 

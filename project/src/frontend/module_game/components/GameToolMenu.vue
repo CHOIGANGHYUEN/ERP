@@ -78,8 +78,29 @@
         <button class="tool-btn" @click="$emit('handleAction', 'weather_rain')">
           <span class="icon">🌧️</span><span>비</span>
         </button>
+        <button class="tool-btn" @click="$emit('handleAction', 'weather_snow')">
+          <span class="icon">❄️</span><span>눈</span>
+        </button>
         <button class="tool-btn" @click="$emit('handleAction', 'weather_fog')">
           <span class="icon">🌫️</span><span>안개</span>
+        </button>
+      </div>
+
+      <div class="tool-divider"></div>
+
+      <div class="tool-group">
+        <span class="tool-group-label">시간 통제 (즉시)</span>
+        <button class="tool-btn" @click="$emit('handleAction', 'time_morning')">
+          <span class="icon">🌅</span><span>아침</span>
+        </button>
+        <button class="tool-btn" @click="$emit('handleAction', 'time_noon')">
+          <span class="icon">☀️</span><span>정오</span>
+        </button>
+        <button class="tool-btn" @click="$emit('handleAction', 'time_sunset')">
+          <span class="icon">🌇</span><span>노을</span>
+        </button>
+        <button class="tool-btn" @click="$emit('handleAction', 'time_night')">
+          <span class="icon">🌙</span><span>밤</span>
         </button>
       </div>
     </div>

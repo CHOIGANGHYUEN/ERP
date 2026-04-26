@@ -77,7 +77,7 @@ export function useGameWorker(gameCanvas) {
       }
       // 크리처의 경우 워커에 상세 정보(taskQueue, inventory) 요청
       if (ent._type === 'creature') {
-        worldInstance.onProxyAction({ type: 'REQUEST_ENTITY_DETAILS', payload: { id: ent.id, type: 'creature' } })
+        worldInstance.onProxyAction({ type: 'GET_ENTITY_DETAILS', payload: { id: ent.id, type: 'creature' } })
       }
     }
   }

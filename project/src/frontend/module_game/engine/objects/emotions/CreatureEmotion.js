@@ -88,8 +88,9 @@ export class CreatureEmotion {
       creature.emotions.fear = Math.max(0, creature.emotions.fear - 0.5)
     }
 
-    // 2. 짝짓기 욕구 (생존이 안정적일 때만)
-    if (creature.isAdult && creature.needs.matingUrge > 90 && creature.matingCooldown <= 0) {
+    // 2. 짝짓기 욕구 (생존이 안정적이고 마을에 빈 집이 있을 때만)
+    const canBreed = creature.village && creature.village.hasHousingCapacity()
+    if (creature.isAdult && canBreed && creature.needs.matingUrge > 90 && creature.matingCooldown <= 0) {
       const partner = candidates.find(
         (c) =>
           c.id !== creature.id &&

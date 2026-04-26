@@ -4,7 +4,7 @@ export const PATH_THROTTLED = 'THROTTLED'
 export class PathfinderService {
   constructor() {
     this.gridSize = 16
-    this.maxNodes = 1000 // 3) 연산 스파이크 방지 (타임 슬라이싱)
+    this.maxNodes = 10000 // 3) 탐색 한도 10배 상향 (만 단위)
   }
 
   /**
@@ -104,12 +104,9 @@ export class PathfinderService {
     
     // 지형 체크 (물, 산맥 등)
     const t = world.views.terrain[tidx]
-    if (t === 2 || t >= 3) return false
+    if (t === 3 || t === 2 || t >= 4) return false
 
-    // 공유된 장애물 맵 체크 (PathSystem이 업데이트하는 영역)
-    if (world.pathSystem && world.pathSystem.obstacles && world.pathSystem.obstacles[tidx]) {
-      return false
-    }
+    // [REMOVED] 건물 충돌은 더 이상 길찾기에 영향을 주지 않음
 
     return true
   }

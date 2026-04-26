@@ -23,7 +23,9 @@ export const MATING = (creature, deltaTime, world) => {
 
       // 한쪽만 번식을 실행하여 중복 방지 (ID가 더 큰 쪽)
       if (creature.id > partner.id) {
-        if (creature.village && (creature.village.inventory.food || 0) >= 5) {
+        const canBreed = creature.village && creature.village.hasHousingCapacity()
+        
+        if (canBreed && (creature.village.inventory.food || 0) >= 5) {
           creature.village.inventory.food -= 5
           world.spawnCreature(
             creature.x + (Math.random() - 0.5) * 30,
@@ -38,6 +40,14 @@ export const MATING = (creature, deltaTime, world) => {
             if (idx !== -1) {
               world.showSpeechBubble(idx, 'creature', `👶 ${child.familyName}씨 탄생!`, 3000)
             }
+            // 💡 [주거권 보장] 태어나자마자 집부터 찾아줌
+            child.findHome(world)
+          }
+        } else if (!canBreed) {
+          // 주거 부족 피드백
+          const idx = world.creatures.indexOf(creature)
+          if (idx !== -1) {
+            world.showSpeechBubble(idx, 'creature', `🏠 집이 부족해! (방이 없음)`, 2000)
           }
         } else {
           // 식량 부족 피드백

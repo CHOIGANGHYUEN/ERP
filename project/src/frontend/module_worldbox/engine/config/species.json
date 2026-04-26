@@ -1,0 +1,24 @@
+{
+    "sheep": {
+        "id": "sheep",
+        "name": "Sheep",
+        "diet": "herbivore",
+        "maxStomach": 3.0,
+        "digestionSpeed": 0.15,
+        "excreteThreshold": 1.0,
+        "reproductionThreshold": 1.5,
+        "moveSpeed": 45,
+        "herdLimit": 20
+    },
+    "human": {
+        "id": "human",
+        "name": "Human",
+        "diet": "omnivore",
+        "maxStomach": 2.5,
+        "digestionSpeed": 0.2,
+        "excreteThreshold": 1.2,
+        "reproductionThreshold": 1.8,
+        "moveSpeed": 55,
+        "herdLimit": 5
+    }
+}

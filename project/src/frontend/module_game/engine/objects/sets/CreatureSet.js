@@ -56,23 +56,31 @@ export const CreatureSet = {
         // 1. 생존 욕구 평가 및 주입
         const survivalDrive = CreatureEmotion.evaluateSurvivalNeeds(creature, world)
         if (survivalDrive && survivalDrive.type !== DRIVE.NONE) {
-          // 💡 [공포 영향 제거] 이미 작업(taskQueue)이 있는 경우 어떤 생존 드라이브(PANIC 포함)도 무시합니다.
-          const hasActiveTasks = creature.taskQueue && creature.taskQueue.length > 0
-          if (!hasActiveTasks) {
-            const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
-            if (injector) injector(creature, survivalDrive.payload, world)
+          // 💡 [수정] 작업이 있더라도 생명에 직결된 욕구(허기, 공포)는 최우선으로 처리하도록 인터럽트 허용
+          const injector = CreatureActions.SurvivalInjectors[survivalDrive.type]
+          if (injector) {
+            injector(creature, survivalDrive.payload, world)
+            // 💡 [지속성 강화] 인터럽트 시 기존 타겟이나 경로는 유지하여 나중에 복귀할 수 있게 함
           }
         }
         // 2. 생존 우선순위가 아니면 업무 시스템(WorkSystem)이 새로운 작업을 할당할 때까지 대기
         else if (creature.taskQueue.length === 0) {
-           // 💡 [안전 장치] 배회 중인데 목표 좌표가 없으면 IDLE로 복귀시켜 재탐색 유도
-           if (creature.state === 'WANDERING' && creature.targetX == null) {
-             creature.state = 'IDLE'
-           }
-           
-           if (creature.state === 'IDLE' || creature.state === 'WORK') {
-             if (Math.random() < 0.05) creature.wander(world)
-           }
+          // ... 기존 IDLE 처리 로직
+          if (creature.state === 'WANDERING' && creature.targetX == null) {
+            creature.state = 'IDLE'
+          }
+          
+          if (creature.state === 'IDLE' || creature.state === 'WORK') {
+            if (Math.random() < 0.15) creature.wander(world)
+          }
+        }
+        else {
+          // 💡 [핵심: 업무 복귀] 긴급 상황이 해결되었는데 할 일이 남아있다면 즉시 업무(WORK) 상태로 복귀
+          if (creature.state === 'IDLE' || creature.state === 'WANDERING' || creature.state === 'SUFFERING') {
+            creature.state = 'WORK'
+            const idx = world.creatures.indexOf(creature)
+            if (idx !== -1) world.showSpeechBubble(idx, 'creature', '🛠️ 하던 일 계속함!', 1500)
+          }
         }
       }
 
@@ -134,13 +142,20 @@ export const CreatureSet = {
           }
         }
       } else {
-        // [Hotfix] 활성 작업(taskQueue)이 없을 때만 기본 배회(WANDERING) 타겟을 추적하도록 수정
-        // 이를 통해 MoveTask의 경로가 배회 타겟X/Y에 의해 덮어씌워지는 현상 방지
-        if (creature.taskQueue.length === 0 && creature.state === 'WANDERING' && creature.targetX != null) {
-          if (creature.distanceTo({ x: creature.targetX, y: creature.targetY }) > 20) {
-            creature.moveToTarget(creature.targetX, creature.targetY, deltaTime, world)
+        // [Hotfix] 매 틱마다 moveToTarget을 호출하여 경로를 흔드는 현상 원천 차단
+        if (creature.state === 'WANDERING' && creature.targetX != null) {
+          // 이미 물리 엔진(MovementSystem)이 이동 중이거나 목적지에 거의 다 왔다면 스킵
+          const isPhysicallyMoving = creature.movement.isMoving && creature.movement.path?.length > 0
+          const dist = creature.distanceTo({ x: creature.targetX, y: creature.targetY })
+
+          if (dist > 20) {
+            if (!isPhysicallyMoving) {
+              creature.moveToTarget(creature.targetX, creature.targetY, deltaTime, world)
+            }
           } else {
             creature.state = 'IDLE'
+            creature.targetX = null
+            creature.targetY = null
           }
         }
       }

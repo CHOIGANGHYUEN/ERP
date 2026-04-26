@@ -140,9 +140,10 @@ export const VillageActions = {
         taskBoard?.publishTask(vId, {
           id: `build-${b.id}`,
           type: 'BUILD',
-          targetId: b.id,
+          targetId: buildings.indexOf(b), // 💡 검색 속도 향상을 위해 인덱스 전달
           targetType: 'building',
-          priority: 10,
+          buildingType: b.type, // 💡 리더 전용 필터링을 위해 타입 보존
+          priority: b.type === 'CAMPFIRE' ? 50 : 20, // 💡 모닥불은 최우선 순위
           position: { x: b.x, y: b.y }
         })
       }
@@ -156,7 +157,7 @@ export const VillageActions = {
     const hasIncomplete = buildings.some(b => !b.isConstructed)
     if (hasIncomplete) return // 이미 짓고 있는 건물이 있으면 추가 부지 선정 보류
 
-    const hasCampfire = buildings.some(b => b.type === 'TOWN_HALL' || b.type === 'BARRACKS') // CAMPFIRE 대용
+    const hasCampfire = buildings.some(b => b.type === 'CAMPFIRE') // 💡 모닥불 체크
     const hasMarket = buildings.some(b => b.type === 'MARKET') // WAREHOUSE 대용
 
     // 유효한 부지 선정 함수
@@ -183,10 +184,10 @@ export const VillageActions = {
       return null
     }
 
-    // [Step 1] 캠프파이어 (TOWN_HALL 역할) 우선 구축
+    // [Step 1] 모닥불 우선 구축 (마을의 기점)
     if (!hasCampfire) {
       const plot = findPlot(true)
-      if (plot) world.spawnBuilding(plot.x, plot.y, 'TOWN_HALL', village)
+      if (plot) world.spawnBuilding(plot.x, plot.y, 'CAMPFIRE', village)
       return
     }
 
@@ -202,13 +203,11 @@ export const VillageActions = {
       return
     }
 
-    // [Step 3] 거주지 (HOUSE) 건설 - 자원 여유가 있을 때만 진행
     const housingCapacity = buildings
       .filter((b) => b.type === 'HOUSE' && b.isConstructed)
       .reduce((sum, b) => sum + (b.capacity || 4), 0)
 
     if (village.creatures.length > housingCapacity) {
-      // 거주지는 자원이 더 넉넉할 때 (나무 30, 식량 10 이상) 건설 시작
       if (village.inventory.wood >= 30 && village.inventory.food >= 10) {
         const plot = findPlot()
         if (plot) {
@@ -216,6 +215,19 @@ export const VillageActions = {
           village.inventory.wood -= 30
           village.inventory.food -= 10
         }
+      }
+    }
+
+    // 💡 [문명 확장] 개척자 선발 및 새로운 영토 확장
+    if (village.creatures.length >= 8 && village.inventory.food >= 50 && Math.random() < 0.05) {
+      const candidates = village.creatures.filter(c => !c.isDead && c.taskQueue.length === 0 && c.profession !== 'LEADER')
+      if (candidates.length > 0) {
+        const settler = candidates[Math.floor(Math.random() * candidates.length)]
+        import('../tasks/ExpansionTask.js').then(m => {
+          if (settler.taskQueue) settler.taskQueue.push(new m.ExpansionTask(village))
+          village.inventory.food -= 20
+          world.broadcastEvent(`🚀 [${village.name}]에서 개척자가 여정을 떠났습니다!`, '#3498db')
+        })
       }
     }
   },

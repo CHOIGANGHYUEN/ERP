@@ -3,33 +3,37 @@ export class Nation {
     this.id = Math.random().toString(36).substr(2, 9)
     this.name = name
     this.color = color
-    this.villages = [] // List of Village instances
-    this.diplomacy = new Map() // Map<Nation, { status: 'PEACE'|'WAR'|'NEUTRAL', score: number }>
+    this.villages = []
+    this.inventory = {
+      food: 0,
+      wood: 0,
+      stone: 0,
+      iron: 0,
+      gold: 0,
+      knowledge: 0
+    }
+    this.diplomacy = {} // { nationId: { status: 'PEACE'|'WAR', score: 0 } }
+    this.leaderId = -1
   }
 
   addVillage(village) {
-    this.villages.push(village)
-    village.nation = this
+    if (!this.villages.includes(village)) {
+      this.villages.push(village)
+      village.nation = this
+    }
   }
 
-  getRelation(otherNation) {
-    const nationId = typeof otherNation === 'string' ? otherNation : otherNation.id
-    if (!this.diplomacy.has(nationId)) {
-      this.diplomacy.set(nationId, { status: 'NEUTRAL', score: 0 })
-    }
-    return this.diplomacy.get(nationId)
-  }
+  update(deltaTime, world) {
+    this.updateTimer = (this.updateTimer || 0) + deltaTime
+    if (this.updateTimer < 1000) return 
+    this.updateTimer = 0
 
-  setRelation(otherNation, status, score) {
-    const rel = this.getRelation(otherNation)
-    rel.status = status
-    rel.score = score
-    
-    // 상대 국가에서도 동일하게 설정 (상호 관계)
-    if (typeof otherNation !== 'string') {
-      const otherRel = otherNation.getRelation(this.id)
-      otherRel.status = status
-      otherRel.score = score
-    }
+    const newInv = { food: 0, wood: 0, stone: 0, iron: 0, gold: 0, knowledge: 0 }
+    this.villages.forEach(v => {
+      Object.keys(newInv).forEach(k => {
+        newInv[k] += (v.inventory[k] || 0)
+      })
+    })
+    this.inventory = newInv
   }
 }

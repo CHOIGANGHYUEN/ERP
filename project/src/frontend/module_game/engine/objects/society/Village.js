@@ -19,6 +19,12 @@ export class Village extends Entity {
     this.creatures = []
     this.buildings = []
     this.availableHouses = [] // [Optimization] 가용 주거지 캐시
+    this.leaderId = -1 // [New] 초대 촌장 ID
+
+    // 💡 [문명 확장] 시대 및 국가 정보
+    this.era = 'STONE' // STONE, BRONZE, IRON
+    this.techLevel = 1
+    this.nation = null
 
     // Census: [Optimization] 실시간 통계 캐싱
     this.professionCounts = {
@@ -125,6 +131,15 @@ export class Village extends Entity {
         pending: this.buildingCounts.unconstructed,
       })
     }
+  }
+
+  // 💡 [주거권 연동 인구 제어] 마을에 빈 방이 있는지 확인
+  hasHousingCapacity() {
+    const totalCapacity = this.buildings
+      .filter(b => b.type === 'HOUSE' && b.isConstructed)
+      .reduce((sum, b) => sum + (b.capacity || 0), 0)
+    
+    return this.creatures.length < totalCapacity
   }
 
   update(deltaTime, world) {

@@ -78,7 +78,7 @@ export class World {
     this.quadTree = this.chunkManager
     this.maxFertility = 5000
     this.currentFertility = 5000
-    
+
     // [System Limits] 개체 생성 제한수 동기화
     this.maxCreatures = 2000
     this.maxAnimals = 1000
@@ -113,15 +113,28 @@ export class World {
   }
 
   getEntityById(id, type) {
-    // 💡 [버그 수정] id가 0일 때 falsy로 판정되어 첫 번째 타겟을 찾지 못하는 현상 방어
     if (id === undefined || id === null || !type) return null
     const t = type.toLowerCase()
+
+    // 💡 [최적화] 숫자 인덱스면 즉시 배열 접근 (O(1))
+    if (typeof id === 'number') {
+      if (t === 'creature') return this.creatures[id]
+      if (t === 'building') return this.buildings[id]
+      if (t === 'animal') return this.animals[id]
+      if (t === 'mine') return this.mines[id]
+      if (t === 'village') return this.villages[id]
+      return this.resources[id] || this.plants[id]
+    }
+
+    // 💡 [최적화] 문자열 ID면 개별 리스트에서 find (O(N)이나 호출 빈도 낮춤)
+    // 향후 정말 개체수가 많아지면 전역 Map을 유지하는 것이 좋음
     if (t === 'creature') return this.creatures.find(e => e.id === id)
     if (t === 'building') return this.buildings.find(e => e.id === id)
     if (t === 'animal') return this.animals.find(e => e.id === id)
-    if (t === 'mine') return this.mines.find(e => e.id === id) // 💡 광맥(mine) 조회 누락 수정
-    const res = this.resources.find(e => e.id === id)
-    return res || this.plants.find(e => e.id === id)
+    if (t === 'mine') return this.mines.find(e => e.id === id)
+    if (t === 'village') return this.villages.find(e => e.id === id)
+
+    return this.resources.find(e => e.id === id) || this.plants.find(e => e.id === id)
   }
 
   initSharedState(buffers) {
@@ -189,7 +202,14 @@ export class World {
   removePlant(plant) { this.brain.spawner.removePlant(this, plant) }
   spawnResource(x, y, type) { return this.onProxyAction ? this.onProxyAction({ type: 'SPAWN_RESOURCE', payload: { x, y, type } }) : this.brain.spawner.spawnResource(this, x, y, type) }
   removeResource(resource) { this.brain.spawner.removeResource(this, resource) }
-  setWeather(type) { return this.onProxyAction ? this.onProxyAction({ type: 'SET_WEATHER', payload: { type } }) : this.brain.spawner.setWeather(this, type) }
+  setWeather(type) {
+    if (this.weather) { this.weather.weatherType = type; this.weather.weatherTimer = 30000; }
+    return this.onProxyAction ? this.onProxyAction({ type: 'SET_WEATHER', payload: { type } }) : this.brain.spawner.setWeather(this, type)
+  }
+  setTimeOfDay(time) {
+    if (this.timeSystem) this.timeSystem.timeOfDay = time;
+    return this.onProxyAction ? this.onProxyAction({ type: 'SET_TIME', payload: { time } }) : this.brain.spawner.setTimeOfDay(this, time)
+  }
   spawnTornado(x, y) { return this.onProxyAction ? this.onProxyAction({ type: 'SPAWN_TORNADO', payload: { x, y } }) : this.brain.spawner.spawnTornado(this, x, y) }
   triggerEarthquake() { return this.onProxyAction ? this.onProxyAction({ type: 'TRIGGER_EARTHQUAKE' }) : this.brain.spawner.triggerEarthquake(this) }
   loadCreatures(data) { this.brain.spawner.loadCreatures(this, data) }

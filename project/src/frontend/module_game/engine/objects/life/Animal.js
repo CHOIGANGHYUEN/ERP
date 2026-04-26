@@ -21,6 +21,8 @@ export class Animal extends Entity {
 
     this.color = type === 'CARNIVORE' ? '#e67e22' : '#ecf0f1'
     this.resourceTimer = 0
+    this.bloodTimer = 0
+    this.matingCooldown = 0
 
     this.brain.init(this)
   }
@@ -30,12 +32,36 @@ export class Animal extends Entity {
   update(deltaTime, world) {
     if (this.isDead) return
 
+    // 💡 [버그 수정] 동물 종(Species)에 따른 육식/초식 본능 강제 교정 (매머드가 육식하는 현상 방지)
+    if (this.species && !this._dietEnforced) {
+      const HERBIVORES = ['ELEPHANT', 'MAMMOTH', 'COW', 'SHEEP', 'DEER', 'BOAR', 'RABBIT']
+      const CARNIVORES = ['WOLF', 'LION', 'TIGER', 'BEAR', 'FOX']
+      if (HERBIVORES.includes(this.species)) this.type = 'HERBIVORE'
+      else if (CARNIVORES.includes(this.species)) this.type = 'CARNIVORE'
+      this._dietEnforced = true
+    }
+
+    // 💡 [추가] 생태계 시스템: 동물의 주기적인 배변으로 땅에 '비료(fertilizer)' 생성
+    this.poopTimer = (this.poopTimer || 0) + deltaTime
+    // 덩치가 클수록 배변 주기가 길어짐 (예: 15초 ~ 40초 주기)
+    const poopInterval = 15000 + (this.baseSize || 10) * 1000
+    if (this.poopTimer > poopInterval) {
+      this.poopTimer = 0
+      if (world.spawnResource) {
+        world.spawnResource(this.x + (Math.random() - 0.5) * 20, this.y + (Math.random() - 0.5) * 20, 'fertilizer')
+      }
+    }
+
     // [SAB 수정] 애니메이션 프레임 업데이트 로직
     this.lastFrameTime += deltaTime
     if (this.lastFrameTime >= this.frameInterval) {
       this.currentFrame = (this.currentFrame + 1) % 5
       this.lastFrameTime = 0
     }
+    if (this.bloodTimer > 0) this.bloodTimer -= deltaTime
+    if (this.matingCooldown > 0) this.matingCooldown -= deltaTime
+
+    this.age += deltaTime / 1000 // 나이(생존 시간) 증가
 
     if (this.energy <= 0) {
       this.die(world)
@@ -53,27 +79,27 @@ export class Animal extends Entity {
         this.resourceTimer = 0
         // 주민이 근처에 있다면 주민의 피로/허기를 조금 줄여주거나 자원을 드랍
         // [Optimization] world.creatures.filter(O(N)) 대신 ChunkManager.query(O(1)) 사용
-        const nearby = world.chunkManager.query({ 
-           x: this.x - 100, y: this.y - 100, width: 200, height: 200 
+        const nearby = world.chunkManager.query({
+          x: this.x - 100, y: this.y - 100, width: 200, height: 200
         })
-        
+
         let hasFarmer = false
         for (const c of nearby) {
-           if (c._type !== 'creature' || c.isDead) continue
-           if (this.distanceTo(c) > 100) continue
+          if (c._type !== 'creature' || c.isDead) continue
+          if (this.distanceTo(c) > 100) continue
 
-           // 근처 주민 감성 증가 (피로 감소, 동물 구경)
-           c.needsFatigue = Math.max(0, c.needsFatigue - 5)
-           if (c.profession === 'FARMER') hasFarmer = true
+          // 근처 주민 감성 증가 (피로 감소, 동물 구경)
+          c.needsFatigue = Math.max(0, c.needsFatigue - 5)
+          if (c.profession === 'FARMER') hasFarmer = true
         }
-        
+
         // 농부가 곁에 있거나 어른(크기>=1)으로 다 자랐으면 우유나 고기 자원 약간 생성
         if (hasFarmer && growthRatio >= 0.8) {
-           world.spawnResource(
-              this.x + (Math.random() - 0.5) * 20,
-              this.y + (Math.random() - 0.5) * 20,
-              Math.random() > 0.5 ? 'milk' : 'meat'
-           )
+          world.spawnResource(
+            this.x + (Math.random() - 0.5) * 20,
+            this.y + (Math.random() - 0.5) * 20,
+            Math.random() > 0.5 ? 'milk' : 'meat'
+          )
         }
       }
     }
@@ -98,7 +124,7 @@ export class Animal extends Entity {
       world.animals.pop()
       if (world.animalPool) world.animalPool.push(this) // 4.2 최적화: 죽은 동물을 풀에 반납
     }
-    
+
     // 사냥 보상으로 식량 대량 드랍 (육식 5개, 초식 3개)
     const dropAmount = this.type === 'CARNIVORE' ? 5 : 3
     for (let i = 0; i < dropAmount; i++) {

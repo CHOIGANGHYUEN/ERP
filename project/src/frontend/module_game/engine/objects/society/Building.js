@@ -10,6 +10,7 @@ export class Building extends Entity {
 
     const typeProps = {
       TOWN_HALL: { size: 48, color: '#f1c40f', maxProgress: 500 },
+      CAMPFIRE: { size: 16, color: '#e67e22', maxProgress: 60 }, // 💡 마을 정착의 상징
       HOUSE: { size: 24, color: '#e74c3c', maxProgress: 100 },
       SCHOOL: { size: 32, color: '#3498db', maxProgress: 200 },
       FARM: { size: 36, color: '#27ae60', maxProgress: 120 },
@@ -31,12 +32,25 @@ export class Building extends Entity {
     this.upgradeTimer = 0
     this.effectTimer = 0
 
+    // 💡 [농사 기능] 농장의 경우 10x10 농지 매트릭스 초기화
+    if (this.type === 'FARM') {
+      this.crops = []
+      for (let i = 0; i < 100; i++) {
+        this.crops.push({
+          id: i,
+          status: 'EMPTY', // EMPTY, PLANTED, GROWING, RIPE
+          growth: 0,
+          moisture: 100
+        })
+      }
+    }
+
     if (this.type === 'FENCE_GATE') {
       this.isLocked = true
     }
 
     if (this.type === 'HOUSE') {
-      this.capacity = 2 * this.tier
+      this.capacity = 4 // 💡 최대 인원 4인 고정
       this.occupants = []
     }
 

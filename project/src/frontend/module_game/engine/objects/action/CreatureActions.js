@@ -76,6 +76,10 @@ export const CreatureActions = {
     [DRIVE.SLEEP]: safe((creature, payload, _world) => {
       const target = payload.house || payload.village
       if (target) {
+        // 💡 [중복 방지] 이미 자러 가고 있다면 추가하지 않음
+        const already = (creature.taskQueue || []).some(t => t.type === 'SLEEPING' || t.type === 'SLEEP')
+        if (already) return
+
         creature.taskQueue.push(new MoveTask(target, target.radius || 40))
         creature.taskQueue.push(new SleepTask(target))
       }
@@ -83,6 +87,10 @@ export const CreatureActions = {
     [DRIVE.EAT]: safe((creature, payload, _world) => {
       const target = payload.food || payload.village
       if (target) {
+        // 💡 [중복 방지] 이미 먹으러 가고 있다면 추가하지 않음
+        const already = (creature.taskQueue || []).some(t => t.type === 'EATING' || t.type === 'EAT')
+        if (already) return
+
         creature.taskQueue.push(new MoveTask(target, target.radius || 40))
         creature.taskQueue.push(new EatTask(target))
       }

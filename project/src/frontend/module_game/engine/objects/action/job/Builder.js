@@ -125,7 +125,7 @@ export const BUILDER = (creature, world) => {
                 // 2. 바다/산맥인지 확인
                 if (validTerrain) {
                   const t = world.terrain[tidx]
-                  if (t === 2 || t >= 3) validTerrain = false
+                  if (t === 2 || t >= 4) validTerrain = false
                 }
               }
               

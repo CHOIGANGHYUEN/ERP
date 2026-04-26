@@ -31,7 +31,7 @@ export const AnimalSet = {
         const candidates = world.chunkManager.query(searchRange)
 
         // 2. 욕구 판단에 따른 새로운 행동(Action) 상태 개시(Start)
-        const drive = AnimalEmotion.evaluateSurvivalNeeds(animal, candidates)
+        const drive = AnimalEmotion.evaluateSurvivalNeeds(animal, candidates, world)
         if (drive && AnimalActions[drive.action]) {
           const actionObj = AnimalActions[drive.action]
           if (actionObj.start) actionObj.start(animal, drive.target, world)

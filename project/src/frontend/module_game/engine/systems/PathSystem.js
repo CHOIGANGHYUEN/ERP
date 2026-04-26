@@ -7,7 +7,7 @@ let lastCacheCleanup = Date.now()
 // 💡 [최적화] 프레임당 최대 길찾기 호출 수 제한 (Throttling)
 let globalPathCallCount = 0
 let lastGlobalTick = 0
-const MAX_GLOBAL_PATH_CALLS_PER_TICK = 30 // 한 틱(약 16ms) 동안 최대 30회만 정밀 길찾기 허용
+const MAX_GLOBAL_PATH_CALLS_PER_TICK = 100 // 한 틱(약 16ms) 동안 최대 100회만 정밀 길찾기 허용
 
 // 💡 [프리징 방어] 스로틀링 발생 시 경로 없음(null)과 구분하기 위한 상수
 export const PATH_THROTTLED = Symbol('PATH_THROTTLED')
@@ -23,9 +23,8 @@ export class PathSystem {
     this.decayTimer = 0
     this.currentDecayIndex = 0 // 분산 처리를 위한 인덱스
 
-    // [New] Dynamic Obstacles
-    this.obstacles = new Uint8Array(this.cols * this.rows)
-    this.obstacleUpdateTimer = 0
+    // [New] Dynamic Obstacles - [REMOVED] 건물 충돌은 지형 엔진에서 평지로 간주함
+    this.obstacles = null 
   }
 
   initSharedState(world) {
@@ -89,32 +88,8 @@ export class PathSystem {
 
       this.currentDecayIndex = (this.currentDecayIndex + 1) % totalCells
     }
-
-    // 💡 [Dynamic Collision Map] 1초에 한 번 동적 오브젝트(건물 등)를 충돌 맵에 렌더링
-    if (world) {
-      this.obstacleUpdateTimer += deltaTime
-      if (this.obstacleUpdateTimer >= 1000) {
-        this.obstacleUpdateTimer = 0
-        this.obstacles.fill(0)
-        
-        // 건물들을 순회하며 공간을 1로 마킹
-        world.buildings.forEach((b) => {
-          if (!b.x || !b.y || !b.size) return
-          // 건물 중심에서 사이즈 절반만큼 영역 차지
-          const halfSize = (b.size / 2) * 0.8 // 약간의 여유(0.8)를 두어 옆으로 지나갈 수 있게 함
-          const startX = Math.max(0, Math.floor((b.x - halfSize) / this.gridSize))
-          const endX = Math.min(this.cols - 1, Math.ceil((b.x + halfSize) / this.gridSize))
-          const startY = Math.max(0, Math.floor((b.y - halfSize) / this.gridSize))
-          const endY = Math.min(this.rows - 1, Math.ceil((b.y + halfSize) / this.gridSize))
-          
-          for (let y = startY; y <= endY; y++) {
-            for (let x = startX; x <= endX; x++) {
-              this.obstacles[y * this.cols + x] = 1
-            }
-          }
-        })
-      }
-    }
+    
+    // 💡 [건물 충돌 맵 업데이트 중단] 사용자 요청: 높은 산, 바다 외에는 장애물이 아님
   }
 }
 
@@ -204,7 +179,7 @@ export function findPath(world, start, target) {
     return null
   }
 
-  // 💡 [프리징 원천 차단] 2초 이내에 길찾기에 실패했던 동일한 경로면 연산 없이 즉시 null 반환 (호출 스팸 방어)
+  // 💡 [프리징 방어] 2초 이내에 길찾기에 실패했던 동일한 경로면 연산 없이 즉시 null 반환 (호출 스팸 방어)
   const cacheKey = `${startCoord.x},${startCoord.y}->${targetCoord.x},${targetCoord.y}`
   if (pathFailCache.has(cacheKey) && now - pathFailCache.get(cacheKey) < 2000) {
     return null
@@ -220,7 +195,7 @@ export function findPath(world, start, target) {
   pq.enqueue(heuristic(startCoord, targetCoord), startCoord)
 
   let iterationCount = 0
-  const MAX_ITERATIONS = 4000 // 💡 [안정화] 탐색 한도를 4000으로 대폭 상향 (맵 전체 탐색 능력 강화)
+  const MAX_ITERATIONS = 20000 // 💡 [최종 상향] 200x200 그리드 전역 탐색을 위해 2만회로 상향
 
   while (!pq.isEmpty()) {
     iterationCount++
@@ -259,37 +234,23 @@ export function findPath(world, start, target) {
 
       // 💡 [결함 방어] 대각선 이동 시 사이 타일이 벽이면 통과 불가 (Corner Clipping 방지)
       if (neighbor.isDiag) {
-        const s1Type = world.terrain ? world.terrain[(current.y + neighbor.side1.y) * cols + (current.x + neighbor.side1.x)] : 0
-        const s2Type = world.terrain ? world.terrain[(current.y + neighbor.side2.y) * cols + (current.x + neighbor.side2.x)] : 0
+        const terrain = world.terrain || (world.views && world.views.terrain)
+        const s1Type = terrain ? terrain[(current.y + neighbor.side1.y) * cols + (current.x + neighbor.side1.x)] : 0
+        const s2Type = terrain ? terrain[(current.y + neighbor.side2.y) * cols + (current.x + neighbor.side2.x)] : 0
         const isS1Wall = (TERRAIN_COST[s1Type] === Infinity)
         const isS2Wall = (TERRAIN_COST[s2Type] === Infinity)
         
-        // 동적 장애물(건물) 체크
-        let isS1Obs = false, isS2Obs = false
-        if (world.pathSystem && world.pathSystem.obstacles) {
-          isS1Obs = world.pathSystem.obstacles[(current.y + neighbor.side1.y) * cols + (current.x + neighbor.side1.x)] === 1
-          isS2Obs = world.pathSystem.obstacles[(current.y + neighbor.side2.y) * cols + (current.x + neighbor.side2.x)] === 1
-        }
-        
-        if ((isS1Wall || isS1Obs) && (isS2Wall || isS2Obs)) continue // 양쪽이 막히면 대각선 통과 불가
+        if (isS1Wall && isS2Wall) continue // 양쪽이 막히면 대각선 통과 불가
       }
 
       // 💡 [Cost Map] 지형 정보에 따른 이동 비용 차등 연산
       let terrainCost = neighbor.cost // 기본 비용 (1.0 or 1.414)
-      if (world.terrain) {
-        const type = world.terrain[neighbor.y * cols + neighbor.x]
+      const terrain = world.terrain || (world.views && world.views.terrain)
+      if (terrain) {
+        const type = terrain[neighbor.y * cols + neighbor.x]
         const costWeight = TERRAIN_COST[type] ?? 1.0
         if (costWeight === Infinity) continue // 💡 [장애물 판정] 이동 불가 지형은 제외
         terrainCost *= costWeight // 지형 가중치 곱산
-      }
-
-      // 💡 [Dynamic Collision] 생성된 동적 충돌 맵 적용 (건물 등)
-      if (world.pathSystem && world.pathSystem.obstacles) {
-        if (world.pathSystem.obstacles[neighbor.y * cols + neighbor.x] === 1) {
-          if (Math.abs(neighbor.x - targetCoord.x) > 1 || Math.abs(neighbor.y - targetCoord.y) > 1) {
-            continue
-          }
-        }
       }
 
       // 💡 [Phase 5: Path Integration] 누적된 우회로(Pheromone)를 반영하여 비용 절감
@@ -355,12 +316,10 @@ function reconstructPath(cameFrom, current, gridSize) {
 function findNearestValidTile(world, gx, gy, cols, rows) {
   const isPosValid = (x, y) => {
     if (x < 0 || x >= cols || y < 0 || y >= rows) return false
-    if (world.terrain) {
-      const type = world.terrain[y * cols + x]
+    const terrain = world.terrain || (world.views && world.views.terrain)
+    if (terrain) {
+      const type = terrain[y * cols + x]
       if (TERRAIN_COST[type] === Infinity) return false
-    }
-    if (world.pathSystem && world.pathSystem.obstacles) {
-      if (world.pathSystem.obstacles[y * cols + x] === 1) return false
     }
     return true
   }

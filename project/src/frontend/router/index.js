@@ -147,6 +147,12 @@ const router = createRouter({
           component: () => import('@/frontend/module_game/GameView.vue'),
           meta: { requiresAuth: true },
         },
+        {
+          path: 'worldbox',
+          name: 'worldbox',
+          component: () => import('@/frontend/module_worldbox/ui/views/WorldboxView.vue'),
+          meta: { requiresAuth: false },
+        },
         // Future routes like /fi, /hr will go here
       ],
     },

@@ -173,10 +173,12 @@
           <strong>📝 할일 목록 (Task Queue):</strong>
           <ul class="task-queue-list">
             <template v-if="entityData.taskQueue && entityData.taskQueue.length > 0">
-              <li v-for="(task, idx) in entityData.taskQueue" :key="idx" :class="{ 'current-task': idx === 0 }">
+              <li v-for="(task, idx) in entityData.taskQueue.filter(t => t.type !== 'WANDERING')" :key="idx" :class="{ 'current-task': idx === 0 }">
                 <span class="queue-num">{{ idx + 1 }}</span>
                 <span class="queue-type">{{ translateKey(task.type) }}</span>
-                <span v-if="task.targetType" class="queue-target"> → {{ translateKey(task.targetType) }}</span>
+                <span v-if="task.targetType && task.targetType !== 'NONE'" class="queue-target"> 
+                  → {{ translateKey(task.targetType) }}{{ task.targetName ? ` (${task.targetName})` : '' }}
+                </span>
                 <span :class="statusClass(task.status)"> [{{ translateKey(task.status) }}]</span>
               </li>
             </template>
@@ -222,6 +224,7 @@ const getEntityTypeName = (entity) => {
     WAREHOUSE: '창고',
     MARKET: '시장',
     TAVERN: '선술집',
+    CAMPFIRE: '모닥불',
   }
   if (buildingTypes[entity.type]) return `건물 (${buildingTypes[entity.type]})`
 
@@ -300,6 +303,7 @@ const translateKey = (key) => {
     village: '마을',
     building: '건물',
     creature: '주민',
+    CAMPFIRE: '모닥불',
   }
   return dict[key] || key
 }

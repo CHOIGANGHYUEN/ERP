@@ -8,17 +8,17 @@ export class Mine extends Entity {
     this.size = 20
 
     const MINE_PROPS = {
-      stone: { color: '#7f8c8d', energy: 1500 },
-      coal: { color: '#2c3e50', energy: 1000 },
-      copper: { color: '#d35400', energy: 1200 },
-      iron: { color: '#e67e22', energy: 800 },
-      silver: { color: '#bdc3c7', energy: 600 },
-      gold: { color: '#f1c40f', energy: 500 },
-      diamond: { color: '#00cec9', energy: 2000 },
-      ruby: { color: '#e74c3c', energy: 1800 },
-      emerald: { color: '#2ecc71', energy: 1800 },
-      sapphire: { color: '#0984e3', energy: 1800 },
-      uranium: { color: '#00b894', energy: 3000 },
+      stone: { color: '#7f8c8d', energy: 2000 },
+      coal: { color: '#2c3e50', energy: 1500 },
+      copper: { color: '#d35400', energy: 1800 },
+      iron: { color: '#e67e22', energy: 1500 },
+      silver: { color: '#bdc3c7', energy: 1200 },
+      gold: { color: '#f1c40f', energy: 1000 },
+      diamond: { color: '#00cec9', energy: 3000 },
+      ruby: { color: '#e74c3c', energy: 2500 },
+      emerald: { color: '#2ecc71', energy: 2500 },
+      sapphire: { color: '#0984e3', energy: 2500 },
+      uranium: { color: '#00b894', energy: 5000 },
     }
     const props = MINE_PROPS[this.type] || MINE_PROPS.stone
     this.color = props.color
@@ -38,14 +38,12 @@ export class Mine extends Entity {
     super.die(world)
     world.mines = world.mines.filter((m) => m !== this)
 
-    // 광물이 파괴되면 바닥에 자신의 타입과 동일한 자원(Resource)을 여러 개 드랍합니다.
-    for (let i = 0; i < 3; i++) {
-      world.spawnResource(
-        this.x + (Math.random() - 0.5) * 20,
-        this.y + (Math.random() - 0.5) * 20,
-        this.type,
-      )
-    }
+    // 광물이 완전히 파괴되면 보너스 조각 1개를 드랍합니다.
+    world.spawnResource(
+      this.x + (Math.random() - 0.5) * 20,
+      this.y + (Math.random() - 0.5) * 20,
+      this.type,
+    )
   }
 
   render(ctx) {

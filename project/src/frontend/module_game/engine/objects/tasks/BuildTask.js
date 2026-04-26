@@ -4,6 +4,7 @@ import { MoveTask } from './MoveTask.js'
 export class BuildTask extends BaseTask {
   constructor(targetBuilding) {
     super('BUILD')
+    this.name = '건설 중'
     this.target = targetBuilding
     this.startTime = Date.now()
     this.stuckTimer = 0
@@ -41,18 +42,24 @@ export class BuildTask extends BaseTask {
 
     if (dist <= buildRange) {
       creature.state = 'BUILDING'
-      // 건축 속도: 크리처 효율성 반영
-      const speed = 0.05 * (creature.workEfficiency || 1.0)
+      this._outOfRangeTimer = 0 // 거리 내에 있으면 타이머 초기화
+
+      const speed = 0.08 * (creature.workEfficiency || 1.0)
       this.target.progress += deltaTime * speed
       
       if (this.target.progress >= (this.target.maxProgress || 100)) {
+        this.target.progress = this.target.maxProgress 
         this.target.isConstructed = true
         return 'COMPLETED'
       }
     } else {
-      // 💡 [건축 집중력] 거리가 멀어지면 FAILED를 즉시 뱉지 않고 
-      // 잠시 기다리거나 MoveTask로 다시 돌아가도록 유도 (WorkSystem에서 보완)
-      return 'FAILED'
+      // 💡 [유지력 강화] 거리가 멀어졌다고 바로 FAILED 하지 않고 3초간 기회를 줌
+      this._outOfRangeTimer = (this._outOfRangeTimer || 0) + deltaTime
+      if (this._outOfRangeTimer > 3000) return 'FAILED'
+      
+      // 다시 다가가도록 유도
+      creature.moveToTarget(this.target.x, this.target.y, deltaTime, world)
+      return 'RUNNING'
     }
 
     return 'RUNNING'
@@ -63,10 +70,10 @@ export class BuildTask extends BaseTask {
       this.target.isTargeted = false
       if (this.target.village) {
         this.target.village.updateBuildingStatus(true)
-        // 💡 게시판에서 작업 제거 (중복 할당 방지 핵심)
+        // 💡 [버그 수정] 게시판 등록 ID와 형식을 맞춤 (build-{id})
         if (world.taskBoardService) {
           const vIdx = world.villages.indexOf(this.target.village)
-          world.taskBoardService.completeTask(vIdx, this.target.id)
+          world.taskBoardService.completeTask(vIdx, `build-${this.target.id}`)
         }
       }
       world.broadcastEvent(`🏗️ ${this.target.type} 건설 완료!`, '#2ecc71')

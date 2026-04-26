@@ -180,6 +180,7 @@ export class BufferSyncSystem {
         villages[offset + PROPS.VILLAGE.B] = color.b
         villages[offset + PROPS.VILLAGE.POPULATION] = v.creatures?.length || 0
         villages[offset + PROPS.VILLAGE.BUILDING_COUNT] = v.buildings?.length || 0
+        villages[offset + PROPS.VILLAGE.LEADER_ID] = v.leaderId !== undefined ? v.leaderId : -1
       })
 
       world.disasterSystem.tornadoes.forEach((t, i) => {

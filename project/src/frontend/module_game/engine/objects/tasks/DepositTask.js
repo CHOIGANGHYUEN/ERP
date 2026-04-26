@@ -4,6 +4,7 @@ import { CreatureEmotion } from '../emotions/CreatureEmotion.js'
 export class DepositTask extends BaseTask {
   constructor(village) {
     super('DEPOSIT')
+    this.name = '창고 납부 중'
     this.village = village
     this.depositTimer = 0  // 납부 애니메이션 지속 시간
   }
@@ -16,36 +17,41 @@ export class DepositTask extends BaseTask {
       return this.status
     }
 
-    if (creature.distanceTo(this.village) <= this.village.radius || creature.distanceTo(this.village) < 50) {
+    if (creature.distanceTo(this.village) <= 60) {
       // 창고납부 중 상태로 전환 (애니메이션)
       creature.state = 'DEPOSITING'
 
       // 납부 애니메이션을 짧게(800ms) 보여준 뒤 실제 처리
       this.depositTimer += deltaTime
       if (this.depositTimer < 800) {
-        return this.status  // 애니메이션 재생 중
+        return this.status 
       }
 
-      // 창고에 인벤토리 아이템 적재
-      this.village.inventory.biomass += creature.inventory.biomass || 0
-      this.village.inventory.wood    += creature.inventory.wood    || 0
-      this.village.inventory.food    += creature.inventory.food    || 0
-      this.village.inventory.stone   += creature.inventory.stone   || 0
-      this.village.inventory.iron    += creature.inventory.iron    || 0
-      this.village.inventory.gold    += creature.inventory.gold    || 0
+      // 창고에 인벤토리 아이템 적재 (안전한 합산)
+      const inv = this.village.inventory
+      if (inv) {
+        let totalDeposited = 0
+        Object.keys(creature.inventory).forEach(key => {
+          const amount = creature.inventory[key] || 0
+          if (amount > 0) {
+            inv[key] = (inv[key] || 0) + amount
+            totalDeposited += amount
+          }
+        })
+
+        // 💡 [로그 최적화] 개별 입고 로그는 스팸성이 짙으므로 말풍선으로만 표시하거나 생략함
+        if (totalDeposited > 0) {
+          world.showSpeechBubble(creature.id, 'creature', `📦 +${totalDeposited}`, 1500)
+        }
+      }
       
-      // 인벤토리 초기화
+      // 소지품 확실히 비우기
       creature.inventory = { wood: 0, biomass: 0, food: 0, stone: 0, iron: 0, gold: 0 }
-
-      // 집에 온 김에 마을 창고에 먹을 게 있으면 먹기
-      if (creature.needs.hunger > 50 && this.village.inventory.food > 0) {
-        this.village.inventory.food--
-        CreatureEmotion.fulfillHunger(creature)
-      }
+      creature.state = 'IDLE'
 
       this.status = 'COMPLETED'
     } else {
-      // 창고로 이동 중
+      // 💡 [수정] 이미 MoveTask가 여기까지 데려왔어야 하지만, 만약 멀다면 강제 이동 시도
       creature.moveToTarget(this.village.x, this.village.y, deltaTime, world)
     }
 

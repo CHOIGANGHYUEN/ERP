@@ -108,12 +108,15 @@ self.onmessage = (e) => {
         const nation = world.nations.find((n) => n.id === payload.id)
         if (nation) {
           const diplomacy = {}
-          for (const [otherNation, relation] of nation.diplomacy.entries()) {
-            diplomacy[otherNation.name] = {
-              status: relation.status,
-              score: Math.round(relation.score),
+          Object.entries(nation.diplomacy || {}).forEach(([otherId, relation]) => {
+            const otherNation = world.nations.find((n) => n.id === otherId)
+            if (otherNation) {
+              diplomacy[otherNation.name] = {
+                status: relation.status,
+                score: Math.round(relation.score),
+              }
             }
-          }
+          })
 
           const nationInventory = { food: 0, wood: 0, stone: 0, iron: 0, gold: 0, knowledge: 0 }
           nation.villages.forEach((v) => {
@@ -139,26 +142,30 @@ self.onmessage = (e) => {
             },
           })
         }
-      } else if (type === 'REQUEST_ENTITY_DETAILS') {
+      } else if (type === 'GET_ENTITY_DETAILS') { // 💡 REQUEST_ENTITY_DETAILS -> GET_ENTITY_DETAILS 로 수정
         let extInfo = {}
         if (payload.type === 'creature') {
-          // 💡 [핵심 버그 수정] payload.id는 메인 스레드 프록시의 배열 인덱스입니다.
-          // c.id (문자열)과 payload.id (숫자)를 비교하면 항상 undefined가 반환되어 taskQueue가 비어있게 됩니다.
-          const creature = world.creatures[payload.id]
+          // 💡 [핵심] payload.id로 월드 내 개체를 정확히 참조
+          const creature = world.getEntityById(payload.id, payload.type)
           if (creature) {
-            // 💡 [핵심 수정] taskQueue를 UI에 표시할 수 있는 순수 객체로 직렬화
-            const serializeTask = (t) => ({
-              type: t.type || t.constructor?.name || 'UNKNOWN',
-              status: t.status || 'PENDING',
-              name: t.name || t.type || '\uc791\uc5c5',
-              targetType: t.target?._type || t.target?.type || null,
-              targetId: t.target?.id !== undefined ? t.target?.id : null,
-            })
+            // 태스크 정보를 UI용 순수 객체로 변환
+            const serializeTask = (t) => {
+              // 💡 t.name(MOVE, HARVEST 등)을 type으로 사용하여 UI 번역기와 매칭
+              const type = t.name || t.constructor?.name?.replace('Task', '').toUpperCase() || 'UNKNOWN'
+              return {
+                type: type,
+                status: t.status || 'RUNNING',
+                targetType: t.target?.type || t.target?._type || 'NONE',
+                targetName: t.target?.name || ''
+              }
+            }
+            
             extInfo = {
               inventory: creature.inventory ? { ...creature.inventory } : {},
-              taskQueue: creature.taskQueue
-                ? creature.taskQueue.map(serializeTask)
+              taskQueue: Array.isArray(creature.taskQueue) 
+                ? creature.taskQueue.map(serializeTask) 
                 : [],
+              target: creature.target ? { id: creature.target.id, type: creature.target._type || creature.target.type } : null
             }
           }
         }

@@ -116,9 +116,7 @@ export class Creature extends Entity {
     if (!this.isAdult) {
       // 아기일 때는 배회만 함
       if (Math.random() < 0.02 && !this.movement.isMoving) {
-        this.targetX = this.x + (Math.random() - 0.5) * 100
-        this.targetY = this.y + (Math.random() - 0.5) * 100
-        this.movement.isMoving = true // 시스템이 이를 감지하여 경로를 생성할 것임
+        this.moveToTarget(this.x + (Math.random() - 0.5) * 100, this.y + (Math.random() - 0.5) * 100, deltaTime, world)
       }
       return
     }
@@ -172,17 +170,19 @@ export class Creature extends Entity {
   }
 
   moveToTarget(tx, ty, deltaTime, world) {
-    // 목표가 이미 설정되어 있고, 거정도가 매우 가깝다면 리셋하지 않음 (지그재그 및 멈춤 방지)
-    if (this.targetPos && Math.abs(this.targetPos.x - tx) < 5 && Math.abs(this.targetPos.y - ty) < 5) {
-      this.movement.isMoving = true
-      return
+    // 💡 [경로 보존 가드] 이미 유효한 경로(path)가 있고 목적지가 같다면 초기화(리셋)하지 않음
+    if (this.targetPos && Math.abs(this.targetPos.x - tx) < 8 && Math.abs(this.targetPos.y - ty) < 8) {
+      if (this.movement.path && this.movement.path.length > 0) {
+        this.movement.isMoving = true
+        return
+      }
     }
 
     // 이제 능동적으로 이동하지 않고, targetPos만 설정하여 시스템이 처리하도록 위임
     this.targetPos = { x: tx, y: ty }
     this.movement.isMoving = true
     this.movement.currentWaypointIndex = 0
-    this.movement.path = [] // 새 목표이므로 경로 초기화 (MovementSystem이 다음 틱에 재생성)
+    this.movement.path = [] // 새 목표인 경우에만 경로 초기화 (MovementSystem이 다음 틱에 재생성)
   }
 
   assignProfession(world) {
@@ -206,36 +206,43 @@ export class Creature extends Entity {
       return
     }
 
-    // [Step 2] 부지 선정 및 신규 건설 계획 (Phased Progression)
-    const isScout = ['WARRIOR', 'EXPLORER', 'LEADER'].includes(this.profession)
-    const radius = customRadius || (this.village ? this.village.radius * 0.9 : 100)
+    // [Step 2] 부지 선정 및 신규 건설 계획 (마을 중심 배회 강화)
+    const radius = customRadius || (this.village ? this.village.radius * 0.7 : 100) // 💡 반경 축소 (0.9 -> 0.7)
     
     let tx, ty
-    const maxAttempts = 10
+    const maxAttempts = 15 // 💡 시도 횟수 상향
     let found = false
+    const scanRadius = radius
 
-    if (this.village && !isScout && world.territory) {
-      const vIdx = world.villages ? world.villages.indexOf(this.village) + 1 : 0
+    for (let i = 0; i < maxAttempts; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const dist = Math.random() * scanRadius
+      // 💡 [핵심] 마을 소속이면 무조건 마을 중심점 근처를 타겟팅
+      const candidateX = this.village ? this.village.x + Math.cos(angle) * dist : this.x + Math.cos(angle) * dist
+      const candidateY = this.village ? this.village.y + Math.sin(angle) * dist : this.y + Math.sin(angle) * dist
       
-      for (let i = 0; i < maxAttempts; i++) {
-        const angle = Math.random() * Math.PI * 2
-        const dist = Math.random() * radius
-        const candidateX = this.village.x + Math.cos(angle) * dist
-        const candidateY = this.village.y + Math.sin(angle) * dist
+      const vIdx = this.village ? (world.villages?.indexOf(this.village) + 1 || 0) : 0
+      const gX = Math.floor(candidateX / 16), gY = Math.floor(candidateY / 16)
+      
+      if (world.territory) {
+        if (gX < 0 || gX >= 200 || gY < 0 || gY >= 200) continue
+        const terrOwner = world.territory[gY * 200 + gX]
+        if (terrOwner !== vIdx && terrOwner !== 0) continue // 남의 땅은 안 감
         
-        // 영토 밖으로 배회하는지 최종 검증
-        const gX = Math.floor(candidateX / 16), gY = Math.floor(candidateY / 16)
-        if (world.territory[gY * 200 + gX] === vIdx) {
-          tx = candidateX
-          ty = candidateY
-          found = true
-          break
+        // 추가: 바다인지 체크 (Water-Prevention)
+        const terrain = world.terrain || (world.views && world.views.terrain)
+        if (terrain) {
+          const tType = terrain[gY * 200 + gX]
+          if (tType === 3 || tType === 2 || tType >= 4) continue // 물/높은산 금지
         }
+
+        tx = candidateX; ty = candidateY; found = true; break
       }
     }
     
     if (!found) {
-      const freeRadius = customRadius || 500
+      // 💡 [Fallback] 마을이 없는 경우에도 근처 150px 이내로만 배회
+      const freeRadius = this.village ? 50 : 150
       tx = this.x + (Math.random() - 0.5) * freeRadius
       ty = this.y + (Math.random() - 0.5) * freeRadius
     }

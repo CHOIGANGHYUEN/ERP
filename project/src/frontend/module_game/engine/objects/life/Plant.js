@@ -13,7 +13,7 @@ export class Plant extends Entity {
     this.maxSize = this.size
     this.maxAge = type === 'tree' ? 10000 + Math.random() * 5000 : 3000 + Math.random() * 2000
     this.color = type === 'tree' ? '#1e8449' : type === 'crop' ? '#f7b731' : '#26de81'
-    this.energy = type === 'tree' ? 200 : type === 'crop' ? 20 : 50
+    this.energy = type === 'tree' ? 600 : type === 'crop' ? 200 : 50
     this.isImmortal = type === 'tree' // 💡 [구조 개편] 나무는 시간에 따라 늙어 죽지 않음
 
     this.brain.init(this)
@@ -35,16 +35,16 @@ export class Plant extends Entity {
     let fertilityRefund = 1
 
     if (this.type === 'tree') {
-      amount = 5 + Math.floor(Math.random() * 3) // 5+ 자원 반환
+      amount = 1 + Math.floor(Math.random() * 2) // 보너스 자원 (1~2개)
       resourceType = 'wood'
-      fertilityRefund = 10 // 나무 비옥도 환불
+      fertilityRefund = 10 
     } else if (this.type === 'crop') {
-      amount = 2 + (this.size >= this.maxSize * 0.8 ? 2 : 0) // 기본 2+, 다 자랐으면 추가
+      amount = 1 
       resourceType = 'food'
-      fertilityRefund = 1 // 농작물 비옥도 환불
+      fertilityRefund = 1
     } else if (this.type === 'grass') {
-      amount = 0 // 풀은 아무런 자원을 남기지 않음
-      fertilityRefund = 1 // 풀 비옥도 환불
+      amount = 0 
+      fertilityRefund = 1 
     }
 
     // 비옥도 환급

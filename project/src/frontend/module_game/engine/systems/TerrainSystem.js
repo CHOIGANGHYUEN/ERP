@@ -88,7 +88,7 @@ export const TERRAIN_COST = {
   0: 1.0,      // GRASS: 표준 이동 (비용 1.0)
   1: 2.0,      // LOW_MOUNTAIN: 이동 효율 저하 (비용 2.0)
   2: Infinity, // HIGH_MOUNTAIN: 이동 불가
-  3: 15.0,     // SHALLOW_SEA: 수영 가능 (비용 15.0 - 육로가 없을 때만 선택)
+  3: Infinity, // SHALLOW_SEA: 이동 불가 (수정)
   4: Infinity, // DEEP_SEA: 이동 불가
   5: Infinity  // ABYSS: 이동 불가
 }
