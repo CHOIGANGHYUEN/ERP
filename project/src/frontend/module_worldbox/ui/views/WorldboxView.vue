@@ -101,6 +101,7 @@ const godTools = [
   { id: 'add_water', name: 'Ocean', icon: '💧', type: 'sprinkle', category: 'Earth' },
   
   { id: 'spawn_grass', name: 'Sprinkle Grass', icon: '🌾', type: 'sprinkle', category: 'Life' },
+  { id: 'spawn_flower', name: 'Flower', icon: '🌸', type: 'sprinkle', category: 'Life' },
   { id: 'spawn_sheep', name: 'Sheep', icon: '🐑', type: 'spawn', category: 'Life' },
   { id: 'spawn_human', name: 'Human', icon: '👤', type: 'spawn', category: 'Life' },
   { id: 'spawn_cow', name: 'Cow', icon: '🐄', type: 'spawn', category: 'Life' },

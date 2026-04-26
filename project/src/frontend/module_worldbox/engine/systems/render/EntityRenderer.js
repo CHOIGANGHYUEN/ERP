@@ -51,6 +51,11 @@ export default class EntityRenderer {
 
                 if (v.type === 'sheep') {
                     this.drawSheep(ctx, t, v, entity, time);
+                } else if (v.type === 'cow') {
+                    // Reuse sheep logic but bigger/brown (temporary)
+                    this.drawSheep(ctx, t, v, entity, time);
+                } else if (v.type === 'flower') {
+                    this.drawFlower(ctx, t, v, entity, time, wind);
                 } else if (v.type === 'poop') {
                     this.drawPoop(ctx, t, v, entity, time);
                 } else if (v.icon) {
@@ -59,22 +64,46 @@ export default class EntityRenderer {
                     ctx.textBaseline = 'middle';
                     ctx.fillText(v.icon, t.x, t.y);
                 } else if (r && r.isGrass) {
-                    // NATURAL PERLIN WIND GUSTS
+                    // 🌾 ADVANCED ORGANIC GRASS RENDERING
+                    const quality = v.quality || 0.5;
                     const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
-                    const sway = wv.x;
-                    const bendY = Math.abs(sway) * 0.3;
                     
-                    const baseColor = v.color;
-                    const darkColor = this.adjustColor(baseColor, -20);
+                    // Natural oscillation (Subtle swaying)
+                    const osc = Math.sin(time * 0.005 + (t.x * 0.1) + (t.y * 0.05)) * 0.4;
+                    const windForce = (wv.x * 5) + osc; // Dampened wind influence
+                    const lean = windForce * 0.1; // More vertical by default
+                    const bend = Math.abs(lean) * 0.3;
 
-                    // Root
-                    ctx.fillStyle = darkColor;
+                    const baseColor = v.color;
+                    const highlightColor = this.adjustColor(baseColor, 40);
+                    const shadowColor = this.adjustColor(baseColor, -30);
+
+                    // 1. Root / Shadow
+                    ctx.fillStyle = shadowColor;
                     ctx.fillRect(t.x, t.y, 1, 1);
-                    
-                    // Blades
+
+                    // 2. Main Blade (Stem)
                     ctx.fillStyle = baseColor;
-                    ctx.fillRect(t.x + (sway * 0.6) - 1, t.y - 1 + bendY, 1, 1);
-                    ctx.fillRect(t.x + sway + 1, t.y - 1 + bendY, 1, 1);
+                    const height = Math.round(1 + quality * 1.5);
+                    for (let h = 1; h <= height; h++) {
+                        const hLean = (h / height) * lean;
+                        ctx.fillRect(t.x + hLean, t.y - h, 1, 1);
+                        
+                        // Add tips/highlights to the tallest blade
+                        if (h === height) {
+                            ctx.fillStyle = highlightColor;
+                            ctx.fillRect(t.x + hLean + (lean > 0 ? 0.5 : -0.5), t.y - h, 1, 1);
+                        }
+                    }
+
+                    // 3. Side Leaves (V-Shape Cluster)
+                    ctx.fillStyle = baseColor;
+                    if (quality > 0.4) {
+                        ctx.fillRect(t.x - 1 + lean * 0.5, t.y - 1 + bend, 1, 1);
+                    }
+                    if (quality > 0.7) {
+                        ctx.fillRect(t.x + 1 + lean * 0.5, t.y - 1 + bend, 1, 1);
+                    }
                 } else {
                     // Default Entity Render
                     ctx.fillStyle = v.color;
@@ -188,6 +217,46 @@ export default class EntityRenderer {
         ctx.fillRect(-1, 0, 1, 1);
 
         ctx.restore();
+    }
+
+    drawFlower(ctx, t, v, entity, time, wind) {
+        const quality = v.quality || 0.5;
+        const isWithered = quality < 0.4;
+        const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
+        
+        // Swaying (Withered flowers sway more rigidly or less)
+        const osc = Math.sin(time * 0.006 + (t.x * 0.15)) * (isWithered ? 0.3 : 0.5);
+        const lean = (wv.x * 5 + osc) * 0.15;
+
+        // 1. Stem (Healthy: Dark Green | Withered: Yellowish Brown)
+        ctx.fillStyle = isWithered ? '#8d6e63' : '#2e7d32'; 
+        ctx.fillRect(t.x, t.y, 1, 1);
+        ctx.fillRect(t.x + lean * 0.5, t.y - 1, 1, 1);
+
+        // 2. Petals (Vibrant or Desaturated)
+        const px = t.x + lean;
+        const py = t.y - 2;
+        
+        let petalColor = v.color;
+        if (isWithered) {
+            // Desaturate the color manually for withered look
+            petalColor = '#a0a0a0'; // Grayish dead look
+        }
+        ctx.fillStyle = petalColor;
+        
+        // Size scales with quality
+        const s = quality > 0.6 ? 1 : 0; 
+        
+        // Cross shape (+)
+        ctx.fillRect(px, py, 1, 1); // Center
+        ctx.fillRect(px - 1, py, 1, 1); // West
+        ctx.fillRect(px + 1, py, 1, 1); // East
+        ctx.fillRect(px, py - 1, 1, 1); // North
+        if (s > 0) ctx.fillRect(px, py + 1, 1, 1); // South 
+
+        // 3. Center (Pollen - Dulls out when withered)
+        ctx.fillStyle = isWithered ? '#d4bd8a' : '#ffeb3b';
+        ctx.fillRect(px, py, 1, 1);
     }
 
     adjustColor(color, amount) {

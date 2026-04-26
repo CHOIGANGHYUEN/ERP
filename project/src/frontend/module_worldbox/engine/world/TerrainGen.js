@@ -48,15 +48,19 @@ export default class TerrainGen {
         const biome = this.biomeBuffer[idx];
         const fertility = this.fertilityBuffer[idx] || 0;
 
-        // 🟢 FERTILITY VIEW MODE (Heatmap Style)
+        // 🟢 FERTILITY VIEW MODE (Extreme Contrast Edition)
         if (viewFlags && viewFlags.fertility) {
-            if (fertility <= 0.05) return 0x222222; // Sterile ground (Dark Gray)
+            if (fertility <= 0.02) return 0x0a0a0a; // Empty Earth (Near Black)
             
-            // Dramatic transition: Gray -> Green -> Blinding Neon Green
-            const g = Math.floor(fertility * 255);
-            const r = Math.floor(Math.pow(fertility, 3) * 100); // Slight warmth in super-rich soil
-            const b = Math.floor(Math.pow(fertility, 3) * 50);
-            return (r << 16) | (g << 8) | b;
+            // Linear but steep contrast: 
+            // 0.1: Dark Forest (#004411)
+            // 0.7: Rich Emerald (#00FF66)
+            // 1.0: Divine Mint (#00FFCC)
+            const t = (fertility - 0.1) / 0.9;
+            const r = Math.floor(0);
+            const g = Math.floor(60 + t * 195);
+            const b_val = Math.floor(20 + t * 200);
+            return (r << 16) | (g << 8) | b_val;
         }
 
         // 🎨 NORMAL BIOME RENDERING

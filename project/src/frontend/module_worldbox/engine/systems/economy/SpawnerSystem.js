@@ -31,8 +31,20 @@ export default class SpawnerSystem {
         const em = this.engine.entityManager;
         if (em.entities.size > 20000) return;
 
+        const ix = Math.floor(x);
+        const iy = Math.floor(y);
+
+        // 🛡️ ANTI-REDUNDANCY: Don't spawn if grass already exists here
+        for (const [id, entity] of em.entities) {
+            const t = entity.components.get('Transform');
+            const r = entity.components.get('Resource');
+            if (r && r.isGrass && t && Math.floor(t.x) === ix && Math.floor(t.y) === iy) {
+                return; // Already occupied!
+            }
+        }
+
         // BLUEPRINT: Consumes ALL current fertility to spawn (reset to 0.1)
-        const idx = Math.floor(y) * this.engine.mapWidth + Math.floor(x);
+        const idx = iy * this.engine.mapWidth + ix;
         const oldVal = this.engine.terrainGen.fertilityBuffer[idx];
         this.engine.terrainGen.fertilityBuffer[idx] = 0.1; // Exhaust the soil
         
@@ -64,6 +76,51 @@ export default class SpawnerSystem {
         }
     }
 
+    spawnFlower(x, y, quality) {
+        const em = this.engine.entityManager;
+        if (em.entities.size > 20000) return;
+
+        const ix = Math.floor(x);
+        const iy = Math.floor(y);
+
+        // Anti-Redundancy
+        for (const [id, entity] of em.entities) {
+            const t = entity.components.get('Transform');
+            const r = entity.components.get('Resource');
+            if (r && (r.isGrass || r.isFlower) && t && Math.floor(t.x) === ix && Math.floor(t.y) === iy) return;
+        }
+
+        // 💎 CONTEXT: Consume fertility and update stats
+        const idx = iy * this.engine.mapWidth + ix;
+        const oldVal = this.engine.terrainGen.fertilityBuffer[idx] || 0;
+        this.engine.terrainGen.fertilityBuffer[idx] = 0.1; // Exhausted
+        this.engine.updateFertilityStat(oldVal, 0.1);
+        
+        if (this.engine.viewFlags.fertility) {
+            this.engine.updateCachePixel(ix, iy);
+        }
+
+        const id = em.createEntity();
+        const entity = em.entities.get(id);
+        if (entity) {
+            const colors = ['#ff5252', '#ff4081', '#ffeb3b', '#e040fb', '#ffffff'];
+            const petalColor = colors[Math.floor(Math.random() * colors.length)];
+            
+            entity.components.set('Transform', { x, y });
+            entity.components.set('Visual', { 
+                type: 'flower',
+                color: petalColor,
+                quality: quality // 🌸 Vital for 'withered' look
+            });
+            entity.components.set('Resource', { 
+                type: 'food', 
+                value: Math.floor(quality * 15), 
+                edible: true, 
+                isFlower: true 
+            });
+        }
+    }
+
     spawnSheep(x, y, isBaby = false) {
         const em = this.engine.entityManager;
         const config = this.engine.speciesConfig['sheep'] || {};
@@ -90,6 +147,46 @@ export default class SpawnerSystem {
                 isPooping: false 
             });
             entity.components.set('AIState', { mode: 'wander', targetId: null });
+        }
+    }
+
+    spawnHuman(x, y) {
+        const em = this.engine.entityManager;
+        const config = this.engine.speciesConfig['human'] || {};
+        
+        const id = em.createEntity();
+        const entity = em.entities.get(id);
+        if (entity) {
+            entity.components.set('Transform', { x, y, vx: 0, vy: 0 });
+            entity.components.set('Visual', { type: 'human' });
+            entity.components.set('Animal', { 
+                type: 'human', diet: 'omnivore' 
+            });
+            entity.components.set('Metabolism', { 
+                stomach: 1.0, 
+                maxStomach: config.maxStomach || 2.5, 
+                digestionSpeed: 0.2,
+                storedFertility: 0 
+            });
+            entity.components.set('AIState', { mode: 'wander' });
+            
+            // 🏙️ Humanity specific: Can build and progress
+            entity.components.set('Civilization', { techLevel: 0, villageId: -1 });
+        }
+    }
+
+    spawnCow(x, y) {
+        const em = this.engine.entityManager;
+        const id = em.createEntity();
+        const entity = em.entities.get(id);
+        if (entity) {
+            entity.components.set('Transform', { x, y, vx: 0, vy: 0 });
+            entity.components.set('Visual', { type: 'cow' });
+            entity.components.set('Animal', { type: 'cow', diet: 'herbivore' });
+            entity.components.set('Metabolism', { 
+                stomach: 1.0, maxStomach: 4.0, digestionSpeed: 0.1 
+            });
+            entity.components.set('AIState', { mode: 'wander' });
         }
     }
 
