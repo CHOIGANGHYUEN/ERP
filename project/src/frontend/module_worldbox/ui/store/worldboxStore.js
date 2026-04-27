@@ -3,16 +3,14 @@ import { defineStore } from 'pinia';
 export const useWorldboxStore = defineStore('worldbox', {
   state: () => ({
     selectedEntity: null,
-    isPanelOpen: false
   }),
   actions: {
-    selectEntity(entityData) {
-      this.selectedEntity = entityData;
-      this.isPanelOpen = !!entityData;
+    selectEntity(data) {
+      // null이 들어오면 선택 해제
+      this.selectedEntity = data;
     },
-    closePanel() {
+    clearSelection() {
       this.selectedEntity = null;
-      this.isPanelOpen = false;
     }
   }
 });

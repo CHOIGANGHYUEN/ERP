@@ -11,22 +11,25 @@ import ReproductionSystem from '../systems/lifecycle/ReproductionSystem.js';
 import EnvironmentSystem from '../systems/lifecycle/EnvironmentSystem.js';
 import SpawnerSystem from '../systems/economy/SpawnerSystem.js';
 import WindSystem from '../systems/lifecycle/WindSystem.js';
+import EntityFactory from '../factories/EntityFactory.js';
+import ChunkManager from '../world/ChunkManager.js';
+import StatsMonitor from './StatsMonitor.js';
 import speciesConfig from '../config/species.json'; // 🚀 LOAD SPECIES 
 
 export default class Engine {
     constructor(canvas) {
         this.canvas = canvas;
         this.speciesConfig = speciesConfig;
-        
+
         // 🚀 SMART RESOLUTION: Fix the 'tiny canvas' issue
         const rect = canvas.getBoundingClientRect();
         this.width = rect.width || window.innerWidth;
         this.height = rect.height || window.innerHeight;
-        
+
         // Ensure the drawing buffer matches high-DPI screens without shrinking the layout
         canvas.width = this.width;
         canvas.height = this.height;
-        
+
         // Force the canvas to stretch back to its intended layout size
         canvas.style.width = '100%';
         canvas.style.height = '100%';
@@ -42,16 +45,16 @@ export default class Engine {
 
         // 👁️ RESTORED: Intelligent Camera with Boundary & Mouse-Center Zoom
         this.camera = new Camera(this.width, this.height, this.mapWidth, this.mapHeight);
-        
+
         // 🚀 FULL SCREEN INIT: Auto-scale to fill the viewport
         const fitZoom = Math.max(this.width / this.mapWidth, this.height / this.mapHeight);
-        this.camera.zoom = Math.max(1.0, fitZoom); 
+        this.camera.zoom = Math.max(1.0, fitZoom);
         this.camera.clamp();
 
         this.terrainGen = new TerrainGen();
         this.entityManager = new EntityManager();
         this.renderer = new EntityRenderer(this);
-        
+
         this.behavior = new BehaviorSystem(this);
         this.social = new SocialSystem(this);
         this.consumption = new ConsumptionSystem(this);
@@ -61,6 +64,7 @@ export default class Engine {
         this.environment = new EnvironmentSystem(this);
         this.spawner = new SpawnerSystem(this);
         this.wind = new WindSystem(this);
+        this.entityFactory = new EntityFactory(this);
 
         this.particles = [];
         this.isRunning = false;
@@ -70,21 +74,15 @@ export default class Engine {
         this.activeTool = null;
         this.isPainting = false;
         this.brushSize = 15;
-        this.viewFlags = { wind: false, fertility: false };
+        this.viewFlags = { wind: false, fertility: false, xray: false };
         this.simParams = { spreadSpeed: 0.1, spreadAmount: 3000 }; // 🚀 UI Params Sync
 
         this.onEntitySelect = null;
         this.selectedId = null;
-        this.dirtyTiles = new Set();
+        this.chunkManager = new ChunkManager(this, 50);
         this.isFollowing = false;
 
-        this.stats = {
-            fps: 0, frameCount: 0, lastFpsUpdate: 0,
-            entityCount: 0, totalFertility: 0, totalMaxFertility: 0
-        };
-
-        this.allocatedFertility = 0;
-        this.maxPotentialFertility = 0;
+        this.monitor = new StatsMonitor(this);
 
         this.init();
         this.setupInput();
@@ -96,58 +94,31 @@ export default class Engine {
         let potential = 0;
         const fb = this.terrainGen.fertilityBuffer;
         const bb = this.terrainGen.biomeBuffer;
-        
+
         for (let i = 0; i < fb.length; i++) {
             total += fb[i];
             potential += this.environment.getMaxFertility(bb[i]);
         }
-        
-        this.allocatedFertility = total;
-        this.maxPotentialFertility = potential;
+
+        this.monitor.setInitialFertility(total, potential);
         this.refreshWaterPixels();
         this.preRenderTerrain();
     }
 
-    updateFertilityStat(oldVal, newVal) { this.allocatedFertility += (newVal - oldVal); }
-    updatePotentialStat(oldMax, newMax) { this.maxPotentialFertility += (newMax - oldMax); }
+    updateFertilityStat(oldVal, newVal) { this.monitor.updateFertilityStat(oldVal, newVal); }
+    updatePotentialStat(oldMax, newMax) { this.monitor.updatePotentialStat(oldMax, newMax); }
 
     preRenderTerrain() {
-        const tw = this.mapWidth;
-        const th = this.mapHeight;
-        const buffer = new Uint32Array(tw * th);
-        
-        for (let i = 0; i < tw * th; i++) {
-            const color = this.terrainGen.getTerrainColor(i, this.viewFlags);
-            const r = (color >> 16) & 0xff;
-            const g = (color >> 8) & 0xff;
-            const b = color & 0xff;
-            
-            // 🚀 LITTLE ENDIAN FIX: Result must be [R, G, B, A] in memory
-            // Memory Byte Order: Index 0:R, 1:G, 2:B, 3:A
-            // Which means Uint32 should be 0xAABBGGRR
-            buffer[i] = (255 << 24) | (b << 16) | (g << 8) | r;
-        }
-
-        const imgData = new ImageData(new Uint8ClampedArray(buffer.buffer), tw, th);
-        this.terrainCtx.putImageData(imgData, 0, 0);
+        this.chunkManager.markAllDirty();
+        this.chunkManager.render(this.terrainCtx);
     }
 
     renderDirtyTiles() {
-        const tw = this.mapWidth;
-        const ctx = this.terrainCtx;
-        for (const idx of this.dirtyTiles) {
-            const x = idx % tw;
-            const y = Math.floor(idx / tw);
-            const color = this.terrainGen.getTerrainColor(idx, this.viewFlags);
-            ctx.fillStyle = `rgb(${(color >> 16) & 0xff}, ${(color >> 8) & 0xff}, ${color & 0xff})`;
-            ctx.fillRect(x, y, 1, 1);
-        }
-        this.dirtyTiles.clear();
+        this.chunkManager.render(this.terrainCtx);
     }
 
     updateCachePixel(x, y) {
-        const idx = y * this.mapWidth + x;
-        this.dirtyTiles.add(idx);
+        this.chunkManager.markDirty(x, y);
     }
 
     refreshWaterPixels() {
@@ -163,18 +134,21 @@ export default class Engine {
         this.height = h;
         this.canvas.width = w;
         this.canvas.height = h;
-        
+
         if (this.camera) {
             this.camera.width = w;
             this.camera.height = h;
             this.camera.clamp();
         }
-        
+
         this.preRenderTerrain();
-        this.dirtyTiles.clear();
+        this.chunkManager.dirtyChunks.clear();
     }
 
     setActiveTool(tool) {
+        if (this.activeTool && this.activeTool.onMouseUp) {
+            this.activeTool.onMouseUp({ camera: this.camera });
+        }
         this.activeTool = tool;
         // Reset painting state when switching tools
         this.isPainting = false;
@@ -186,21 +160,22 @@ export default class Engine {
         if (id === 'view_fertility') {
             this.viewFlags.fertility = !this.viewFlags.fertility;
             this.preRenderTerrain();
-            this.dirtyTiles.clear();
+            this.chunkManager.dirtyChunks.clear();
         }
+        if (id === 'view_xray') this.viewFlags.xray = !this.viewFlags.xray;
     }
 
     handleSelect(e) {
         const rect = this.canvas.getBoundingClientRect();
         const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-        
+
         let nearest = null;
         let minDist = 30;
 
         for (const [id, entity] of this.entityManager.entities) {
             const t = entity.components.get('Transform');
             if (t) {
-                const dist = Math.sqrt((t.x - world.x)**2 + (t.y - world.y)**2);
+                const dist = Math.sqrt((t.x - world.x) ** 2 + (t.y - world.y) ** 2);
                 if (dist < minDist) {
                     minDist = dist;
                     nearest = id;
@@ -210,39 +185,111 @@ export default class Engine {
 
         this.selectedId = nearest;
         if (nearest && this.onEntitySelect) {
-            const target = this.entityManager.entities.get(nearest);
-            const m = target.components.get('Metabolism');
-            const a = target.components.get('Animal');
-            this.onEntitySelect({ id: target.id, type: a?.type, stomach: m?.stomach, fertility: m?.storedFertility });
+            this.onEntitySelect(this.getEntityData(nearest));
+        } else if (!nearest && this.onEntitySelect) {
+            this.onEntitySelect(null);
         }
+    }
+
+    getEntityData(id) {
+        const target = this.entityManager.entities.get(id);
+        if (!target) return null;
+
+        const m = target.components.get('Metabolism');
+        const a = target.components.get('Animal');
+        const v = target.components.get('Visual');
+        const r = target.components.get('Resource');
+        const stateComp = target.components.get('AIState');
+
+        let name = 'Unknown';
+        let type = v?.type || a?.type || 'unknown';
+        let subType = v?.treeType || v?.role || null;
+        let state = 'Normal';
+        let fertility = m?.storedFertility || r?.storedFertility || 0;
+        let inhabitants = null;
+        let animalYield = null;
+
+        if (type === 'tree') {
+            name = subType === 'beehive' ? 'Beehive Tree' : (subType === 'fruit' ? 'Fruit Tree' : 'Tree');
+            state = v?.isWithered ? 'Withered' : 'Healthy';
+
+            if (subType === 'beehive') {
+                let queen = 0, worker = 0, larva = 0;
+                for (const [eId, e] of this.entityManager.entities) {
+                    const eAnim = e.components.get('Animal');
+                    if (eAnim && eAnim.type === 'bee' && eAnim.hiveId === id) {
+                        if (eAnim.role === 'queen') queen++;
+                        else if (eAnim.role === 'larva') larva++;
+                        else worker++;
+                    }
+                }
+                inhabitants = { queen, worker, larva, honey: Math.floor(r?.honey || 0) };
+            }
+        } else if (type === 'flower') {
+            name = 'Flower';
+            state = (v?.quality < 0.4) ? 'Withered' : 'Blooming';
+        } else if (r?.isGrass) {
+            name = 'Grass';
+            type = 'grass';
+            state = (v?.quality < 0.4) ? 'Withered' : 'Healthy';
+        } else if (a) {
+            name = a.type.charAt(0).toUpperCase() + a.type.slice(1);
+            if (a.isBaby) name = 'Baby ' + name;
+            state = stateComp?.mode || 'wander';
+
+            if (a.type === 'cow') {
+                subType = v?.cowType;
+                name = subType === 'dairy' ? 'Dairy Cow' : 'Beef Cow';
+                if (r) {
+                    animalYield = subType === 'dairy' ? `🍼 Milk: ${r.amount} | 🥩 Meat: ${r.meat}` : `🥩 Meat: ${r.amount}`;
+                }
+            }
+        }
+
+        return {
+            id: target.id, type: type, subType: subType, name: name, state: state,
+            stomach: m?.stomach, maxStomach: m?.maxStomach, fertility: fertility,
+            quality: v?.quality, inhabitants: inhabitants, resourceValue: r?.value || r?.amount || 0,
+            animalYield: animalYield,
+            rank: a?.rank
+        };
     }
 
     setupInput() {
         this.canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
-                const toolType = this.activeTool?.type;
-                if (toolType === 'inspect') {
-                    this.handleSelect(e);
-                } else if (this.activeTool && toolType !== 'move') {
-                    this.isPainting = true;
-                    this.triggerBrushAction(e);
+                if (this.activeTool && this.activeTool.onMouseDown) {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
+                    this.activeTool.onMouseDown({
+                        e, engine: this, camera: this.camera, world,
+                        brushSize: this.brushSize, particles: this.particles
+                    });
                 } else {
-                    this.camera.handleMouseDown(e);
+                    this.camera.handleMouseDown(e); // 기본 동작은 화면 이동
                 }
             }
         });
 
         window.addEventListener('mousemove', (e) => {
-            if (this.isPainting) {
-                this.triggerBrushAction(e);
+            if (this.activeTool && this.activeTool.onMouseMove) {
+                const rect = this.canvas.getBoundingClientRect();
+                const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
+                this.activeTool.onMouseMove({
+                    e, engine: this, camera: this.camera, world,
+                    brushSize: this.brushSize, particles: this.particles
+                });
             } else {
                 this.camera.handleMouseMove(e);
             }
         });
 
         window.addEventListener('mouseup', () => {
-            this.isPainting = false;
-            this.camera.handleMouseUp();
+            if (this.activeTool && this.activeTool.onMouseUp) {
+                this.activeTool.onMouseUp({ e, engine: this, camera: this.camera });
+            } else {
+                this.camera.handleMouseUp();
+            }
         });
 
         this.canvas.addEventListener('wheel', (e) => {
@@ -251,66 +298,12 @@ export default class Engine {
         }, { passive: false });
 
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    }
 
-    triggerBrushAction(e) {
-        if (!this.activeTool) return;
-        const id = this.activeTool.id;
-        if (id.startsWith('paint_') || id === 'add_water' || id === 'spawn_grass' || id === 'spawn_flower') {
-            this.handleSprinkle(e);
-        } else if (['spawn_sheep', 'spawn_human', 'spawn_cow'].includes(id)) {
-            this.handleSpawn(e);
-        }
-    }
-
-    handleSpawn(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-        const id = this.activeTool.id;
-        if (id === 'spawn_sheep') this.spawner.spawnSheep(world.x, world.y);
-        if (id === 'spawn_human') this.spawner.spawnHuman(world.x, world.y);
-        if (id === 'spawn_cow') this.spawner.spawnCow(world.x, world.y);
-    }
-
-    handleSprinkle(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-        const id = this.activeTool.id;
-        
-        // Determine action and color based on tool
-        let action = 'CHANGE_BIOME';
-        if (id === 'spawn_grass') action = 'SPAWN_PLANT';
-        if (id === 'spawn_flower') action = 'SPAWN_FLOWER';
-
-        const colorMap = { 
-            'paint_grass': '#a8e063', 'spawn_grass': '#c5e1a5', 
-            'paint_sand': '#f4d03f', 'paint_jungle': '#2d5a27', 
-            'paint_dirt': '#8d6e63', 'add_water': '#3498db',
-            'spawn_flower': '#ff80ab' 
-        };
-
-        const count = (id === 'spawn_grass' || id === 'spawn_flower') ? 12 : 8;
-        for (let i = 0; i < count; i++) {
-            this.particles.push({
-                x: world.x + (Math.random() - 0.5) * this.brushSize * 3,
-                y: world.y + (Math.random() - 0.5) * this.brushSize * 3 - 150,
-                targetY: world.y + (Math.random() - 0.5) * this.brushSize * 3,
-                type: 'BIOME',
-                action: action,
-                biome: this.getToolBiome(),
-                color: colorMap[id] || '#ffffff',
-                speed: 4 + Math.random() * 3
-            });
-        }
-    }
-
-    getToolBiome() {
-        const id = this.activeTool?.id;
-        if (id === 'add_water') return BIOMES.OCEAN;
-        if (['paint_grass', 'spawn_grass'].includes(id)) return BIOMES.GRASS;
-        if (id === 'paint_sand') return BIOMES.SAND;
-        if (id === 'paint_jungle') return BIOMES.JUNGLE;
-        return BIOMES.DIRT;
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'x') {
+                this.toggleView('view_xray');
+            }
+        });
     }
 
     updateParticles(dt) {
@@ -328,6 +321,10 @@ export default class Engine {
                         else if (p.action === 'SPAWN_FLOWER') {
                             const fertile = this.terrainGen.fertilityBuffer[idx] || 0;
                             if (fertile > 0.1) this.spawner.spawnFlower(p.x, p.y, fertile);
+                        }
+                        else if (p.action === 'SPAWN_TREE') {
+                            const fertile = this.terrainGen.fertilityBuffer[idx] || 0;
+                            if (fertile > 0.15) this.spawner.spawnTree(p.x, p.y, p.treeType, fertile);
                         }
                     }
                 }
@@ -350,18 +347,10 @@ export default class Engine {
         const dt = (time - this.lastTime) / 1000;
         this.lastTime = time;
 
-        if (time - this.stats.lastFpsUpdate > 1000) {
-            this.stats.fps = Math.round(this.stats.frameCount);
-            this.stats.frameCount = 0;
-            this.stats.lastFpsUpdate = time;
-            this.stats.entityCount = this.entityManager.entities.size;
-            this.stats.totalFertility = this.allocatedFertility;
-            this.stats.totalMaxFertility = this.maxPotentialFertility;
-        }
-        this.stats.frameCount++;
+        this.monitor.update(time);
 
         this.update(dt);
-        if (this.dirtyTiles.size > 0) this.renderDirtyTiles();
+        if (this.chunkManager.dirtyChunks.size > 0) this.renderDirtyTiles();
         this.render();
         requestAnimationFrame((t) => this.loop(t));
     }
@@ -378,7 +367,19 @@ export default class Engine {
         this.environment.update(dt, time);
         this.spawner.update(dt, time);
         this.wind.update(time);
-        
+
+        // 선택된 객체가 있다면 매 프레임 UI로 최신 데이터를 동기화
+        if (this.selectedId && this.onEntitySelect) {
+            const data = this.getEntityData(this.selectedId);
+            if (data) {
+                this.onEntitySelect(data);
+            } else {
+                // 동물이 굶어 죽거나 풀이 먹혀서 사라진 경우 상태창 닫기
+                this.selectedId = null;
+                this.onEntitySelect(null);
+            }
+        }
+
         if (this.selectedId && this.onEntitySelect && this.isFollowing) {
             const e = this.entityManager.entities.get(this.selectedId);
             if (e) {
@@ -396,13 +397,13 @@ export default class Engine {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.width, this.height);
-        
+
         this.ctx.save();
         this.ctx.imageSmoothingEnabled = false; // 🚀 PIXEL PERFECT: No blur!
         this.ctx.translate(0, 0); // No global offset, camera handles it
         this.ctx.scale(this.camera.zoom, this.camera.zoom);
         this.ctx.translate(-this.camera.x, -this.camera.y);
-        
+
         this.ctx.drawImage(this.terrainCanvas, 0, 0);
         this.renderer.render(this.ctx, this.entityManager, this.particles, performance.now(), this.wind);
         this.ctx.restore();

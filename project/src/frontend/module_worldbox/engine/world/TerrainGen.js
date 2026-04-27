@@ -1,13 +1,13 @@
 import MathUtils from '../utils/MathUtils.js';
+import biomesData from '../config/biomes.json';
 
-export const BIOMES = {
-    OCEAN: 0,
-    DIRT: 1,
-    GRASS: 2,
-    SAND: 3,
-    JUNGLE: 4,
-    BEACH: 5
-};
+export const BIOMES = {};
+export const BiomeProperties = {};
+
+biomesData.biomes.forEach(b => {
+    BIOMES[b.name] = b.id;
+    BiomeProperties[b.id] = b;
+});
 
 export default class TerrainGen {
     constructor(entityManager) {
@@ -57,57 +57,47 @@ export default class TerrainGen {
             // 0.7: Rich Emerald (#00FF66)
             // 1.0: Divine Mint (#00FFCC)
             const t = (fertility - 0.1) / 0.9;
-            const r = Math.floor(0);
-            const g = Math.floor(60 + t * 195);
-            const b_val = Math.floor(20 + t * 200);
-            return (r << 16) | (g << 8) | b_val;
+            const r_fert = 0;
+            const g_fert = Math.floor(60 + t * 195);
+            const b_fert = Math.floor(20 + t * 200);
+            return (r_fert << 16) | (g_fert << 8) | b_fert;
         }
 
         // 🎨 NORMAL BIOME RENDERING
-        const b = biome;
-        const f = fertility;
+        const props = BiomeProperties[biome];
+        if (!props) return 0;
+
         let r, g, b_col;
 
-        if (b === BIOMES.OCEAN) { 
-            r = 10; g = 80 + f * 50; b_col = 160; 
+        // Interpolate colors based on fertility
+        if (props.colorLow && props.colorHigh) {
+            r = props.colorLow[0] * (1 - fertility) + props.colorHigh[0] * fertility;
+            g = props.colorLow[1] * (1 - fertility) + props.colorHigh[1] * fertility;
+            b_col = props.colorLow[2] * (1 - fertility) + props.colorHigh[2] * fertility;
         }
-        else if (b === BIOMES.GRASS) { 
-            // BLUEPRINT 130-131: COLOR BY FERTILITY
-            // Low Fertility: Withered Brownish-yellow (180, 160, 60)
-            // High Fertility: Lush Dark Green (20, 100, 20)
-            r = 180 * (1 - f) + 40 * f;
-            g = 160 * (1 - f) + 140 * f;
-            b_col = 60 * (1 - f) + 30 * f;
-            
-            // Meadow Flower Patching (Driven by fertility)
-            const x = idx % 1000;
-            const y = Math.floor(idx / 1000);
+
+        // Meadow Flower Patching for Grass/biomes with flowers
+        if (props.hasFlowers) {
+            const x = idx % this.width;
+            const y = Math.floor(idx / this.width);
             const flowerNoise = (this.math.perlin(x * 0.05, y * 0.05) + 1) / 2;
             
-            if (f > 0.4 && flowerNoise > 0.72) {
+            if (fertility > 0.4 && flowerNoise > 0.72) {
                 const subHash = (idx * 0.123) % 1;
                 if (subHash > 0.7) { r = 240; g = 100; b_col = 150; } // Wild Pink
                 else if (subHash > 0.4) { r = 245; g = 210; b_col = 60; } // Wild Yellow
                 else { r = 230; g = 230; b_col = 220; } // White
             }
         }
-        else if (b === BIOMES.JUNGLE) { 
-            // Darker, denser greens
-            r = 20 * (1 - f);
-            g = 80 * f + 20; 
-            b_col = 20 * (1 - f);
-        }
-        else if (b === BIOMES.SAND) { r = 210; g = 190; b_col = 130; }
-        else if (b === BIOMES.BEACH) { r = 230; g = 210; b_col = 160; }
-        else { r = 100 - f * 40; g = 70 - f * 20; b_col = 40 - f * 20; } // DIRT
 
         // Fertility Debug Overlay (Optional)
-        if (viewFlags?.fertility && b !== BIOMES.OCEAN) {
+        if (viewFlags?.fertility && biome !== BIOMES.OCEAN) {
             r = r * 0.4;
-            g = g * 0.4 + 200 * f; // Explicit green glow
+            g = g * 0.4 + 200 * fertility; // Explicit green glow
             b_col = b_col * 0.4;
         }
-        return (r << 16) | (g << 8) | b_col;
+        
+        return (Math.floor(r) << 16) | (Math.floor(g) << 8) | Math.floor(b_col);
     }
 
     reclaimFertility(idx) { return this.fertilityBuffer[idx] || 0; }

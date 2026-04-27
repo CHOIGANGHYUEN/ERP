@@ -1,3 +1,53 @@
 {
-    "biomes": []
+    "biomes": [
+        {
+            "id": 0,
+            "name": "OCEAN",
+            "maxFertility": 0.0,
+            "canSpread": false,
+            "colorLow": [10, 80, 160],
+            "colorHigh": [10, 130, 160]
+        },
+        {
+            "id": 1,
+            "name": "DIRT",
+            "maxFertility": 0.0,
+            "canSpread": false,
+            "colorLow": [100, 70, 40],
+            "colorHigh": [60, 50, 20]
+        },
+        {
+            "id": 2,
+            "name": "GRASS",
+            "maxFertility": 0.7,
+            "canSpread": true,
+            "colorLow": [180, 160, 60],
+            "colorHigh": [40, 140, 30],
+            "hasFlowers": true
+        },
+        {
+            "id": 3,
+            "name": "SAND",
+            "maxFertility": 0.0,
+            "canSpread": false,
+            "colorLow": [210, 190, 130],
+            "colorHigh": [210, 190, 130]
+        },
+        {
+            "id": 4,
+            "name": "JUNGLE",
+            "maxFertility": 1.0,
+            "canSpread": true,
+            "colorLow": [20, 20, 20],
+            "colorHigh": [0, 100, 0]
+        },
+        {
+            "id": 5,
+            "name": "BEACH",
+            "maxFertility": 0.0,
+            "canSpread": false,
+            "colorLow": [230, 210, 160],
+            "colorHigh": [230, 210, 160]
+        }
+    ]
 }

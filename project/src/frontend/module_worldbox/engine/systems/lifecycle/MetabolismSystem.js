@@ -37,44 +37,14 @@ export default class MetabolismSystem {
 
         if (!isInWater && metabolism.storedFertility >= this.excreteThreshold) {
             metabolism.isPooping = true;
-            this.excrete(transform.x, transform.y);
+            this.excrete(transform.x, transform.y, metabolism.storedFertility);
             metabolism.storedFertility = 0;
         } else if (metabolism.isPooping) {
             if (Math.random() < 0.05) metabolism.isPooping = false;
         }
-
-        // 3. WANDER (Movement logic)
-        const state = entity.components.get('AIState');
-        if (state && state.mode === 'wander') {
-            this.wander(transform, dt);
-        }
     }
 
-    wander(transform, dt) {
-        if (!transform.vx || Math.random() < 0.02) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 10 + Math.random() * 15;
-            transform.vx = Math.cos(angle) * speed;
-            transform.vy = Math.sin(angle) * speed;
-        }
-
-        const maxSpeed = 30;
-        const mag = Math.sqrt(transform.vx**2 + transform.vy**2);
-        if (mag > maxSpeed) {
-            transform.vx = (transform.vx / mag) * maxSpeed;
-            transform.vy = (transform.vy / mag) * maxSpeed;
-        }
-
-        transform.x += transform.vx * dt;
-        transform.y += transform.vy * dt;
-
-        if (transform.x < 10) transform.x = 10;
-        if (transform.x > 990) transform.x = 990;
-        if (transform.y < 10) transform.y = 10;
-        if (transform.y > 990) transform.y = 990;
-    }
-
-    excrete(x, y) {
-        this.engine.spawner.spawnPoop(x, y);
+    excrete(x, y, amount) {
+        this.engine.spawner.spawnPoop(x, y, amount);
     }
 }

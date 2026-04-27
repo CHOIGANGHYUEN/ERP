@@ -31,7 +31,7 @@
       <!-- Bottom Tool Menu -->
       <div class="bottom-controls" :class="{ 'open': isMenuOpen }">
         <!-- BRUSH SIZE CONTROL (Side Panel) -->
-        <div v-if="['brush', 'sprinkle'].includes(activeToolData?.type)" class="brush-settings">
+        <div v-if="activeToolData?.isBrush" class="brush-settings">
           <div class="setting-title">BRUSH SIZE: {{ brushSize }}</div>
           <input type="range" min="2" max="100" v-model="brushSize" @input="updateBrushSize" />
           <div class="brush-preview" :style="{ width: brushSize + 'px', height: brushSize + 'px' }"></div>
@@ -71,6 +71,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Engine from '../../engine/core/Engine.js';
+import { DefaultTools } from '../../engine/core/ToolRegistry.js';
 
 import { useWorldboxStore } from '../store/worldboxStore';
 import EntityStatusPanel from '../components/EntityStatusPanel.vue';
@@ -88,35 +89,15 @@ const entityCount = ref(0);
 const totalFertility = ref(0);
 let engine = null;
 let resizeObserver = null;
-let statsInterval = null;
 
 const toolCategories = ['Earth', 'Life', 'View'];
 
-const godTools = [
-  { id: 'move_hand', name: 'Move', icon: '🖐️', type: 'move', category: 'Earth' },
-  { id: 'paint_grass', name: 'Meadow', icon: '🌱', type: 'sprinkle', category: 'Earth' },
-  { id: 'paint_sand', name: 'Desert', icon: '🏜️', type: 'sprinkle', category: 'Earth' },
-  { id: 'paint_jungle', name: 'Jungle', icon: '🌳', type: 'sprinkle', category: 'Earth' },
-  { id: 'paint_dirt', name: 'Dirt', icon: '🟫', type: 'sprinkle', category: 'Earth' },
-  { id: 'add_water', name: 'Ocean', icon: '💧', type: 'sprinkle', category: 'Earth' },
-  
-  { id: 'spawn_grass', name: 'Sprinkle Grass', icon: '🌾', type: 'sprinkle', category: 'Life' },
-  { id: 'spawn_flower', name: 'Flower', icon: '🌸', type: 'sprinkle', category: 'Life' },
-  { id: 'spawn_sheep', name: 'Sheep', icon: '🐑', type: 'spawn', category: 'Life' },
-  { id: 'spawn_human', name: 'Human', icon: '👤', type: 'spawn', category: 'Life' },
-  { id: 'spawn_cow', name: 'Cow', icon: '🐄', type: 'spawn', category: 'Life' },
-
-  { id: 'view_wind', name: 'Wind View', icon: '🌬️', type: 'toggle', category: 'View' },
-  { id: 'view_fertility', name: 'Fertility View', icon: '💎', type: 'toggle', category: 'View' },
-  { id: 'inspect_entity', name: 'Inspect', icon: '🔍', type: 'inspect', category: 'View' },
-];
-
 const filteredTools = computed(() => {
-  return godTools.filter(t => t.category === activeCategory.value);
+  return DefaultTools.filter(t => t.category === activeCategory.value);
 });
 
 const activeToolData = computed(() => {
-  return godTools.find(t => t.id === activeTool.value);
+  return DefaultTools.find(t => t.id === activeTool.value);
 });
 
 const updateBrushSize = () => {
@@ -131,7 +112,7 @@ const updateSimParams = () => {
 };
 
 const selectTool = (tool) => {
-  if (tool.type === 'toggle') {
+  if (tool.isInstant && tool.id.startsWith('view_')) {
     if (engine) engine.toggleView(tool.id);
     return;
   }
@@ -155,19 +136,18 @@ onMounted(() => {
     engine.start();
     
     // Set default tool to Move
-    const initialTool = godTools.find(t => t.id === 'move_hand');
+    const initialTool = DefaultTools.find(t => t.id === 'move_hand');
     engine.setActiveTool(initialTool);
 
     // Set initial debug params
     updateSimParams();
 
-    statsInterval = setInterval(() => {
-      if (engine) {
-        fps.value = engine.stats.fps;
-        entityCount.value = engine.entityManager.entities.size;
-        totalFertility.value = Math.floor(engine.stats.totalFertility);
-      }
-    }, 500);
+    engine.monitor.onUpdate = (stats) => {
+      if (!stats) return;
+      fps.value = stats.fps;
+      entityCount.value = stats.entityCount;
+      totalFertility.value = Math.floor(stats.totalFertility);
+    };
 
     resizeObserver = new ResizeObserver(entries => {
       for (let entry of entries) {
@@ -186,17 +166,17 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (statsInterval) clearInterval(statsInterval);
   if (resizeObserver) resizeObserver.disconnect();
   if (engine) {
     engine.onEntitySelect = null;
+    engine.monitor.onUpdate = null;
     engine.stop();
   }
 });
 
 const handleGodPower = (toolId) => {
   activeTool.value = toolId;
-  const tool = godTools.find(t => t.id === toolId);
+  const tool = DefaultTools.find(t => t.id === toolId);
   if (engine) engine.setActiveTool(tool);
 };
 </script>

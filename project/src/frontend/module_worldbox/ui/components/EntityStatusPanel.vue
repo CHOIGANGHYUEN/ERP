@@ -1,66 +1,79 @@
 <template>
-  <Transition name="slide-fade">
-    <div v-if="isOpen && entity" class="entity-status-panel">
-      <template v-if="entity">
-        <div class="panel-header">
-          <div class="entity-icon">{{ getIcon }}</div>
-          <div class="entity-info">
-            <h3>{{ entity.type?.toUpperCase() }}</h3>
-            <span class="entity-id">#{{ entity.id }}</span>
+  <div class="entity-status-panel" v-if="entity">
+    <div class="panel-header">
+      <div class="title-wrap">
+        <span class="icon">{{ getIcon(entity.type, entity.subType) }}</span>
+        <h3>{{ entity.name }}</h3>
+      </div>
+      <button class="close-btn" @click="closePanel">✕</button>
+    </div>
+    
+    <div class="panel-body">
+      <div class="status-row">
+        <span class="label">State:</span>
+        <span class="value state-badge" :class="entity.state.toLowerCase()">
+          {{ entity.state }}
+        </span>
+      </div>
+      <div class="status-row" v-if="entity.rank !== undefined">
+        <span class="label">Hierarchy Rank:</span>
+        <span class="value" style="color: #ef5350">👑 {{ entity.rank }}</span>
+      </div>
+
+      <!-- 🥩 동물 전용 상태 (위장/허기) -->
+      <template v-if="entity.maxStomach">
+        <div class="status-row">
+          <span class="label">Stomach:</span>
+          <div class="progress-bar">
+            <div class="fill stomach" :style="{ width: getPercentage(entity.stomach, entity.maxStomach) + '%' }"></div>
           </div>
-          <button @click="close" class="close-btn">×</button>
+          <span class="value-sm">{{ (entity.stomach || 0).toFixed(1) }} / {{ entity.maxStomach }}</span>
         </div>
 
-        <div class="panel-body">
-          <div class="status-grid">
-            <div class="status-item">
-              <label>MODE</label>
-              <div class="value mode" :class="entity.mode?.toLowerCase()">{{ entity.mode }}</div>
-            </div>
-            <div class="status-item">
-              <label>AGE</label>
-              <div class="value">{{ entity.isBaby ? 'Baby' : 'Adult' }}</div>
-            </div>
-          </div>
+        <div class="status-row" v-if="entity.animalYield">
+          <span class="label">Yield:</span>
+          <span class="value yield-text">{{ entity.animalYield }}</span>
+        </div>
+      </template>
 
-          <div class="meter-section">
-            <label>STOMACH (Undigested)</label>
-            <div class="meter-container">
-              <div class="meter-fill stomach" :style="{ width: (entity.stomach / (entity.maxStomach || 2) * 100) + '%' }"></div>
-            </div>
-            <div class="meter-labels">
-              <span>Empty</span>
-              <span>{{ (entity.stomach || 0).toFixed(2) }} / {{ entity.maxStomach || 2 }}</span>
-              <span>Full</span>
-            </div>
+      <!-- 🌱 식물/나무 전용 상태 (비옥도, 품질) -->
+      <template v-if="entity.quality !== undefined || entity.fertility !== undefined">
+        <div class="status-row">
+          <span class="label">Fertility (Quality):</span>
+          <div class="progress-bar">
+            <div class="fill fertility" :style="{ width: getPercentage(entity.fertility, 1.0) + '%' }"></div>
           </div>
+          <span class="value-sm">{{ Math.floor((entity.fertility || 0) * 100) }}%</span>
+        </div>
+        
+        <div class="status-row" v-if="entity.resourceValue">
+          <span class="label">Resource Yield:</span>
+          <span class="value">{{ entity.resourceValue }}</span>
+        </div>
+      </template>
 
-          <div class="meter-section">
-            <label>WASTE (Ready to Excrete)</label>
-            <div class="meter-container">
-              <div class="meter-fill" :style="{ width: (entity.fertility * 50) + '%', background: getFertilityColor }"></div>
-            </div>
-            <div class="meter-labels">
-              <span>Low</span>
-              <span>{{ (entity.fertility || 0).toFixed(2) }} / 1.0</span>
-              <span>Crit</span>
-            </div>
-          </div>
-
-          <div class="trait-section" v-if="entity.diet">
-            <label>DIET</label>
-            <div class="trait-tag">{{ entity.diet?.toUpperCase() }}</div>
-          </div>
-
-          <div class="action-section">
-            <p v-if="entity.mode === 'eat'" class="action-desc">Searching for tasty grass...</p>
-            <p v-if="entity.mode === 'wander'" class="action-desc">Exploring the world...</p>
-            <p v-if="entity.isPooping" class="action-desc warning">⚠️ Metabolizing... shaking eyes!</p>
-          </div>
+      <!-- 🍯 벌집 나무 전용 상태 -->
+      <template v-if="entity.inhabitants">
+        <div class="divider"></div>
+        <div class="status-row">
+          <span class="label">👑 Queen:</span>
+          <span class="value">{{ entity.inhabitants.queen }}</span>
+        </div>
+        <div class="status-row">
+          <span class="label">🐝 Workers:</span>
+          <span class="value">{{ entity.inhabitants.worker }}</span>
+        </div>
+        <div class="status-row">
+          <span class="label">🐛 Larvae:</span>
+          <span class="value">{{ entity.inhabitants.larva }}</span>
+        </div>
+        <div class="status-row mt-1">
+          <span class="label">🍯 Stored Honey:</span>
+          <span class="value honey-text">{{ entity.inhabitants.honey }}</span>
         </div>
       </template>
     </div>
-  </Transition>
+  </div>
 </template>
 
 <script setup>
@@ -69,22 +82,32 @@ import { useWorldboxStore } from '../store/worldboxStore';
 
 const store = useWorldboxStore();
 const entity = computed(() => store.selectedEntity);
-const isOpen = computed(() => store.isPanelOpen);
 
-const getIcon = computed(() => {
-  if (entity.value?.type === 'sheep') return '🐑';
-  if (entity.value?.type === 'human') return '👤';
-  return '❓';
-});
+const closePanel = () => {
+  store.clearSelection();
+};
 
-const getFertilityColor = computed(() => {
-  const f = entity.value?.fertility || 0;
-  if (f > 1.5) return 'linear-gradient(90deg, #4caf50, #8bc34a)';
-  if (f > 0.5) return 'linear-gradient(90deg, #ffeb3b, #fbc02d)';
-  return 'linear-gradient(90deg, #ff7043, #d84315)';
-});
+const getIcon = (type, subType) => {
+  if (subType === 'beehive') return '🍯';
+  if (subType === 'fruit') return '🍎';
+  if (type === 'cow') {
+    return subType === 'dairy' ? '🐄' : '🐃';
+  }
+  if (type === 'wolf') return '🐺';
+  if (type === 'hyena') return '🐾';
+  if (type === 'wild_dog') return '🐕';
+  
+  const icons = {
+    sheep: '🐑', human: '👤', bee: '🐝',
+    tree: '🌲', flower: '🌸', grass: '🌾', unknown: '❓'
+  };
+  return icons[type] || '❓';
+};
 
-const close = () => store.closePanel();
+const getPercentage = (val, max) => {
+  if (!max) return 0;
+  return Math.min(100, Math.max(0, (val / max) * 100));
+};
 </script>
 
 <style scoped>
@@ -92,146 +115,43 @@ const close = () => store.closePanel();
   position: absolute;
   top: 20px;
   right: 20px;
-  width: 280px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-  color: white;
-  padding: 20px;
-  z-index: 1000;
-  font-family: 'Inter', sans-serif;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  padding-bottom: 15px;
-}
-
-.entity-icon {
-  font-size: 32px;
-  background: rgba(255, 255, 255, 0.05);
-  width: 54px;
-  height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 250px;
+  background: rgba(15, 15, 20, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
+  padding: 15px;
+  color: #eee;
+  pointer-events: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  font-family: sans-serif;
+  z-index: 1100;
 }
 
-.entity-info h3 {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: 1px;
-}
+.panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 10px; }
+.title-wrap { display: flex; align-items: center; gap: 8px; }
+.title-wrap h3 { margin: 0; font-size: 1.1rem; color: #fff; }
+.icon { font-size: 1.2rem; }
+.close-btn { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
+.close-btn:hover { color: #fff; }
 
-.entity-id {
-  font-size: 12px;
-  color: #94a3b8;
-}
+.panel-body { display: flex; flex-direction: column; gap: 8px; }
+.status-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; }
+.label { color: #aaa; width: 80px; }
+.value { font-weight: bold; }
+.value-sm { font-size: 0.75rem; color: #ccc; min-width: 45px; text-align: right; }
 
-.close-btn {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: #94a3b8;
-  font-size: 24px;
-  cursor: pointer;
-  transition: color 0.2s;
-}
+.state-badge { padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); text-transform: capitalize; }
+.state-badge.withered { background: rgba(139, 69, 19, 0.3); color: #ff8a65; }
+.state-badge.healthy, .state-badge.blooming { background: rgba(76, 175, 80, 0.3); color: #81c784; }
 
-.close-btn:hover { color: white; }
+.progress-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; margin: 0 10px; overflow: hidden; }
+.fill { height: 100%; transition: width 0.2s ease; }
+.fill.stomach { background: #ff9800; }
+.fill.fertility { background: #4caf50; }
 
-.status-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  margin-bottom: 20px;
-}
-
-.status-item label {
-  display: block;
-  font-size: 10px;
-  color: #64748b;
-  margin-bottom: 5px;
-  letter-spacing: 0.5px;
-}
-
-.value {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.value.mode {
-  color: #60a5fa;
-}
-
-.meter-section {
-  margin-bottom: 20px;
-}
-
-.meter-section label {
-  font-size: 10px;
-  color: #64748b;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.meter-container {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-
-.meter-fill {
-  height: 100%;
-  transition: width 0.3s ease;
-}
-
-.meter-fill.stomach {
-  background: linear-gradient(90deg, #ffb74d, #ffa726);
-}
-
-.meter-labels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  color: #475569;
-}
-
-.trait-tag {
-  display: inline-block;
-  padding: 4px 10px;
-  background: rgba(96, 165, 250, 0.1);
-  color: #60a5fa;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.action-desc {
-  font-size: 13px;
-  color: #cbd5e1;
-  font-style: italic;
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.action-desc.warning { color: #fbbf24; }
-
-/* Transitions */
-.slide-fade-enter-active { transition: all 0.3s ease-out; }
-.slide-fade-leave-active { transition: all 0.2s cubic-bezier(1, 0.5, 0.8, 1); }
-.slide-fade-enter-from, .slide-fade-leave-to {
-  transform: translateX(20px);
-  opacity: 0;
-}
+.divider { height: 1px; background: rgba(255,255,255,0.1); margin: 5px 0; }
+.mt-1 { margin-top: 5px; }
+.honey-text { color: #ffca28; font-size: 1rem; }
+.yield-text { color: #ffab91; font-size: 0.85rem; }
 </style>
