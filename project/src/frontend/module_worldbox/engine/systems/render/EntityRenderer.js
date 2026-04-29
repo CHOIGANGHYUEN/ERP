@@ -70,8 +70,7 @@ export default class EntityRenderer {
                         ctx.restore();
                     }
                 } else if (v.type === 'bee') {
-                    const state = entity.components.get('AIState');
-                    const isInside = state && state.mode === 'bee_inside';
+                    const isInside = v.isInside || false;
                     if (!isInside) {
                         this.drawBee(ctx, t, v, entity, time);
                     } else if (this.engine.viewFlags?.xray) {
@@ -133,7 +132,8 @@ export default class EntityRenderer {
                 } else {
                     // Default Entity Render
                     ctx.fillStyle = v.color;
-                    ctx.fillRect(t.x, t.y, 1.2, 1.2);
+                    const s = v.size || 1.0;
+                    ctx.fillRect(t.x, t.y, 1.2 * s, 1.2 * s);
                 }
             }
         }
@@ -146,10 +146,8 @@ export default class EntityRenderer {
     }
 
     drawSheep(ctx, t, v, entity, time) {
-        const state = entity.components.get('AIState');
-        const metabolism = entity.components.get('Metabolism');
-        const isEating = state?.mode === 'eat';
-        const isPooping = metabolism?.isPooping || false;
+        const isEating = v.isEating || false;
+        const isPooping = v.isPooping || false;
 
         // Environment check
         const ix = Math.floor(t.x);
@@ -157,7 +155,8 @@ export default class EntityRenderer {
         const idx = iy * this.engine.mapWidth + ix;
         const tg = this.engine.terrainGen;
         const currentTerrain = tg.biomeBuffer ? tg.biomeBuffer[idx] : 1;
-        const isInWater = currentTerrain === 0; // BIOMES.OCEAN is 0
+        // 0: DEEP_OCEAN, 1: OCEAN, 2: LAKE, 3: RIVER
+        const isInWater = currentTerrain === 0 || currentTerrain === 1 || currentTerrain === 2 || currentTerrain === 3;
 
         ctx.save();
         ctx.translate(t.x, t.y);
@@ -167,7 +166,8 @@ export default class EntityRenderer {
         if (Math.abs(t.vx) > 0.1) {
             t.lastFlip = t.vx < 0 ? -1 : 1;
         }
-        ctx.scale(t.lastFlip, 1);
+        const s = v.size || 1.0;
+        ctx.scale(t.lastFlip * s, s);
 
         // --- WATER CLIPPING ---
         if (isInWater) {
@@ -231,10 +231,8 @@ export default class EntityRenderer {
     }
 
     drawCow(ctx, t, v, entity, time) {
-        const state = entity.components.get('AIState');
-        const metabolism = entity.components.get('Metabolism');
-        const isEating = state?.mode === 'eat';
-        const isPooping = metabolism?.isPooping || false;
+        const isEating = v.isEating || false;
+        const isPooping = v.isPooping || false;
         const isDairy = v.cowType === 'dairy';
 
         // Environment check
@@ -251,7 +249,8 @@ export default class EntityRenderer {
         // Direction flip
         if (!t.lastFlip) t.lastFlip = 1;
         if (Math.abs(t.vx) > 0.1) t.lastFlip = t.vx < 0 ? -1 : 1;
-        ctx.scale(t.lastFlip, 1);
+        const s = v.size || 1.0;
+        ctx.scale(t.lastFlip * s, s);
 
         if (isInWater) {
             ctx.beginPath();
@@ -321,7 +320,6 @@ export default class EntityRenderer {
     }
 
     drawPredator(ctx, t, v, entity, time) {
-        const state = entity.components.get('AIState');
         const type = v.type;
         const speed = Math.sqrt((t.vx || 0) ** 2 + (t.vy || 0) ** 2);
         const legSway = speed > 5 ? Math.sin(time * 0.02) * 1.5 : 0;
@@ -331,7 +329,8 @@ export default class EntityRenderer {
 
         if (!t.lastFlip) t.lastFlip = 1;
         if (Math.abs(t.vx) > 0.1) t.lastFlip = t.vx < 0 ? -1 : 1;
-        ctx.scale(t.lastFlip, 1);
+        const s = v.size || 1.0;
+        ctx.scale(t.lastFlip * s, s);
 
         // Color profiles
         let bodyColor = '#757575'; // Wolf default
@@ -365,7 +364,7 @@ export default class EntityRenderer {
         }
 
         // 3. HEAD & SNOUT (Longer for predators)
-        const headY = state?.mode === 'eat' ? 1 : -2;
+        const headY = v.isEating ? 1 : -2;
         const headX = 3;
         ctx.fillStyle = bodyColor;
         ctx.fillRect(headX, headY, 3, 3); // Head

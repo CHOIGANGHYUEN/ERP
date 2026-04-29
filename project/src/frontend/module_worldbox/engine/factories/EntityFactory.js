@@ -37,6 +37,8 @@ export default class EntityFactory {
 
         if (type === 'human') {
             entity.components.set('Civilization', { techLevel: 0, villageId: -1 });
+            entity.components.set('Builder', { buildSpeed: 10, isBuilding: false, targetBlueprintId: null });
+            entity.components.set('Inventory', { items: { wood: 0, food: 0, stone: 0 }, capacity: 100 });
         }
 
         return id;
@@ -59,7 +61,8 @@ export default class EntityFactory {
                 color: `rgb(${r},${g},${b})`,
                 quality: quality 
             });
-            entity.components.set('Resource', { type: 'food', value: Math.floor(quality * 10), edible: true, isGrass: true });
+            const config = this.engine.resourceConfig['grass'] || { nutrition: 10, edible: true };
+            entity.components.set('Resource', { type: 'food', value: Math.floor(quality * config.nutrition), edible: config.edible, isGrass: true });
         } 
         else if (type === 'flower') {
             const colors = ['#ff5252', '#ff4081', '#ffeb3b', '#e040fb', '#ffffff'];
@@ -70,10 +73,11 @@ export default class EntityFactory {
                 color: petalColor,
                 quality: quality
             });
+            const config = this.engine.resourceConfig['flower'] || { nutrition: 15, edible: true };
             entity.components.set('Resource', { 
                 type: 'food', 
-                value: Math.floor(quality * 15), 
-                edible: true, 
+                value: Math.floor(quality * config.nutrition), 
+                edible: config.edible, 
                 isFlower: true 
             });
         }
@@ -83,9 +87,14 @@ export default class EntityFactory {
                 quality: quality, // Will represent thickness
                 subtype: options.subtype || 'normal' // normal, fruit, beehive
             });
+            let treeKey = 'tree_normal';
+            if (options.subtype === 'fruit') treeKey = 'tree_fruit';
+            if (options.subtype === 'beehive') treeKey = 'tree_beehive';
+            const config = this.engine.resourceConfig[treeKey] || { wood: 100 };
+            
             entity.components.set('Resource', {
                 type: 'wood',
-                value: Math.floor(quality * 20),
+                value: Math.floor(quality * config.wood),
                 edible: false,
                 isTree: true
             });
@@ -95,8 +104,9 @@ export default class EntityFactory {
             }
         }
         else if (type === 'poop') {
+            const config = this.engine.resourceConfig['poop'] || { amount: 100 };
             entity.components.set('Visual', { type: 'poop' });
-            entity.components.set('Resource', { isFertilizer: true, amount: 100 });
+            entity.components.set('Resource', { isFertilizer: true, amount: config.amount });
         }
 
         return id;

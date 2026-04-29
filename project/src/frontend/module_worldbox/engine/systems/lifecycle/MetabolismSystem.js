@@ -1,13 +1,15 @@
-import { BIOMES } from '../../world/TerrainGen.js';
+import System from '../../core/System.js';
+import { BIOME_PROPERTIES_MAP, BIOME_NAMES_TO_IDS } from '../../world/TerrainGen.js';
 
-export default class MetabolismSystem {
-    constructor(engine) {
-        this.engine = engine;
+export default class MetabolismSystem extends System {
+    constructor(entityManager, eventBus, terrainGen) {
+        super(entityManager, eventBus);
+        this.terrainGen = terrainGen; // TerrainGen 인스턴스 주입
         this.excreteThreshold = 1.0;
     }
 
     update(dt, time) {
-        const em = this.engine.entityManager;
+        const em = this.entityManager;
         for (const [id, entity] of em.entities) {
             const animal = entity.components.get('Animal');
             const metabolism = entity.components.get('Metabolism');
@@ -15,6 +17,12 @@ export default class MetabolismSystem {
 
             if (animal && metabolism && transform) {
                 this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt);
+
+                // 렌더러 디커플링을 위한 Visual 컴포넌트 동기화
+                const visual = entity.components.get('Visual');
+                if (visual) {
+                    visual.isPooping = metabolism.isPooping;
+                }
             }
         }
     }
@@ -31,20 +39,16 @@ export default class MetabolismSystem {
         // 2. EXCRETION
         const ix = Math.floor(transform.x);
         const iy = Math.floor(transform.y);
-        const idx = iy * this.engine.mapWidth + ix;
-        const currentBiome = this.engine.terrainGen.biomeBuffer[idx];
-        const isInWater = currentBiome === BIOMES.OCEAN;
+        const idx = iy * this.terrainGen.mapWidth + ix;
+        const currentBiomeId = this.terrainGen.biomeBuffer[idx];
+        const isInWater = [BIOME_NAMES_TO_IDS.get('OCEAN'), BIOME_NAMES_TO_IDS.get('DEEP_OCEAN'), BIOME_NAMES_TO_IDS.get('LAKE'), BIOME_NAMES_TO_IDS.get('RIVER')].includes(currentBiomeId);
 
         if (!isInWater && metabolism.storedFertility >= this.excreteThreshold) {
             metabolism.isPooping = true;
-            this.excrete(transform.x, transform.y, metabolism.storedFertility);
+            this.eventBus.emit('SPAWN_POOP', { x: transform.x, y: transform.y, fertilityAmount: metabolism.storedFertility });
             metabolism.storedFertility = 0;
         } else if (metabolism.isPooping) {
             if (Math.random() < 0.05) metabolism.isPooping = false;
         }
-    }
-
-    excrete(x, y, amount) {
-        this.engine.spawner.spawnPoop(x, y, amount);
     }
 }

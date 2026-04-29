@@ -1,6 +1,6 @@
 export default class State {
-    constructor(engine) {
-        this.engine = engine;
+    constructor(system) {
+        this.system = system;
     }
 
     enter(entityId, entity) {}

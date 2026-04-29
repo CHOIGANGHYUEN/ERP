@@ -1,9 +1,11 @@
-import TerrainGen, { BIOMES } from '../world/TerrainGen.js';
+import TerrainGen, { BIOME_NAMES_TO_IDS } from '../world/TerrainGen.js';
 import Camera from './Camera.js';
 import EntityRenderer from '../systems/render/EntityRenderer.js';
 import EntityManager from './EntityManager.js';
-import BehaviorSystem from '../systems/behavior/BehaviorSystem.js';
+import EventBus from './EventBus.js';
+import AnimalBehaviorSystem from '../systems/behavior/AnimalBehaviorSystem.js';
 import SocialSystem from '../systems/motion/SocialSystem.js';
+import GatheringSystem from '../systems/economy/GatheringSystem.js';
 import ConsumptionSystem from '../systems/economy/ConsumptionSystem.js';
 import KinematicSystem from '../systems/motion/KinematicSystem.js';
 import MetabolismSystem from '../systems/lifecycle/MetabolismSystem.js';
@@ -15,11 +17,20 @@ import EntityFactory from '../factories/EntityFactory.js';
 import ChunkManager from '../world/ChunkManager.js';
 import StatsMonitor from './StatsMonitor.js';
 import speciesConfig from '../config/species.json'; // 🚀 LOAD SPECIES 
+import resourceConfig from '../config/resource_balance.json'; // 🚀 LOAD RESOURCES
+import buildingsConfig from '../config/buildings.json';
+import techTreeConfig from '../config/tech_tree.json';
+import InputSystem from '../systems/input/InputSystem.js';
+import UISystem from './UISystem.js';
+import ParticleSystem from '../systems/render/ParticleSystem.js';
 
 export default class Engine {
     constructor(canvas) {
         this.canvas = canvas;
         this.speciesConfig = speciesConfig;
+        this.resourceConfig = resourceConfig;
+        this.buildingsConfig = buildingsConfig;
+        this.techTreeConfig = techTreeConfig;
 
         // 🚀 SMART RESOLUTION: Fix the 'tiny canvas' issue
         const rect = canvas.getBoundingClientRect();
@@ -52,29 +63,30 @@ export default class Engine {
         this.camera.clamp();
 
         this.terrainGen = new TerrainGen();
-        this.entityManager = new EntityManager();
+        this.entityManager = new EntityManager(); // EntityManager는 TerrainGen 생성 후 초기화
+        this.eventBus = new EventBus(); // 📡 Global Event Network 생성
         this.renderer = new EntityRenderer(this);
 
-        this.behavior = new BehaviorSystem(this);
+        this.behavior = new AnimalBehaviorSystem(this.entityManager, this.eventBus, this);
         this.social = new SocialSystem(this);
-        this.consumption = new ConsumptionSystem(this);
+        this.gathering = new GatheringSystem(this.entityManager, this.eventBus, this); // engine 주입 필요
+        this.consumption = new ConsumptionSystem(this.entityManager, this.eventBus, this);
         this.kinematics = new KinematicSystem(this);
-        this.metabolism = new MetabolismSystem(this);
-        this.reproduction = new ReproductionSystem(this);
-        this.environment = new EnvironmentSystem(this);
-        this.spawner = new SpawnerSystem(this);
-        this.wind = new WindSystem(this);
+        this.metabolism = new MetabolismSystem(this.entityManager, this.eventBus, this.terrainGen);
+        this.reproduction = new ReproductionSystem(this.entityManager, this.eventBus);
+        this.environment = new EnvironmentSystem(this.entityManager, this.eventBus, this.terrainGen);
+        this.spawner = new SpawnerSystem(this.entityManager, this.eventBus, this.terrainGen);
+        this.wind = new WindSystem();
         this.entityFactory = new EntityFactory(this);
+        this.particleSystem = new ParticleSystem(this.entityManager, this.eventBus);
 
-        this.particles = [];
         this.isRunning = false;
         this.lastTime = 0;
         this.time = 0;
 
-        this.activeTool = null;
         this.isPainting = false;
         this.brushSize = 15;
-        this.viewFlags = { wind: false, fertility: false, xray: false };
+        this.viewFlags = { wind: false, fertility: false, xray: false, water: false, mineral: false };
         this.simParams = { spreadSpeed: 0.1, spreadAmount: 3000 }; // 🚀 UI Params Sync
 
         this.onEntitySelect = null;
@@ -85,16 +97,41 @@ export default class Engine {
         this.monitor = new StatsMonitor(this);
 
         this.init();
-        this.setupInput();
+        this.inputSystem = new InputSystem(this.entityManager, this.eventBus, this);
+        this.uiSystem = new UISystem(this.entityManager, this.eventBus, this);
+
+        // 📡 Subscribe to UI Selection Event for Rendering
+        this.eventBus.on('ENTITY_SELECTED', (id) => {
+            this.selectedId = id;
+        });
+
+        // 📡 Subscribe to Spawner/Environment pixel updates
+        this.eventBus.on('CACHE_PIXEL_UPDATE', (data) => {
+            if (data.reason === 'biome_change' || this.viewFlags.fertility) {
+                this.updateCachePixel(data.x, data.y);
+            }
+        });
+        this.eventBus.on('REFRESH_WATER_PIXELS', () => {
+            this.refreshWaterPixels();
+        });
+
+        // 📡 Subscribe to Stats updates
+        // Engine은 StatsMonitor를 통해 통계를 관리하므로, EventBus를 통해 업데이트를 받습니다.
+        this.eventBus.on('STATS_UPDATED', (payload) => {
+            if (payload.type === 'fertility') {
+                this.updateFertilityStat(payload.oldVal, payload.newVal);
+            } else if (payload.type === 'potential_fertility') {
+                this.updatePotentialStat(payload.oldVal, payload.newVal);
+            }
+        });
     }
 
     init() {
-        this.terrainGen.generate(this.mapWidth, this.mapHeight);
+        this.terrainGen.generate(this.mapWidth, this.mapHeight); // Call the new generate method
         let total = 0;
         let potential = 0;
         const fb = this.terrainGen.fertilityBuffer;
         const bb = this.terrainGen.biomeBuffer;
-
         for (let i = 0; i < fb.length; i++) {
             total += fb[i];
             potential += this.environment.getMaxFertility(bb[i]);
@@ -124,8 +161,11 @@ export default class Engine {
     refreshWaterPixels() {
         this.waterPixels = [];
         const buffer = this.terrainGen.biomeBuffer;
-        for (let i = 0; i < buffer.length; i++) {
-            if (buffer[i] === BIOMES.OCEAN) this.waterPixels.push(i);
+        for (let i = 0; i < buffer.length; i++) { // BIOME_NAMES_TO_IDS를 사용하여 ID로 비교
+            const b = buffer[i]; // b는 biomeId
+            if (b === BIOME_NAMES_TO_IDS.get('OCEAN') || b === BIOME_NAMES_TO_IDS.get('DEEP_OCEAN') || b === BIOME_NAMES_TO_IDS.get('LAKE') || b === BIOME_NAMES_TO_IDS.get('RIVER')) {
+                this.waterPixels.push(i);
+            }
         }
     }
 
@@ -147,10 +187,10 @@ export default class Engine {
 
     setActiveTool(tool) {
         if (this.activeTool && this.activeTool.onMouseUp) {
-            this.activeTool.onMouseUp({ camera: this.camera });
+            const command = this.activeTool.onMouseUp();
+            this.dispatchCommand(command);
         }
         this.activeTool = tool;
-        // Reset painting state when switching tools
         this.isPainting = false;
         if (this.camera) this.camera.isDragging = false;
     }
@@ -159,178 +199,60 @@ export default class Engine {
         if (id === 'view_wind') this.viewFlags.wind = !this.viewFlags.wind;
         if (id === 'view_fertility') {
             this.viewFlags.fertility = !this.viewFlags.fertility;
+            this.viewFlags.water = false;
+            this.viewFlags.mineral = false;
+            this.preRenderTerrain();
+            this.chunkManager.dirtyChunks.clear();
+        }
+        if (id === 'view_water') {
+            this.viewFlags.water = !this.viewFlags.water;
+            this.viewFlags.fertility = false;
+            this.viewFlags.mineral = false;
+            this.preRenderTerrain();
+            this.chunkManager.dirtyChunks.clear();
+        }
+        if (id === 'view_mineral') {
+            this.viewFlags.mineral = !this.viewFlags.mineral;
+            this.viewFlags.fertility = false;
+            this.viewFlags.water = false;
             this.preRenderTerrain();
             this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_xray') this.viewFlags.xray = !this.viewFlags.xray;
     }
 
-    handleSelect(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-
-        let nearest = null;
-        let minDist = 30;
-
-        for (const [id, entity] of this.entityManager.entities) {
-            const t = entity.components.get('Transform');
-            if (t) {
-                const dist = Math.sqrt((t.x - world.x) ** 2 + (t.y - world.y) ** 2);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearest = id;
-                }
-            }
-        }
-
-        this.selectedId = nearest;
-        if (nearest && this.onEntitySelect) {
-            this.onEntitySelect(this.getEntityData(nearest));
-        } else if (!nearest && this.onEntitySelect) {
-            this.onEntitySelect(null);
-        }
-    }
-
-    getEntityData(id) {
-        const target = this.entityManager.entities.get(id);
-        if (!target) return null;
-
-        const m = target.components.get('Metabolism');
-        const a = target.components.get('Animal');
-        const v = target.components.get('Visual');
-        const r = target.components.get('Resource');
-        const stateComp = target.components.get('AIState');
-
-        let name = 'Unknown';
-        let type = v?.type || a?.type || 'unknown';
-        let subType = v?.treeType || v?.role || null;
-        let state = 'Normal';
-        let fertility = m?.storedFertility || r?.storedFertility || 0;
-        let inhabitants = null;
-        let animalYield = null;
-
-        if (type === 'tree') {
-            name = subType === 'beehive' ? 'Beehive Tree' : (subType === 'fruit' ? 'Fruit Tree' : 'Tree');
-            state = v?.isWithered ? 'Withered' : 'Healthy';
-
-            if (subType === 'beehive') {
-                let queen = 0, worker = 0, larva = 0;
-                for (const [eId, e] of this.entityManager.entities) {
-                    const eAnim = e.components.get('Animal');
-                    if (eAnim && eAnim.type === 'bee' && eAnim.hiveId === id) {
-                        if (eAnim.role === 'queen') queen++;
-                        else if (eAnim.role === 'larva') larva++;
-                        else worker++;
-                    }
-                }
-                inhabitants = { queen, worker, larva, honey: Math.floor(r?.honey || 0) };
-            }
-        } else if (type === 'flower') {
-            name = 'Flower';
-            state = (v?.quality < 0.4) ? 'Withered' : 'Blooming';
-        } else if (r?.isGrass) {
-            name = 'Grass';
-            type = 'grass';
-            state = (v?.quality < 0.4) ? 'Withered' : 'Healthy';
-        } else if (a) {
-            name = a.type.charAt(0).toUpperCase() + a.type.slice(1);
-            if (a.isBaby) name = 'Baby ' + name;
-            state = stateComp?.mode || 'wander';
-
-            if (a.type === 'cow') {
-                subType = v?.cowType;
-                name = subType === 'dairy' ? 'Dairy Cow' : 'Beef Cow';
-                if (r) {
-                    animalYield = subType === 'dairy' ? `🍼 Milk: ${r.amount} | 🥩 Meat: ${r.meat}` : `🥩 Meat: ${r.amount}`;
-                }
-            }
-        }
-
-        return {
-            id: target.id, type: type, subType: subType, name: name, state: state,
-            stomach: m?.stomach, maxStomach: m?.maxStomach, fertility: fertility,
-            quality: v?.quality, inhabitants: inhabitants, resourceValue: r?.value || r?.amount || 0,
-            animalYield: animalYield,
-            rank: a?.rank
-        };
-    }
-
-    setupInput() {
-        this.canvas.addEventListener('mousedown', (e) => {
-            if (e.button === 0) {
-                if (this.activeTool && this.activeTool.onMouseDown) {
-                    const rect = this.canvas.getBoundingClientRect();
-                    const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-                    this.activeTool.onMouseDown({
-                        e, engine: this, camera: this.camera, world,
-                        brushSize: this.brushSize, particles: this.particles
-                    });
-                } else {
-                    this.camera.handleMouseDown(e); // 기본 동작은 화면 이동
-                }
-            }
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            if (this.activeTool && this.activeTool.onMouseMove) {
-                const rect = this.canvas.getBoundingClientRect();
-                const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-                this.activeTool.onMouseMove({
-                    e, engine: this, camera: this.camera, world,
-                    brushSize: this.brushSize, particles: this.particles
-                });
-            } else {
-                this.camera.handleMouseMove(e);
-            }
-        });
-
-        window.addEventListener('mouseup', () => {
-            if (this.activeTool && this.activeTool.onMouseUp) {
-                this.activeTool.onMouseUp({ e, engine: this, camera: this.camera });
-            } else {
+    // 🚀 도구 및 이벤트 등에서 넘어온 명령(Command)을 일괄적으로 처리하는 중앙 분배기
+    dispatchCommand(command) {
+        if (!command) return;
+        switch (command.type) {
+            case 'CAMERA_DOWN':
+                this.camera.handleMouseDown(command.event);
+                break;
+            case 'CAMERA_MOVE':
+                this.camera.handleMouseMove(command.event);
+                break;
+            case 'CAMERA_UP':
                 this.camera.handleMouseUp();
-            }
-        });
-
-        this.canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            this.camera.handleWheel(e);
-        }, { passive: false });
-
-        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
-        window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'x') {
-                this.toggleView('view_xray');
-            }
-        });
-    }
-
-    updateParticles(dt) {
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            const p = this.particles[i];
-            if (p.y < p.targetY) { p.y += p.speed; } else {
-                if (p.type === 'BIOME') {
-                    const idx = Math.floor(p.y) * this.mapWidth + Math.floor(p.x);
-                    if (idx >= 0 && idx < this.terrainGen.biomeBuffer.length) {
-                        if (p.action === 'CHANGE_BIOME') this.environment.changePixelBiome(idx, p.biome);
-                        else if (p.action === 'SPAWN_PLANT') {
-                            const fertile = this.terrainGen.fertilityBuffer[idx] || 0;
-                            if (fertile > 0.1) this.spawner.spawnGrass(p.x, p.y, fertile);
-                        }
-                        else if (p.action === 'SPAWN_FLOWER') {
-                            const fertile = this.terrainGen.fertilityBuffer[idx] || 0;
-                            if (fertile > 0.1) this.spawner.spawnFlower(p.x, p.y, fertile);
-                        }
-                        else if (p.action === 'SPAWN_TREE') {
-                            const fertile = this.terrainGen.fertilityBuffer[idx] || 0;
-                            if (fertile > 0.15) this.spawner.spawnTree(p.x, p.y, p.treeType, fertile);
-                        }
-                    }
-                }
-                this.particles.splice(i, 1);
-            }
+                break;
+            case 'SPAWN_PARTICLES':
+                this.eventBus.emit('SPAWN_PARTICLES', command.payload);
+                break;
+            case 'SPAWN_ENTITY':
+                const methodToType = { spawnSheep: 'sheep', spawnHuman: 'human', spawnCow: 'cow', spawnWolf: 'wolf', spawnHyena: 'hyena', spawnWildDog: 'wild_dog' };
+                const type = methodToType[command.payload.method];
+                if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
+                break;
+            case 'TOGGLE_VIEW':
+                this.toggleView(`view_${command.payload.flagName}`);
+                break;
+            case 'INSPECT':
+                this.eventBus.emit('INSPECT_REQUEST', command.payload.worldPos);
+                break;
         }
+        if (this.isRunning) return;
+        this.isRunning = true;
+        this.lastTime = performance.now();
+        requestAnimationFrame((t) => this.loop(t));
     }
 
     start() {
@@ -357,28 +279,18 @@ export default class Engine {
 
     update(dt) {
         const time = performance.now();
-        this.updateParticles(dt);
+        this.particleSystem.update(dt, time); // ParticleSystem은 자체적으로 EventBus를 통해 파티클을 생성/관리
         this.behavior.update(dt);
         this.social.update(dt);
+        this.gathering.update(dt, time);
         this.consumption.update(dt);
         this.kinematics.update(dt);
         this.metabolism.update(dt, time);
-        this.reproduction.update(dt);
+        this.reproduction.update(dt, time);
         this.environment.update(dt, time);
         this.spawner.update(dt, time);
         this.wind.update(time);
-
-        // 선택된 객체가 있다면 매 프레임 UI로 최신 데이터를 동기화
-        if (this.selectedId && this.onEntitySelect) {
-            const data = this.getEntityData(this.selectedId);
-            if (data) {
-                this.onEntitySelect(data);
-            } else {
-                // 동물이 굶어 죽거나 풀이 먹혀서 사라진 경우 상태창 닫기
-                this.selectedId = null;
-                this.onEntitySelect(null);
-            }
-        }
+        this.uiSystem.update(dt, time);
 
         if (this.selectedId && this.onEntitySelect && this.isFollowing) {
             const e = this.entityManager.entities.get(this.selectedId);
@@ -405,7 +317,7 @@ export default class Engine {
         this.ctx.translate(-this.camera.x, -this.camera.y);
 
         this.ctx.drawImage(this.terrainCanvas, 0, 0);
-        this.renderer.render(this.ctx, this.entityManager, this.particles, performance.now(), this.wind);
+        this.renderer.render(this.ctx, this.entityManager, this.particleSystem.particles, performance.now(), this.wind);
         this.ctx.restore();
     }
 }

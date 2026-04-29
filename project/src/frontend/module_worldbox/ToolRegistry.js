@@ -1,4 +1,4 @@
-import { BIOMES } from '../world/TerrainGen.js';
+import { BIOME_NAMES_TO_IDS } from '../world/TerrainGen.js';
 
 // 🛠️ Base Tool Interface
 export class Tool {
@@ -44,7 +44,7 @@ export class SprinkleTool extends Tool {
                 targetY: world.y + (Math.random() - 0.5) * brushSize * 3,
                 type: 'BIOME',
                 action: this.actionType,
-                biome: this.biome ? BIOMES[this.biome] : (this.biome || 0),
+                biome: this.biome ? BIOME_NAMES_TO_IDS.get(this.biome) : 0,
                 color: this.color,
                 speed: 4 + Math.random() * 3,
                 treeType: this.config.treeType
@@ -88,6 +88,20 @@ export class ToggleTool extends Tool {
             engine.viewFlags.wind = !engine.viewFlags.wind;
         } else if (this.flagName === 'fertility') {
             engine.viewFlags.fertility = !engine.viewFlags.fertility;
+            engine.viewFlags.water = false;
+            engine.viewFlags.mineral = false;
+            engine.preRenderTerrain();
+            engine.chunkManager.dirtyChunks.clear();
+        } else if (this.flagName === 'water') {
+            engine.viewFlags.water = !engine.viewFlags.water;
+            engine.viewFlags.fertility = false;
+            engine.viewFlags.mineral = false;
+            engine.preRenderTerrain();
+            engine.chunkManager.dirtyChunks.clear();
+        } else if (this.flagName === 'mineral') {
+            engine.viewFlags.mineral = !engine.viewFlags.mineral;
+            engine.viewFlags.fertility = false;
+            engine.viewFlags.water = false;
             engine.preRenderTerrain();
             engine.chunkManager.dirtyChunks.clear();
         } else if (this.flagName === 'xray') {
@@ -124,6 +138,8 @@ export const DefaultTools = [
     new SpawnTool({ id: 'spawn_wild_dog', name: 'Wild Dog', icon: '🐕', category: 'Life', spawnMethod: 'spawnWildDog' }),
     new ToggleTool({ id: 'view_wind', name: 'Wind View', icon: '🌬️', category: 'View', flagName: 'wind' }),
     new ToggleTool({ id: 'view_fertility', name: 'Fertility View', icon: '💎', category: 'View', flagName: 'fertility' }),
+    new ToggleTool({ id: 'view_water', name: 'Water Quality', icon: '🌊', category: 'View', flagName: 'water' }),
+    new ToggleTool({ id: 'view_mineral', name: 'Mineral Density', icon: '⛏️', category: 'View', flagName: 'mineral' }),
     new ToggleTool({ id: 'view_xray', name: 'X-Ray View', icon: '👁️', category: 'View', flagName: 'xray' }),
     new InspectTool()
 ];

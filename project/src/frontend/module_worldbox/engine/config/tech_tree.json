@@ -1,3 +1,17 @@
 {
-    "tech_tree": []
+    "0": {
+        "id": "stone_age",
+        "name": "Stone Age",
+        "requirements": { "population": 2, "time": 0 }
+    },
+    "1": {
+        "id": "bronze_age",
+        "name": "Bronze Age",
+        "requirements": { "population": 4, "wood": 200, "time": 30 }
+    },
+    "2": {
+        "id": "iron_age",
+        "name": "Iron Age",
+        "requirements": { "population": 10, "wood": 1000, "time": 120 }
+    }
 }

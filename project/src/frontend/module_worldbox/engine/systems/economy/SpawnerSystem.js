@@ -1,8 +1,26 @@
-import { BIOMES } from '../../world/TerrainGen.js';
+import { BIOME_PROPERTIES_MAP, BIOME_NAMES_TO_IDS } from '../../world/TerrainGen.js';
+import System from '../../core/System.js';
+import speciesConfig from '../../config/species.json';
+import resourceConfig from '../../config/resource_balance.json';
 
-export default class SpawnerSystem {
-    constructor(engine) {
-        this.engine = engine;
+export default class SpawnerSystem extends System {
+    constructor(entityManager, eventBus, terrainGen) {
+        super(entityManager, eventBus);
+        this.terrainGen = terrainGen; // TerrainGen 인스턴스 주입
+
+        // EventBus Subscriptions
+        this.eventBus.on('SPAWN_POOP', (payload) => this.spawnPoop(payload.x, payload.y, payload.fertilityAmount));
+        this.eventBus.on('SPAWN_ENTITY', (payload) => this.spawnEntity(payload));
+
+        this.eventBus.on('APPLY_TOOL_EFFECT', (payload) => {
+            const idx = Math.floor(payload.y) * this.terrainGen.mapWidth + Math.floor(payload.x);
+            if (idx >= 0 && idx < this.terrainGen.biomeBuffer.length) {
+                const fertile = this.terrainGen.fertilityBuffer[idx] || 0;
+                if (payload.action === 'SPAWN_PLANT' && fertile > 0.1) this.spawnGrass(payload.x, payload.y, Math.min(1.0, fertile));
+                else if (payload.action === 'SPAWN_FLOWER' && fertile > 0.1) this.spawnFlower(payload.x, payload.y, Math.min(1.0, fertile));
+                else if (payload.action === 'SPAWN_TREE' && fertile > 0.15) this.spawnTree(payload.x, payload.y, payload.treeType, Math.min(1.0, fertile));
+            }
+        });
     }
 
     update(dt, time) {
@@ -13,16 +31,16 @@ export default class SpawnerSystem {
     spawnResources() {
         // 매 프레임마다 무작위 지점을 탐색하여 비옥도가 높은 곳에 식물 자연 스폰
         for (let i = 0; i < 10; i++) {
-            const x = Math.floor(Math.random() * this.engine.mapWidth);
-            const y = Math.floor(Math.random() * this.engine.mapHeight);
-            const idx = y * this.engine.mapWidth + x;
-            const biome = this.engine.terrainGen.biomeBuffer[idx];
-            const fertility = this.engine.terrainGen.fertilityBuffer[idx];
+            const x = Math.floor(Math.random() * this.terrainGen.mapWidth);
+            const y = Math.floor(Math.random() * this.terrainGen.mapHeight);
+            const idx = y * this.terrainGen.mapWidth + x;
+            const biomeId = this.terrainGen.biomeBuffer[idx];
+            const fertility = this.terrainGen.fertilityBuffer[idx];
 
             // 잔디나 정글 바이옴이고 비옥도가 일정 수준 이상일 때
-            if (fertility > 0.2 && (biome === BIOMES.GRASS || biome === BIOMES.JUNGLE)) {
+            if (fertility > 0.2 && (biomeId === BIOME_NAMES_TO_IDS.get('GRASS') || biomeId === BIOME_NAMES_TO_IDS.get('JUNGLE'))) {
                 // 비옥도가 높을수록 스폰 확률 증가
-                if (Math.random() < fertility * 0.05) {
+                if (Math.random() < fertility * 0.05) { // 스폰 확률 조정
                     const rand = Math.random();
                     // 비옥도가 매우 높으면 나무 스폰 (5% 확률)
                     if (fertility > 0.8 && rand < 0.05) {
@@ -46,7 +64,7 @@ export default class SpawnerSystem {
     }
 
     spawnGrass(x, y, fertility) {
-        const em = this.engine.entityManager;
+        const em = this.entityManager;
         if (em.entities.size > 20000) return;
 
         const ix = Math.floor(x);
@@ -62,16 +80,14 @@ export default class SpawnerSystem {
         }
 
         // BLUEPRINT: Consumes ALL current fertility to spawn (reset to 0.1)
-        const idx = iy * this.engine.mapWidth + ix;
-        const oldVal = this.engine.terrainGen.fertilityBuffer[idx];
-        this.engine.terrainGen.fertilityBuffer[idx] = 0.1; // Exhaust the soil
+        const idx = iy * this.terrainGen.mapWidth + ix;
+        const oldVal = this.terrainGen.fertilityBuffer[idx];
+        this.terrainGen.fertilityBuffer[idx] = 0.1; // Exhaust the soil
 
         // Track the consumption
-        this.engine.updateFertilityStat(oldVal, 0.1);
+        this.eventBus.emit('STATS_UPDATED', { type: 'fertility', oldVal: oldVal, newVal: 0.1 });
 
-        if (this.engine.viewFlags.fertility) {
-            this.engine.updateCachePixel(Math.floor(x), Math.floor(y));
-        }
+        this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'fertility_change' });
 
         const id = em.createEntity();
         const entity = em.entities.get(id);
@@ -95,7 +111,7 @@ export default class SpawnerSystem {
     }
 
     spawnFlower(x, y, quality) {
-        const em = this.engine.entityManager;
+        const em = this.entityManager;
         if (em.entities.size > 20000) return;
 
         const ix = Math.floor(x);
@@ -109,14 +125,12 @@ export default class SpawnerSystem {
         }
 
         // 💎 CONTEXT: Consume fertility and update stats
-        const idx = iy * this.engine.mapWidth + ix;
-        const oldVal = this.engine.terrainGen.fertilityBuffer[idx] || 0;
-        this.engine.terrainGen.fertilityBuffer[idx] = 0.1; // Exhausted
-        this.engine.updateFertilityStat(oldVal, 0.1);
+        const idx = iy * this.terrainGen.mapWidth + ix;
+        const oldVal = this.terrainGen.fertilityBuffer[idx] || 0;
+        this.terrainGen.fertilityBuffer[idx] = 0.1; // Exhausted
+        this.eventBus.emit('STATS_UPDATED', { type: 'fertility', oldVal: oldVal, newVal: 0.1 });
 
-        if (this.engine.viewFlags.fertility) {
-            this.engine.updateCachePixel(ix, iy);
-        }
+        this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'fertility_change' });
 
         const id = em.createEntity();
         const entity = em.entities.get(id);
@@ -130,10 +144,11 @@ export default class SpawnerSystem {
                 color: petalColor,
                 quality: quality // 🌸 Vital for 'withered' look
             });
+            const config = resourceConfig['flower'] || { nutrition: 15, edible: true };
             entity.components.set('Resource', {
                 type: 'food',
-                value: Math.floor(quality * 15),
-                edible: true,
+                value: Math.floor(quality * config.nutrition),
+                edible: config.edible,
                 isFlower: true,
                 storedFertility: quality
             });
@@ -141,13 +156,13 @@ export default class SpawnerSystem {
     }
 
     spawnSheep(x, y, isBaby = false) {
-        const em = this.engine.entityManager;
-        const config = this.engine.speciesConfig['sheep'] || {};
+        const em = this.entityManager;
+        const config = speciesConfig['sheep'] || {};
 
         const id = em.createEntity();
         const entity = em.entities.get(id);
         if (entity) {
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: config.weight || 50 });
+            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 50) * (isBaby ? 0.4 : 1) });
             entity.components.set('Visual', {
                 type: 'sheep',
                 size: isBaby ? 0.6 : 1.0
@@ -169,17 +184,17 @@ export default class SpawnerSystem {
         }
     }
 
-    spawnHuman(x, y) {
-        const em = this.engine.entityManager;
-        const config = this.engine.speciesConfig['human'] || {};
+    spawnHuman(x, y, isBaby = false) {
+        const em = this.entityManager;
+        const config = speciesConfig['human'] || {};
 
         const id = em.createEntity();
         const entity = em.entities.get(id);
         if (entity) {
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: config.weight || 70 });
-            entity.components.set('Visual', { type: 'human' });
+            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 70) * (isBaby ? 0.4 : 1) });
+            entity.components.set('Visual', { type: 'human', size: isBaby ? 0.6 : 1.0 });
             entity.components.set('Animal', {
-                type: 'human', diet: 'omnivore'
+                type: 'human', diet: 'omnivore', isBaby: isBaby
             });
             entity.components.set('Metabolism', {
                 stomach: 1.0,
@@ -194,18 +209,18 @@ export default class SpawnerSystem {
         }
     }
 
-    spawnCow(x, y) {
-        const em = this.engine.entityManager;
-        const config = this.engine.speciesConfig['cow'] || {};
+    spawnCow(x, y, isBaby = false) {
+        const em = this.entityManager;
+        const config = speciesConfig['cow'] || {};
         const id = em.createEntity();
         const entity = em.entities.get(id);
         if (entity) {
             const isDairy = Math.random() < 0.5; // 50% 확률로 젖소
             const cowType = isDairy ? 'dairy' : 'beef';
 
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: config.weight || 500 });
-            entity.components.set('Visual', { type: 'cow', cowType: cowType, size: 1.2 });
-            entity.components.set('Animal', { type: 'cow', diet: config.diet || 'herbivore', herdId: -1 });
+            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 500) * (isBaby ? 0.3 : 1) });
+            entity.components.set('Visual', { type: 'cow', cowType: cowType, size: isBaby ? 0.6 : 1.0 });
+            entity.components.set('Animal', { type: 'cow', diet: config.diet || 'herbivore', herdId: -1, isBaby: isBaby });
             entity.components.set('Metabolism', {
                 stomach: 1.0,
                 maxStomach: config.maxStomach || 5.0,
@@ -223,22 +238,23 @@ export default class SpawnerSystem {
         }
     }
 
-    spawnPredator(x, y, type) {
-        const em = this.engine.entityManager;
-        const config = this.engine.speciesConfig[type] || {};
+    spawnPredator(x, y, type, isBaby = false) {
+        const em = this.entityManager;
+        const config = speciesConfig[type] || {};
         const id = em.createEntity();
         const entity = em.entities.get(id);
 
         if (entity) {
             const rank = Math.floor(Math.random() * 100) + 1; // 1~100 사이의 서열(힘)
 
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: config.weight || 40 });
-            entity.components.set('Visual', { type: type, size: 1.0 });
+            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 40) * (isBaby ? 0.4 : 1) });
+            entity.components.set('Visual', { type: type, size: isBaby ? 0.6 : 1.0 });
             entity.components.set('Animal', {
                 type: type,
                 diet: config.diet || 'carnivore',
                 herdId: -1,
-                rank: rank
+                rank: rank,
+                isBaby: isBaby
             });
             entity.components.set('Metabolism', {
                 stomach: config.maxStomach * 0.5 || 1.5,
@@ -250,12 +266,12 @@ export default class SpawnerSystem {
             entity.components.set('AIState', { mode: 'wander' });
         }
     }
-    spawnWolf(x, y) { this.spawnPredator(x, y, 'wolf'); }
-    spawnHyena(x, y) { this.spawnPredator(x, y, 'hyena'); }
-    spawnWildDog(x, y) { this.spawnPredator(x, y, 'wild_dog'); }
+    spawnWolf(x, y, isBaby = false) { this.spawnPredator(x, y, 'wolf', isBaby); }
+    spawnHyena(x, y, isBaby = false) { this.spawnPredator(x, y, 'hyena', isBaby); }
+    spawnWildDog(x, y, isBaby = false) { this.spawnPredator(x, y, 'wild_dog', isBaby); }
 
     spawnTree(x, y, treeType = 'normal', fertility = 1.0) {
-        const em = this.engine.entityManager;
+        const em = this.entityManager;
         if (em.entities.size > 20000) return;
 
         const ix = Math.floor(x);
@@ -273,12 +289,12 @@ export default class SpawnerSystem {
         }
 
         // 토양 비옥도를 흡수하여 나무의 두께(크기) 결정
-        const idx = iy * this.engine.mapWidth + ix;
-        const oldVal = this.engine.terrainGen.fertilityBuffer[idx] || 0;
+        const idx = iy * this.terrainGen.mapWidth + ix;
+        const oldVal = this.terrainGen.fertilityBuffer[idx] || 0;
         const consumed = Math.min(1.0, oldVal);
 
-        this.engine.terrainGen.fertilityBuffer[idx] = 0.05; // 양분을 거의 다 흡수함
-        this.engine.updateFertilityStat(oldVal, this.engine.terrainGen.fertilityBuffer[idx]);
+        this.terrainGen.fertilityBuffer[idx] = 0.05; // 양분을 거의 다 흡수함
+        this.eventBus.emit('STATS_UPDATED', { type: 'fertility', oldVal: oldVal, newVal: this.terrainGen.fertilityBuffer[idx] });
 
         const id = em.createEntity();
         const entity = em.entities.get(id);
@@ -322,8 +338,8 @@ export default class SpawnerSystem {
     }
 
     spawnBee(x, y, role = 'worker', hiveId = null) {
-        const em = this.engine.entityManager;
-        const config = this.engine.speciesConfig['bee'] || {};
+        const em = this.entityManager;
+        const config = speciesConfig['bee'] || {};
 
         const id = em.createEntity();
         const entity = em.entities.get(id);
@@ -348,13 +364,24 @@ export default class SpawnerSystem {
     }
 
     spawnPoop(x, y, fertilityAmount = 1.0) {
-        const em = this.engine.entityManager;
+        const em = this.entityManager;
         const id = em.createEntity();
         const entity = em.entities.get(id);
         if (entity) {
+            const config = resourceConfig['poop'] || { amount: 100 };
             entity.components.set('Transform', { x, y });
             entity.components.set('Visual', { type: 'poop' });
-            entity.components.set('Resource', { isFertilizer: true, amount: 100, fertilityValue: fertilityAmount }); // 소화된 비옥도를 품고 있음
+            entity.components.set('Resource', { isFertilizer: true, amount: config.amount, fertilityValue: fertilityAmount }); // 소화된 비옥도를 품고 있음
         }
+    }
+
+    spawnEntity(payload) {
+        const isBaby = payload.isBaby || false;
+        if (payload.type === 'sheep') this.spawnSheep(payload.x, payload.y, isBaby);
+        else if (payload.type === 'cow') this.spawnCow(payload.x, payload.y, isBaby);
+        else if (payload.type === 'human') this.spawnHuman(payload.x, payload.y, isBaby);
+        else if (payload.type === 'wolf') this.spawnWolf(payload.x, payload.y, isBaby);
+        else if (payload.type === 'hyena') this.spawnHyena(payload.x, payload.y, isBaby);
+        else if (payload.type === 'wild_dog') this.spawnWildDog(payload.x, payload.y, isBaby);
     }
 }

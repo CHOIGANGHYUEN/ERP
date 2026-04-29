@@ -1,4 +1,4 @@
-import { BIOMES } from '../world/TerrainGen.js';
+import { BIOME_NAMES_TO_IDS } from '../world/TerrainGen.js';
 
 // 🛠️ Base Tool Interface
 export class Tool {
@@ -11,17 +11,17 @@ export class Tool {
     get isInstant() { return false; }
     get isBrush() { return false; }
 
-    execute(context) { }
-    onMouseDown(context) { }
-    onMouseMove(context) { }
-    onMouseUp(context) { }
+    execute() { return null; }
+    onMouseDown(worldPos, e) { return null; }
+    onMouseMove(worldPos, e) { return null; }
+    onMouseUp(e) { return null; }
 }
 
 export class MoveTool extends Tool {
     constructor() { super({ id: 'move_hand', name: 'Move', icon: '🖐️', category: 'Earth' }); }
-    onMouseDown({ e, camera }) { camera.handleMouseDown(e); }
-    onMouseMove({ e, camera }) { camera.handleMouseMove(e); }
-    onMouseUp({ camera }) { camera.handleMouseUp(); }
+    onMouseDown(worldPos, e) { return { type: 'CAMERA_DOWN', event: e }; }
+    onMouseMove(worldPos, e) { return { type: 'CAMERA_MOVE', event: e }; }
+    onMouseUp(e) { return { type: 'CAMERA_UP' }; }
 }
 
 export class SprinkleTool extends Tool {
@@ -36,31 +36,32 @@ export class SprinkleTool extends Tool {
     }
     get isBrush() { return true; }
 
-    spawnParticles({ world, brushSize, particles }) {
-        for (let i = 0; i < this.count; i++) {
-            particles.push({
-                x: world.x + (Math.random() - 0.5) * brushSize * 3,
-                y: world.y + (Math.random() - 0.5) * brushSize * 3 - 150,
-                targetY: world.y + (Math.random() - 0.5) * brushSize * 3,
-                type: 'BIOME',
-                action: this.actionType,
-                biome: this.biome ? BIOMES[this.biome] : (this.biome || 0),
+    createAction(worldPos) {
+        return {
+            type: 'SPAWN_PARTICLES',
+            payload: {
+                x: worldPos.x,
+                y: worldPos.y,
+                actionType: this.actionType,
+                biome: this.biome ? BIOME_NAMES_TO_IDS.get(this.biome) : 0,
                 color: this.color,
-                speed: 4 + Math.random() * 3,
+                count: this.count,
                 treeType: this.config.treeType
-            });
-        }
+            }
+        };
     }
 
-    onMouseDown(ctx) {
+    onMouseDown(worldPos) {
         this.isPainting = true;
-        this.spawnParticles(ctx);
+        return this.createAction(worldPos);
     }
-    onMouseMove(ctx) {
-        if (this.isPainting) this.spawnParticles(ctx);
+    onMouseMove(worldPos) {
+        if (this.isPainting) return this.createAction(worldPos);
+        return null;
     }
     onMouseUp() {
         this.isPainting = false;
+        return null;
     }
 }
 
@@ -69,10 +70,11 @@ export class SpawnTool extends Tool {
         super(config);
         this.spawnMethod = config.spawnMethod;
     }
-    onMouseDown({ world, engine }) {
-        if (engine.spawner && this.spawnMethod) {
-            engine.spawner[this.spawnMethod](world.x, world.y);
+    onMouseDown(worldPos) {
+        if (this.spawnMethod) {
+            return { type: 'SPAWN_ENTITY', payload: { method: this.spawnMethod, x: worldPos.x, y: worldPos.y } };
         }
+        return null;
     }
 }
 
@@ -83,23 +85,22 @@ export class ToggleTool extends Tool {
     }
     get isInstant() { return true; }
 
+    // 호환성 유지: Vue UI 등에서 기존처럼 tool.execute({ engine }) 형태로 호출될 수 있음을 대비
     execute({ engine }) {
-        if (this.flagName === 'wind') {
-            engine.viewFlags.wind = !engine.viewFlags.wind;
-        } else if (this.flagName === 'fertility') {
-            engine.viewFlags.fertility = !engine.viewFlags.fertility;
-            engine.preRenderTerrain();
-            engine.chunkManager.dirtyChunks.clear();
-        } else if (this.flagName === 'xray') {
-            engine.viewFlags.xray = !engine.viewFlags.xray;
+        if (engine && engine.dispatchCommand) {
+            engine.dispatchCommand(this.getCommand());
         }
+    }
+
+    getCommand() {
+        return { type: 'TOGGLE_VIEW', payload: { flagName: this.flagName } };
     }
 }
 
 export class InspectTool extends Tool {
     constructor() { super({ id: 'inspect_entity', name: 'Inspect', icon: '🔍', category: 'View' }); }
-    onMouseDown({ e, engine }) {
-        engine.handleSelect(e);
+    onMouseDown(worldPos) {
+        return { type: 'INSPECT', payload: { worldPos } };
     }
 }
 
@@ -124,6 +125,8 @@ export const DefaultTools = [
     new SpawnTool({ id: 'spawn_wild_dog', name: 'Wild Dog', icon: '🐕', category: 'Life', spawnMethod: 'spawnWildDog' }),
     new ToggleTool({ id: 'view_wind', name: 'Wind View', icon: '🌬️', category: 'View', flagName: 'wind' }),
     new ToggleTool({ id: 'view_fertility', name: 'Fertility View', icon: '💎', category: 'View', flagName: 'fertility' }),
+    new ToggleTool({ id: 'view_water', name: 'Water Quality', icon: '🌊', category: 'View', flagName: 'water' }),
+    new ToggleTool({ id: 'view_mineral', name: 'Mineral Density', icon: '⛏️', category: 'View', flagName: 'mineral' }),
     new ToggleTool({ id: 'view_xray', name: 'X-Ray View', icon: '👁️', category: 'View', flagName: 'xray' }),
     new InspectTool()
 ];

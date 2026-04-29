@@ -2,52 +2,104 @@
     "biomes": [
         {
             "id": 0,
+            "name": "DEEP_OCEAN",
+            "baseSoilFertility": 0.0,
+            "waterQuality": 0.8,
+            "mineralDensity": 0.4,
+            "canSpread": false,
+            "colorLow": [5, 30, 100],
+            "colorHigh": [10, 50, 130]
+        },
+        {
+            "id": 1,
             "name": "OCEAN",
-            "maxFertility": 0.0,
+            "baseSoilFertility": 0.0,
+            "waterQuality": 1.0,
+            "mineralDensity": 0.1,
             "canSpread": false,
             "colorLow": [10, 80, 160],
             "colorHigh": [10, 130, 160]
         },
         {
-            "id": 1,
+            "id": 2,
+            "name": "LAKE",
+            "baseSoilFertility": 0.0,
+            "waterQuality": 1.0,
+            "mineralDensity": 0.1,
+            "canSpread": false,
+            "colorLow": [30, 120, 180],
+            "colorHigh": [50, 150, 200]
+        },
+        {
+            "id": 3,
+            "name": "RIVER",
+            "baseSoilFertility": 0.0,
+            "waterQuality": 0.9,
+            "mineralDensity": 0.2,
+            "canSpread": false,
+            "colorLow": [40, 140, 190],
+            "colorHigh": [60, 170, 210]
+        },
+        {
+            "id": 4,
+            "name": "SAND",
+            "baseSoilFertility": 0.0,
+            "waterQuality": 0.0,
+            "mineralDensity": 0.1,
+            "canSpread": false,
+            "colorLow": [210, 190, 130],
+            "colorHigh": [230, 210, 150]
+        },
+        {
+            "id": 5,
             "name": "DIRT",
-            "maxFertility": 0.0,
+            "baseSoilFertility": 0.1,
+            "waterQuality": 0.0,
+            "mineralDensity": 0.2,
             "canSpread": false,
             "colorLow": [100, 70, 40],
             "colorHigh": [60, 50, 20]
         },
         {
-            "id": 2,
+            "id": 6,
             "name": "GRASS",
-            "maxFertility": 0.7,
+            "baseSoilFertility": 0.7,
+            "waterQuality": 0.0,
+            "mineralDensity": 0.1,
             "canSpread": true,
             "colorLow": [180, 160, 60],
             "colorHigh": [40, 140, 30],
             "hasFlowers": true
         },
         {
-            "id": 3,
-            "name": "SAND",
-            "maxFertility": 0.0,
-            "canSpread": false,
-            "colorLow": [210, 190, 130],
-            "colorHigh": [210, 190, 130]
-        },
-        {
-            "id": 4,
+            "id": 7,
             "name": "JUNGLE",
-            "maxFertility": 1.0,
+            "baseSoilFertility": 1.0,
+            "waterQuality": 0.0,
+            "mineralDensity": 0.1,
             "canSpread": true,
             "colorLow": [20, 20, 20],
             "colorHigh": [0, 100, 0]
         },
         {
-            "id": 5,
-            "name": "BEACH",
-            "maxFertility": 0.0,
+            "id": 8,
+            "name": "LOW_MOUNTAIN",
+            "baseSoilFertility": 0.0,
+            "waterQuality": 0.0,
+            "mineralDensity": 0.6,
             "canSpread": false,
-            "colorLow": [230, 210, 160],
-            "colorHigh": [230, 210, 160]
+            "colorLow": [120, 110, 100],
+            "colorHigh": [140, 130, 120]
+        },
+        {
+            "id": 9,
+            "name": "HIGH_MOUNTAIN",
+            "baseSoilFertility": 0.0,
+            "waterQuality": 0.0,
+            "mineralDensity": 1.0,
+            "canSpread": false,
+            "colorLow": [200, 200, 200],
+            "colorHigh": [240, 240, 240]
         }
     ]
 }

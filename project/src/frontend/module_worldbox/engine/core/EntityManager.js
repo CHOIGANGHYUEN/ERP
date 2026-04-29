@@ -1,6 +1,7 @@
 import ResourceNode from '../components/resource/ResourceNode.js';
 import Transform from '../components/motion/Transform.js';
 import Visual from '../components/render/Visual.js';
+import resourceConfig from '../config/resource_balance.json'; // resource_balance.json 임포트
 
 export default class EntityManager {
     constructor() {
@@ -29,13 +30,12 @@ export default class EntityManager {
         const id = this.createEntity();
         this.addComponent(id, new Transform(x, y));
         this.addComponent(id, new ResourceNode(type, amount));
-        
+
         // Visual based on resource type
-        let color = '#ffffff';
-        if (type === 'grass') color = '#aed581';
-        if (type === 'tree') color = '#388e3c';
-        if (type === 'water') color = '#4fc3f7';
-        
+        // resource_balance.json에서 해당 자원의 색상 정보를 가져옵니다.
+        const resourceInfo = resourceConfig[type];
+        const color = resourceInfo && resourceInfo.color ? resourceInfo.color : '#ffffff'; // 기본값은 흰색
+
         this.addComponent(id, new Visual(color));
         return id;
     }
