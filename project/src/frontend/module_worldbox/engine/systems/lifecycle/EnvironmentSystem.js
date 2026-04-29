@@ -16,7 +16,11 @@ export default class EnvironmentSystem extends System {
 
                     // 바다/산에는 칠해지지 않도록 방어 (단, 바다 툴은 허용)
                     if (isTargetLand || payload.biome === BIOME_NAMES_TO_IDS.get('OCEAN')) {
-                        this.changePixelBiome(idx, payload.biome);
+                        // 🌿 식생 바이옴(GRASS, JUNGLE)은 비옥도가 있는 토양(0.05 초과)에서만 자랄 수(칠해질 수) 있음
+                        const isPlantBiome = payload.biome === BIOME_NAMES_TO_IDS.get('GRASS') || payload.biome === BIOME_NAMES_TO_IDS.get('JUNGLE');
+                        if (!isPlantBiome || this.terrainGen.fertilityBuffer[idx] > 0.05) {
+                            this.changePixelBiome(idx, payload.biome);
+                        }
                     }
                 }
             }
@@ -33,10 +37,18 @@ export default class EnvironmentSystem extends System {
         for (let i = 0; i < 2000; i++) {
             const idx = Math.floor(Math.random() * (mw * mh));
             const biomeId = this.terrainGen.biomeBuffer[idx];
+            const currentFertility = this.terrainGen.fertilityBuffer[idx];
+            const isPlantBiome = biomeId === BIOME_NAMES_TO_IDS.get('GRASS') || biomeId === BIOME_NAMES_TO_IDS.get('JUNGLE');
+
+            // 🥀 식생 바이옴인데 비옥도가 바닥났다면 다시 흙(DIRT)으로 되돌아감 (퇴화/사막화 현상)
+            if (isPlantBiome && currentFertility <= 0.05) {
+                this.changePixelBiome(idx, BIOME_NAMES_TO_IDS.get('DIRT'));
+                continue;
+            }
 
             const props = BIOME_PROPERTIES_MAP.get(biomeId);
             // 🚨 biomes.json에 canSpread가 없어도 GRASS와 JUNGLE은 무조건 퍼지도록 예외 처리
-            const canSpread = props && (props.canSpread || biomeId === BIOME_NAMES_TO_IDS.get('GRASS') || biomeId === BIOME_NAMES_TO_IDS.get('JUNGLE'));
+            const canSpread = props && (props.canSpread || isPlantBiome);
             if (canSpread) {
                 const nx = (idx % mw) + (Math.floor(Math.random() * 3) - 1);
                 const ny = Math.floor(idx / mw) + (Math.floor(Math.random() * 3) - 1);
@@ -73,8 +85,14 @@ export default class EnvironmentSystem extends System {
 
                 // ✨ 농도 기울기(Concentration Gradient): 비옥도가 높은 곳에서 낮은 곳으로만 흐름
                 if (val > targetVal) {
-                    const diff = (val - targetVal) * 0.15; // 차이의 15%씩 부드럽게 이동
-                    if (diff > 0.005) {
+                    // 🌿 불규칙한 확산 (Irregular Diffusion): 
+                    // 20% 확률로 특정 방향의 흐름을 막아 얼룩덜룩한 지형을 만들고,
+                    // 확산 비율도 고정이 아닌 무작위(2% ~ 25%)로 적용하여 뻗어나가는 촉수 같은 유기적인 형태를 유도합니다.
+                    if (Math.random() < 0.20) continue;
+
+                    const spreadRate = 0.02 + Math.random() * 0.23;
+                    const diff = (val - targetVal) * spreadRate;
+                    if (diff > 0.002) {
                         const transfer = Math.min(diff, targetMax - targetVal); // 타겟의 최대 수용량을 넘지 않도록
                         if (transfer > 0) {
                             this.terrainGen.fertilityBuffer[idx] -= transfer;
@@ -132,12 +150,16 @@ export default class EnvironmentSystem extends System {
         const oldMax = this.getMaxFertility(tg.biomeBuffer[idx]);
         const newMaxCapacity = this.getMaxFertility(biomeId);
 
-        const initialFertility = newMaxCapacity > 0 ? newMaxCapacity * (0.4 + Math.random() * 0.6) : 0;
-
         tg.biomeBuffer[idx] = biomeId;
-        tg.fertilityBuffer[idx] = initialFertility;
 
-        this.eventBus.emit('STATS_UPDATED', { type: 'fertility', oldVal: oldFert, newVal: initialFertility });
+        // 🌍 비옥도는 토지의 고유 양분이므로 바이옴이 덮어씌워져도 초기화되지 않고 유지됩니다.
+        // 단, 산맥 등 비옥도를 가질 수 없는 지형으로 변할 때만 해당 지형의 한계치로 보정합니다.
+        const newFertility = Math.min(oldFert, newMaxCapacity);
+        tg.fertilityBuffer[idx] = newFertility;
+
+        if (oldFert !== newFertility) {
+            this.eventBus.emit('STATS_UPDATED', { type: 'fertility', oldVal: oldFert, newVal: newFertility });
+        }
         this.eventBus.emit('STATS_UPDATED', { type: 'potential_fertility', oldVal: oldMax, newVal: newMaxCapacity });
 
         this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: idx % this.terrainGen.mapWidth, y: Math.floor(idx / this.terrainGen.mapWidth), reason: 'biome_change' });
