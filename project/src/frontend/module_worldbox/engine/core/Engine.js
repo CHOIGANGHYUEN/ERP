@@ -46,8 +46,10 @@ export default class Engine {
         canvas.style.height = '100%';
 
         this.ctx = canvas.getContext('2d', { alpha: false });
-        this.mapWidth = 1000;
-        this.mapHeight = 1000;
+        // 🖼️ 초고해상도 1600x1600 그리드 체제로 업그레이드
+        this.mapWidth = 1600;
+        this.mapHeight = 1600;
+
 
         this.terrainCanvas = document.createElement('canvas');
         this.terrainCanvas.width = this.mapWidth;
@@ -85,9 +87,11 @@ export default class Engine {
         this.time = 0;
 
         this.isPainting = false;
-        this.brushSize = 15;
-        this.viewFlags = { wind: false, fertility: false, xray: false, water: false, mineral: false };
-        this.simParams = { spreadSpeed: 0.1, spreadAmount: 3000 }; // 🚀 UI Params Sync
+        this.brushSize = 50; // 🚀 High-res optimized brush size
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false };
+        this.simParams = { spreadSpeed: 0.1, spreadAmount: 5000 }; // 🚀 Increased capacity for larger world
+
+
 
         this.onEntitySelect = null;
         this.selectedId = null;
@@ -107,10 +111,18 @@ export default class Engine {
 
         // 📡 Subscribe to Spawner/Environment pixel updates
         this.eventBus.on('CACHE_PIXEL_UPDATE', (data) => {
-            if (data.reason === 'biome_change' || this.viewFlags.fertility) {
+            // 비옥도 변화(fertility_change)나 바이옴 변화(biome_change) 시 항상 픽셀 갱신
+            if (data.reason === 'biome_change' || data.reason === 'fertility_change' || this.viewFlags.fertility) {
                 this.updateCachePixel(data.x, data.y);
             }
         });
+        this.eventBus.on('REFRESH_FERTILITY_VIEW', () => {
+            if (this.viewFlags.fertility) {
+                this.chunkManager.markAllDirty();
+            }
+        });
+
+
         this.eventBus.on('REFRESH_WATER_PIXELS', () => {
             this.refreshWaterPixels();
         });
@@ -137,10 +149,12 @@ export default class Engine {
             potential += this.environment.getMaxFertility(bb[i]);
         }
 
+
         this.monitor.setInitialFertility(total, potential);
         this.refreshWaterPixels();
         this.preRenderTerrain();
     }
+
 
     updateFertilityStat(oldVal, newVal) { this.monitor.updateFertilityStat(oldVal, newVal); }
     updatePotentialStat(oldMax, newMax) { this.monitor.updatePotentialStat(oldMax, newMax); }
@@ -204,7 +218,11 @@ export default class Engine {
             this.preRenderTerrain();
             this.chunkManager.dirtyChunks.clear();
         }
+        if (id === 'view_fertility_value') {
+            this.viewFlags.fertilityValue = !this.viewFlags.fertilityValue;
+        }
         if (id === 'view_water') {
+
             this.viewFlags.water = !this.viewFlags.water;
             this.viewFlags.fertility = false;
             this.viewFlags.mineral = false;
@@ -241,6 +259,9 @@ export default class Engine {
                 const methodToType = { spawnSheep: 'sheep', spawnHuman: 'human', spawnCow: 'cow', spawnWolf: 'wolf', spawnHyena: 'hyena', spawnWildDog: 'wild_dog' };
                 const type = methodToType[command.payload.method];
                 if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
+                break;
+            case 'SPAWN_RESOURCE':
+                this.entityManager.createResourceNode(command.payload.x, command.payload.y, command.payload.type, command.payload.amount);
                 break;
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);
@@ -319,5 +340,54 @@ export default class Engine {
         this.ctx.drawImage(this.terrainCanvas, 0, 0);
         this.renderer.render(this.ctx, this.entityManager, this.particleSystem.particles, performance.now(), this.wind);
         this.ctx.restore();
+
+        // 🔍 ENGINE-LEVEL FERTILITY TOOLTIP (Enabled via tool window)
+        if (this.viewFlags.fertilityValue && this.inputSystem && this.inputSystem.mouseWorld) {
+            this.renderFertilityTooltip();
+        }
+    }
+
+
+    renderFertilityTooltip() {
+        const worldPos = this.inputSystem.mouseWorld;
+        const screenPos = this.inputSystem.mouseScreen;
+        if (!worldPos || !screenPos) return;
+
+        const ix = Math.floor(worldPos.x);
+        const iy = Math.floor(worldPos.y);
+        
+        if (ix >= 0 && ix < this.mapWidth && iy >= 0 && iy < this.mapHeight) {
+            const idx = iy * this.mapWidth + ix;
+            const fert = this.terrainGen.fertilityBuffer[idx];
+            
+            const ctx = this.ctx;
+            const text = `FERTILITY: ${(fert * 100).toFixed(1)}%`;
+            
+            ctx.font = 'bold 14px "Courier New", monospace';
+            const metrics = ctx.measureText(text);
+            const padding = 8;
+            const w = metrics.width + padding * 2;
+            const h = 24;
+            
+            // Draw Box
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.fillRect(screenPos.x + 15, screenPos.y + 15, w, h);
+            ctx.strokeRect(screenPos.x + 15, screenPos.y + 15, w, h);
+            
+            // Draw Text
+            ctx.fillStyle = '#00ff00';
+            ctx.fillText(text, screenPos.x + 15 + padding, screenPos.y + 15 + 18);
+
+            // Draw mini bar
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w, 4);
+            
+            const barColor = fert < 0.2 ? '#ff5252' : (fert < 0.6 ? '#ffeb3b' : '#00e676');
+            ctx.fillStyle = barColor;
+            ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w * fert, 4);
+        }
     }
 }
+

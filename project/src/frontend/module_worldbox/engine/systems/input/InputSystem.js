@@ -27,6 +27,11 @@ export default class InputSystem extends System {
         window.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
+            
+            // 📍 Track mouse position for engine access (e.g. tooltips)
+            this.mouseScreen = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            this.mouseWorld = world;
+
             if (this.engine.activeTool && this.engine.activeTool.onMouseMove) {
                 const command = this.engine.activeTool.onMouseMove(world, e);
                 this.engine.dispatchCommand(command);
@@ -34,6 +39,7 @@ export default class InputSystem extends System {
                 this.camera.handleMouseMove(e);
             }
         });
+
 
         window.addEventListener('mouseup', (e) => {
             if (this.engine.activeTool && this.engine.activeTool.onMouseUp) {

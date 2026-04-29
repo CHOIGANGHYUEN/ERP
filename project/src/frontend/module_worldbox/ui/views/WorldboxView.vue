@@ -31,30 +31,39 @@
       <!-- Bottom Tool Menu -->
       <div class="bottom-controls" :class="{ 'open': isMenuOpen }">
         <!-- BRUSH SIZE CONTROL (Side Panel) -->
-        <div v-if="activeToolData?.isBrush" class="brush-settings">
-          <div class="setting-title">BRUSH SIZE: {{ brushSize }}</div>
-          <input type="range" min="2" max="100" v-model="brushSize" @input="updateBrushSize" />
-          <div class="brush-preview" :style="{ width: brushSize + 'px', height: brushSize + 'px' }"></div>
-        </div>
+        <Transition name="fade">
+          <div v-if="activeToolData?.isBrush" class="brush-settings">
+            <div class="setting-title">BRUSH SIZE: {{ brushSize }}</div>
+            <input type="range" min="2" max="100" v-model="brushSize" @input="updateBrushSize" />
+            <div class="brush-preview" :style="{ width: brushSize + 'px', height: brushSize + 'px' }"></div>
+          </div>
+        </Transition>
 
-        <div class="tool-tabs">
-          <button 
-            v-for="cat in toolCategories" 
-            :key="cat"
-            :class="{ active: activeCategory === cat }"
-            @click="activeCategory = cat"
-          >
-            {{ cat }}
-          </button>
-        </div>
+        <div class="controls-panel">
+          <div class="tool-tabs">
+            <button 
+              v-for="cat in toolCategories" 
+              :key="cat.name"
+              :class="{ active: activeCategory === cat.name }"
+              @click="activeCategory = cat.name"
+            >
+              <span class="cat-icon">{{ cat.icon }}</span>
+              <span class="cat-name">{{ cat.name }}</span>
+            </button>
+          </div>
 
-        <div class="tool-belt">
-          <div v-for="tool in filteredTools" :key="tool.id" 
-               class="tool-item" 
-               :class="{ active: activeTool === tool.id }"
-               @click="selectTool(tool)">
-            <div class="tool-icon">{{ tool.icon }}</div>
-            <div class="tool-name">{{ tool.name }}</div>
+          <div class="tool-grid-container">
+            <TransitionGroup name="tool-list" tag="div" class="tool-belt">
+              <div v-for="tool in filteredTools" :key="tool.id" 
+                   class="tool-item" 
+                   :class="{ active: activeTool === tool.id }"
+                   @click="selectTool(tool)">
+                <div class="tool-icon-wrapper">
+                  <div class="tool-icon">{{ tool.icon }}</div>
+                </div>
+                <div class="tool-name">{{ tool.name }}</div>
+              </div>
+            </TransitionGroup>
           </div>
         </div>
       </div>
@@ -68,6 +77,8 @@
   </div>
 </template>
 
+
+
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Engine from '../../engine/core/Engine.js';
@@ -80,7 +91,6 @@ const worldboxContainer = ref(null);
 const gameCanvas = ref(null);
 const isMenuOpen = ref(false);
 const activeTool = ref('move_hand');
-const activeCategory = ref('Earth');
 const brushSize = ref(15);
 const spreadSpeed = ref(10);
 const spreadAmount = ref(3000);
@@ -90,7 +100,23 @@ const totalFertility = ref(0);
 let engine = null;
 let resizeObserver = null;
 
-const toolCategories = ['Earth', 'Life', 'View'];
+const handleMouseMove = (e) => {
+  if (engine) {
+    // Basic engine mouse move logic (if any specific Vue-side handling was needed)
+  }
+};
+
+
+
+const toolCategories = [
+  { name: 'Landscape', icon: '🌍' },
+  { name: 'Nature', icon: '🌱' },
+  { name: 'Resources', icon: '⛏️' },
+  { name: 'Life', icon: '🐑' },
+  { name: 'View', icon: '👁️' }
+];
+
+const activeCategory = ref('Landscape');
 
 const filteredTools = computed(() => {
   return DefaultTools.filter(t => t.category === activeCategory.value);
@@ -119,6 +145,8 @@ const selectTool = (tool) => {
   activeTool.value = tool.id;
   if (engine) engine.setActiveTool(tool);
 };
+
+
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value;
@@ -162,12 +190,18 @@ onMounted(() => {
     });
 
     resizeObserver.observe(worldboxContainer.value);
+    
+    // Add mouse move listener
+    window.addEventListener('mousemove', handleMouseMove);
   }
 });
 
+
 onUnmounted(() => {
   if (resizeObserver) resizeObserver.disconnect();
+  window.removeEventListener('mousemove', handleMouseMove);
   if (engine) {
+
     engine.onEntitySelect = null;
     engine.monitor.onUpdate = null;
     engine.stop();
@@ -255,36 +289,66 @@ input[type="range"] {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1001;
-  background: #388e3c;
-  border: 2px solid white;
+  z-index: 1005;
+  background: rgba(46, 125, 50, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
-  padding: 10px 40px;
-  border-radius: 30px;
+  padding: 8px 30px;
+  border-radius: 20px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
   pointer-events: auto;
   box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fixed-toggle-btn:hover {
+  background: #388e3c;
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+
+.fixed-toggle-btn .icon {
+  font-size: 0.6rem;
+  transition: transform 0.4s ease;
+}
+
+.menu-active .fixed-toggle-btn .icon {
+  transform: rotate(180deg);
 }
 
 .bottom-controls {
   position: absolute;
-  bottom: -350px;
+  bottom: -450px;
   left: 0;
   width: 100%;
-  transition: bottom 0.4s ease;
+  transition: bottom 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 1000;
+  padding-bottom: 80px;
 }
 
 .bottom-controls.open {
   bottom: 0;
 }
 
+.controls-panel {
+  background: linear-gradient(to bottom, rgba(20, 20, 20, 0.9), rgba(10, 10, 10, 0.98));
+  backdrop-filter: blur(25px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
+}
+
 /* Brush Settings */
 .brush-settings {
   position: absolute;
   left: 20px;
-  bottom: 150px;
+  bottom: 180px;
   background: rgba(10, 10, 10, 0.9);
   backdrop-filter: blur(15px);
   border: 1px solid rgba(255,255,255,0.1);
@@ -296,101 +360,185 @@ input[type="range"] {
   gap: 10px;
   pointer-events: auto;
   box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  animation: slide-in 0.3s ease;
-}
-
-@keyframes slide-in {
-  from { opacity: 0; transform: translateX(-20px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 .setting-title {
   font-size: 0.6rem;
   letter-spacing: 1px;
   color: #888;
+  font-weight: bold;
 }
 
 .brush-preview {
-  border: 1px solid #4caf50;
+  border: 2px solid #4caf50;
   border-radius: 50%;
-  background: rgba(76, 175, 80, 0.2);
-}
-
-input[type="range"] {
-  width: 120px;
-  accent-color: #4caf50;
+  background: rgba(76, 175, 80, 0.15);
+  box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
 }
 
 .tool-tabs {
-  background: rgba(20, 20, 20, 0.95);
   display: flex;
   justify-content: center;
-  gap: 15px;
-  padding: 10px 0;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  gap: 5px;
+  padding: 12px 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   pointer-events: auto;
 }
 
 .tool-tabs button {
   background: none;
   border: none;
-  color: #666;
+  color: #777;
   cursor: pointer;
-  font-size: 0.7rem;
-  font-weight: 900;
-  padding: 5px 15px;
-  border-radius: 20px;
+  padding: 8px 20px;
+  border-radius: 12px;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-tabs button .cat-icon {
+  font-size: 1.1rem;
+  filter: grayscale(1);
+  transition: all 0.3s;
+}
+
+.tool-tabs button .cat-name {
+  font-size: 0.75rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  transition: all 0.2s;
 }
 
 .tool-tabs button:hover {
-  color: #ccc;
+  color: #bbb;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .tool-tabs button.active {
   color: #fff;
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 10px rgba(255,255,255,0.05);
+}
+
+.tool-tabs button.active .cat-icon {
+  filter: grayscale(0);
+  transform: scale(1.1);
+}
+
+.tool-grid-container {
+  max-height: 280px;
+  overflow-y: auto;
+  pointer-events: auto;
 }
 
 .tool-belt {
-  background: rgba(15, 15, 15, 0.95);
-  backdrop-filter: blur(20px);
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  padding: 30px 20px 80px 20px; /* Leave space for toggle button */
-  pointer-events: auto;
-  border-top: 2px solid #333;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 15px;
+  padding: 25px 40px;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
 .tool-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  opacity: 0.5;
+  gap: 8px;
   cursor: pointer;
-  color: #eee;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 }
 
-.tool-item.active {
-  opacity: 1;
-  color: #4caf50;
-  transform: scale(1.1);
+.tool-icon-wrapper {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
 }
 
 .tool-icon {
-  font-size: 2.5rem;
+  font-size: 1.8rem;
+  transition: transform 0.3s;
 }
 
 .tool-name {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #999;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tool-item:hover .tool-icon-wrapper {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-5px);
+}
+
+.tool-item:hover .tool-icon {
+  transform: scale(1.1);
+}
+
+.tool-item.active .tool-icon-wrapper {
+  background: rgba(76, 175, 80, 0.2);
+  border-color: #4caf50;
+  box-shadow: 0 0 20px rgba(76, 175, 80, 0.2);
+}
+
+.tool-item.active .tool-icon {
+  transform: scale(1.15);
+}
+
+.tool-item.active .tool-name {
+  color: #4caf50;
+  font-weight: 700;
+}
+
+/* Animations */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.tool-list-move,
+.tool-list-enter-active,
+.tool-list-leave-active {
+  transition: all 0.4s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.tool-list-enter-from,
+.tool-list-leave-to {
+  opacity: 0;
+  transform: scale(0.5) translateY(30px);
+}
+
+.tool-list-leave-active {
+  position: absolute;
 }
 
 .top-bar {
-  padding: 20px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+  padding: 20px 40px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.top-bar h1 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #fff;
+  margin: 0;
 }
 </style>
+
+

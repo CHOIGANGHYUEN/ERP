@@ -46,10 +46,28 @@ export default class EntityFactory {
 
     createResource(type, x, y, quality = 1.0, options = {}) {
         const em = this.engine.entityManager;
+        const tg = this.engine.terrainGen;
+        const idx = Math.floor(y) * tg.mapWidth + Math.floor(x);
+        
+        // [5단계 상세] 식생 스폰 시 비옥도 차감 및 0.1 하한선 보호 로직
+        if (idx >= 0 && idx < tg.fertilityBuffer.length) {
+            const biomeId = tg.biomeBuffer[idx];
+            const isLand = [5, 6, 7].includes(biomeId);
+            
+            if (isLand && ['grass', 'flower', 'tree'].includes(type)) {
+                const currentFert = tg.fertilityBuffer[idx];
+                const consumption = (type === 'tree') ? 0.8 : 0.4; // 나무는 더 많이 소모
+                // 토지 지형의 생존 최솟값 0.1 하한선 방어
+                tg.fertilityBuffer[idx] = Math.max(0.1, currentFert - consumption);
+                this.engine.eventBus.emit('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'fertility_change' });
+            }
+        }
+
         const id = em.createEntity();
         const entity = em.entities.get(id);
 
         entity.components.set('Transform', { x, y });
+
 
         if (type === 'grass') {
             let r, g, b;

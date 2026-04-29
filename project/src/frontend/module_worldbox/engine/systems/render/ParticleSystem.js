@@ -11,7 +11,7 @@ export default class ParticleSystem extends System {
         this.eventBus.on('SPAWN_EFFECT_PARTICLES', (payload) => this.addEffectParticles(payload));
     }
 
-    addParticles({ x, y, actionType, biome, color, count, treeType, brushSize = 15 }) {
+    addParticles({ x, y, actionType, biome, color, count, resourceId, treeType, brushSize = 15 }) {
         for (let i = 0; i < count; i++) {
             this.particles.push({
                 x: x + (Math.random() - 0.5) * brushSize * 3,
@@ -20,6 +20,7 @@ export default class ParticleSystem extends System {
                 type: 'BIOME_TOOL', // 도구로 인한 바이옴/식생 파티클
                 action: actionType,
                 biome: biome, // biomeId
+                resourceId: resourceId,
                 color: color,
                 speed: 4 + Math.random() * 3,
                 treeType: treeType,
@@ -53,7 +54,13 @@ export default class ParticleSystem extends System {
                 } else {
                     // 파티클이 지면에 닿으면 이벤트 버스를 통해 적용 명령만 내립니다. (디커플링)
                     this.eventBus.emit('APPLY_TOOL_EFFECT', {
-                        action: p.action, x: p.x, y: p.y, biome: p.biome, treeType: p.treeType
+                        action: p.action, 
+                        x: p.x, 
+                        y: p.y, 
+                        biome: p.biome, 
+                        resourceId: p.resourceId,
+                        color: p.color,
+                        treeType: p.treeType
                     });
                     this.particles.splice(i, 1); // 파티클 제거
                 }

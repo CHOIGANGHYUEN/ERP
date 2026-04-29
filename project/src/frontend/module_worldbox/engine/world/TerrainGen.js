@@ -79,11 +79,14 @@ export default class TerrainGen {
     }
 
     _getFractalNoise(nx, ny, seed) {
-        let e = 1.0 * this._noise(nx, ny, 8, seed)
-            + 0.5 * this._noise(nx, ny, 16, seed + 10)
-            + 0.25 * this._noise(nx, ny, 32, seed + 20);
-        return e / 1.75;
+        // 🚀 High-Res Fractal: Adding a 4th octave for extreme coastal detail
+        let e = 1.0 * this._noise(nx, ny, 6, seed)
+            + 0.5 * this._noise(nx, ny, 12, seed + 10)
+            + 0.25 * this._noise(nx, ny, 24, seed + 20)
+            + 0.125 * this._noise(nx, ny, 48, seed + 30); // 🌊 Micro-detail layer
+        return e / 1.875;
     }
+
 
     _noise(nx, ny, freq, seed) {
         const x = nx * freq;
@@ -155,15 +158,14 @@ export default class TerrainGen {
         // Apply dynamic influences based on altitude, humidity, temperature
         // These are examples and can be refined based on game design.
 
-        // 육상 지형: 비옥도 계산 (DIRT, GRASS 등)
-        if ([5, 6, 7, 4].includes(biomeId)) { // DIRT, GRASS, JUNGLE, SAND IDs
+        // 육상 지형: 비옥도 계산 (DIRT:5, GRASS:6, JUNGLE:7)
+        if ([5, 6, 7].includes(biomeId)) {
             // 흙(DIRT)의 경우에도 환경 요인에 따라 잠재적 비옥도를 높게 가지도록 보정
-            let base = biomeId === 5 ? 0.8 : biome.baseSoilFertility;
+            let base = biomeId === 5 ? 0.8 : (biome.baseSoilFertility || 0.0);
             const altitudeInfluence = Math.max(0, 1 - Math.pow(Math.abs(altitude - 0.55) * 2.5, 2));
             const humidityInfluence = Math.max(0, 1 - Math.pow(Math.abs(humidity - 0.6) * 2.5, 2));
-
-            // Combine influences and apply to base fertility
             soilFertility = base * altitudeInfluence * humidityInfluence;
+
 
             // Specific conditions (e.g., very low altitude/high altitude, very dry)
             if (altitude < 0.15) { // Near water/very low altitude
@@ -205,11 +207,16 @@ export default class TerrainGen {
             }
         }
 
+        const isLand = [5, 6, 7].includes(biomeId);
+
         return {
-            soilFertility: Math.max(0, Math.min(1, soilFertility)),
+            // 🎲 토지 지형일 경우 모든 좌표에 0.1 ~ 1.0 사이의 랜덤 비옥도 할당
+            soilFertility: isLand ? (0.1 + Math.random() * 0.9) : 0.0,
             waterQuality: Math.max(0, Math.min(1, waterQuality)),
             mineralDensity: Math.max(0, Math.min(1, mineralDensity)),
         };
+
+
     }
 
     /**
@@ -231,49 +238,59 @@ export default class TerrainGen {
         let r, g, b;
 
         if (viewFlags.fertility) {
-            // 비옥도 뷰 활성화 시, 비옥도에 따라 색상 결정
-            const isLand = [4, 5, 6, 7].includes(biomeId); // SAND, DIRT, GRASS, JUNGLE
-            if (!isLand) return 0x111111; // 흙 등 육지를 제외하면 어두운 색
+            const isLand = [4, 5, 6, 7].includes(biomeId);
+            if (!isLand) return 0x000000;
 
-            // 0.0 (빨강) -> 0.5 (노랑) -> 1.0 (초록)
-            if (fertility < 0.5) {
-                r = 255;
-                g = Math.floor(255 * (fertility / 0.5));
-                b = 0;
-            } else {
-                r = Math.floor(255 * ((1.0 - fertility) / 0.5));
-                g = 255;
-                b = 0;
-            }
+            // 👾 Pure Solid Palette (No Noise, No Jitter)
+            const t = Math.max(0, Math.min(1, fertility));
+            const dotValue = Math.round(t * 100);
+
+            if (dotValue === 0) return 0x050000;
+
+            // 🎨 촘촘한 10단계 세분화 팔레트 (Every 10%)
+            if (dotValue < 10) { r = 130; g = 20; b = 20; }       // Very Low (0.1)
+            else if (dotValue < 20) { r = 180; g = 30; b = 30; }  // Low
+            else if (dotValue < 30) { r = 255; g = 80; b = 0; }   // Low-Mid
+            else if (dotValue < 40) { r = 255; g = 130; b = 0; }  // Mid-Low
+            else if (dotValue < 50) { r = 255; g = 180; b = 0; }  // Mid
+            else if (dotValue < 60) { r = 255; g = 220; b = 0; }  // Mid-High
+            else if (dotValue < 70) { r = 210; g = 255; b = 0; }  // High-Mid
+            else if (dotValue < 80) { r = 150; g = 255; b = 30; } // High
+            else if (dotValue < 90) { r = 50; g = 255; b = 70; }  // Very High
+            else { r = 0; g = 255; b = 100; }                    // Max (1.0)
+            
+            return (r << 16) | (g << 8) | b;
         } else if (viewFlags.water) {
-            // 수질 뷰 활성화
             const wq = this.waterQualityBuffer[idx];
-            const isWater = [0, 1, 2, 3].includes(biomeId); // DEEP_OCEAN, OCEAN, LAKE, RIVER
-            if (!isWater) return 0x111111; // 물을 제외하면 어두운 색
-            r = Math.floor(100 * (1 - wq));
-            g = Math.floor(150 * (1 - wq) + 200 * wq);
-            b = Math.floor(200 * (1 - wq) + 255 * wq);
+            const isWater = [0, 1, 2, 3].includes(biomeId);
+            if (!isWater) return 0x111111;
+            const level = Math.floor(wq * 4);
+            if (level === 0) { r = 21; g = 101; b = 192; }
+            else if (level === 1) { r = 30; g = 136; b = 229; }
+            else if (level === 2) { r = 66; g = 165; b = 245; }
+            else { r = 144; g = 202; b = 249; }
+            return (r << 16) | (g << 8) | b;
         } else if (viewFlags.mineral) {
-            // 광물 밀도 뷰 활성화
             const md = this.mineralDensityBuffer[idx];
-            const isMountain = [8, 9].includes(biomeId); // LOW_MOUNTAIN, HIGH_MOUNTAIN
-            if (!isMountain) return 0x111111; // 산을 제외하면 어두운 색
-            r = Math.floor(100 + 155 * md);
-            g = Math.floor(100 + 100 * md);
-            b = Math.floor(100 + 155 * md);
+            const isMountain = [8, 9].includes(biomeId);
+            if (!isMountain) return 0x111111;
+            const level = Math.floor(md * 4);
+            if (level === 0) { r = 66; g = 66; b = 66; }
+            else if (level === 1) { r = 117; g = 117; b = 117; }
+            else if (level === 2) { r = 189; g = 189; b = 189; }
+            else { r = 255; g = 255; b = 255; }
+            return (r << 16) | (g << 8) | b;
         } else {
-            // 일반 바이옴 색상
-            // biomes.json의 colorLow, colorHigh를 사용하여 보간
-            const colorLow = biome.colorLow;
-            const colorHigh = biome.colorHigh;
+            // 🌿 Dynamic Biome Color based on Fertility
+            const colorLow = biome.colorLow || [100, 100, 100];
+            const colorHigh = biome.colorHigh || [200, 200, 200];
 
-            // For simplicity, let's just use colorHigh for now.
-            // A more complex interpolation could be based on altitude, humidity, etc.
-            r = colorHigh[0];
-            g = colorHigh[1];
-            b = colorHigh[2];
+            r = Math.floor(colorLow[0] + (colorHigh[0] - colorLow[0]) * fertility);
+            g = Math.floor(colorLow[1] + (colorHigh[1] - colorLow[1]) * fertility);
+            b = Math.floor(colorLow[2] + (colorHigh[2] - colorLow[2]) * fertility);
+
+            return (r << 16) | (g << 8) | b;
         }
-
-        return (r << 16) | (g << 8) | b;
     }
+
 }
