@@ -98,9 +98,10 @@ export default class Engine {
         this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true };
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
-        window.addEventListener('WORLD_SPAWN_DUST', (e) => {
+        this._onWorldSpawnDust = (e) => {
             this.eventBus.emit('SPAWN_DUST', e.detail);
-        });
+        };
+        window.addEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
 
         this.simParams = { spreadSpeed: 0.1, spreadAmount: 5000 };
 
@@ -308,6 +309,19 @@ export default class Engine {
     }
 
     stop() { this.isRunning = false; }
+
+    destroy() {
+        this.stop();
+        window.removeEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
+        
+        if (this.particleSystem && this.particleSystem.destroy) {
+            this.particleSystem.destroy();
+        }
+        
+        if (this.chunkManager && this.chunkManager.destroy) {
+            this.chunkManager.destroy();
+        }
+    }
 
     loop(time) {
         if (!this.isRunning) return;

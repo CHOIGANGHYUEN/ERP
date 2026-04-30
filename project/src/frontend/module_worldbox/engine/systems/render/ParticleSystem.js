@@ -22,6 +22,21 @@ export default class ParticleSystem extends System {
         this.eventBus.on('SPAWN_BLOOD', this.addBlood);
     }
 
+    destroy() {
+        this.eventBus.off('SPAWN_PARTICLES', this.addParticles);
+        this.eventBus.off('SPAWN_EFFECT_PARTICLES', this.addEffectParticles);
+        this.eventBus.off('SPAWN_DUST', this.addDust);
+        this.eventBus.off('SPAWN_ZZZ', this.addZzz);
+        this.eventBus.off('SPAWN_BLOOD', this.addBlood);
+        this.particles = [];
+    }
+
+    enforceCap() {
+        const MAX_PARTICLES = 2000;
+        if (this.particles.length > MAX_PARTICLES) {
+            this.particles.splice(0, this.particles.length - MAX_PARTICLES);
+        }
+    }
 
     /**
      * 기존 바이옴/식생 툴용 파티클 추가
@@ -135,6 +150,8 @@ export default class ParticleSystem extends System {
                 }
             }
         }
+        
+        this.enforceCap();
     }
 
     getParticles() {

@@ -209,7 +209,7 @@ onUnmounted(() => {
 
     engine.onEntitySelect = null;
     engine.monitor.onUpdate = null;
-    engine.stop();
+    engine.destroy();
   }
 });
 
