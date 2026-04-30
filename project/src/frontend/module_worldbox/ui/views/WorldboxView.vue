@@ -20,8 +20,9 @@
         </div>
         <div class="debug-stats" v-if="engine">
           FPS: {{ fps }} | Entities: {{ entityCount }} <br/>
-          Total Fertility: {{ (totalFertility / 1000).toFixed(1) }}k / 1M
+          Fertility: {{ (totalFertility / 100).toLocaleString() }} / {{ (totalMaxFertility / 100).toLocaleString() }} ({{ ((totalFertility / totalMaxFertility) * 100).toFixed(1) }}%)
         </div>
+
       </div>
 
       <div class="top-bar">
@@ -97,6 +98,8 @@ const spreadAmount = ref(3000);
 const fps = ref(0);
 const entityCount = ref(0);
 const totalFertility = ref(0);
+const totalMaxFertility = ref(0);
+
 let engine = null;
 let resizeObserver = null;
 
@@ -175,7 +178,9 @@ onMounted(() => {
       fps.value = stats.fps;
       entityCount.value = stats.entityCount;
       totalFertility.value = Math.floor(stats.totalFertility);
+      totalMaxFertility.value = Math.floor(stats.totalMaxFertility);
     };
+
 
     resizeObserver = new ResizeObserver(entries => {
       for (let entry of entries) {

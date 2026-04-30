@@ -1,7 +1,11 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 
-export default class HuntState extends State {
+/**
+ * 🌿 ForageState (초식동물 전용 수색/이동 상태)
+ * 육식동물의 HUNT와 달리 차분하게 먹이(풀, 열매)를 향해 이동합니다.
+ */
+export default class ForageState extends State {
     update(entityId, entity, dt) {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
@@ -30,7 +34,8 @@ export default class HuntState extends State {
             return AnimalStates.EAT;
         } else {
             const dist = Math.sqrt(distSq);
-            const force = 25000; 
+            // HUNT(25000)보다 훨씬 낮은 힘(8000)을 사용하여 여유롭게 이동
+            const force = 8000; 
             transform.vx += (dx / dist) * force * dt / mass;
             transform.vy += (dy / dist) * force * dt / mass;
         }
@@ -38,4 +43,3 @@ export default class HuntState extends State {
         return null;
     }
 }
-

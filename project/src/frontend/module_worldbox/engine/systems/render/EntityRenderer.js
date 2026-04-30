@@ -1,8 +1,12 @@
+import { AnimalStates } from '../../components/behavior/State.js';
+import { AnimalRenders } from '../../objects/renders/AnimalRenders.js';
+
 export default class EntityRenderer {
     constructor(engine) {
         this.engine = engine;
         this.spriteCache = new Map(); // 🚀 High-speed Sprite Buffer
     }
+
 
     render(ctx, entityManager, particles, time, wind) {
         const entities = entityManager.entities;
@@ -13,8 +17,26 @@ export default class EntityRenderer {
         for (const [id, entity] of entities) {
             const t = entity.components.get('Transform');
             const v = entity.components.get('Visual');
+            const state = entity.components.get('AIState');
 
             if (t && v) {
+                // 🕶️ [Step 3: Culling] Skip rendering if off-screen
+                if (v.isCulled) continue;
+
+                const zoom = this.engine.camera.zoom;
+                const type = v.type;
+                const isWithered = v.isWithered || false;
+
+                // 🚀 [Step 4: LOD System]
+                if (zoom <= 0.5) {
+                    const dotSize = 2 / zoom;
+                    ctx.fillStyle = v.color || '#ffffff';
+                    ctx.globalAlpha = v.alpha !== undefined ? v.alpha : 1.0;
+                    ctx.fillRect(t.x, t.y, dotSize, dotSize);
+                    ctx.globalAlpha = 1.0;
+                    continue;
+                }
+
                 // Visual Selection Feedback
                 if (id === this.engine.selectedId) {
                     ctx.save();
@@ -23,16 +45,26 @@ export default class EntityRenderer {
                     ctx.restore();
                 }
 
-                const type = v.type;
-                const isWithered = v.isWithered || false;
+                const isHighDetail = zoom > 1.5;
 
-                // Use High-Res drawing methods
-                if (type === 'sheep') this.drawSheep(ctx, t, v, entity, time);
-                else if (type === 'cow') this.drawCow(ctx, t, v, entity, time);
-                else if (type === 'human') this.drawHuman(ctx, t, v, entity, time);
-                else if (['wolf', 'hyena', 'wild_dog'].includes(type)) this.drawPredator(ctx, t, v, entity, time);
+                // 🐾 동물 상태별 렌더링 통합 처리
+                const animalTypes = ['sheep', 'cow', 'human', 'wolf', 'hyena', 'wild_dog'];
+                
+                // type이 없을 경우를 대비한 방어 코드
+                if (!type) {
+                    this.drawResourceFallback(ctx, t, v);
+                }
+                else if (animalTypes.includes(type) && state) {
+                    this.renderAnimal(entity, ctx, time, isHighDetail);
+                    
+                    // 🔍 [7단계: AI 디버그 시각화]
+                    if (this.engine.viewFlags.debugAI && zoom > 0.8) {
+                        this.renderAIDebug(ctx, t, state, id);
+                    }
+                }
                 else if (type === 'tree') this.drawTreeCached(ctx, t, v, entity, time, wind);
                 else if (type === 'plant') this.drawPlant(ctx, t, v, entity, time, wind);
+
                 else if (type === 'flower') this.drawFlower(ctx, t, v, entity, time, wind);
                 else if (type === 'wild_mushroom') this.drawMushroom(ctx, t, v, isWithered);
                 else if (type === 'cactus') this.drawCactus(ctx, t, v, isWithered);
@@ -46,12 +78,34 @@ export default class EntityRenderer {
                 else if (type === 'poop') this.drawPoop(ctx, t, v, entity, time);
                 else this.drawResourceFallback(ctx, t, v);
             }
+
         }
 
+
+        // --- 💨 PARTICLE RENDERING LAYER (TOP LAYER) ---
         for (const p of particles) {
+            ctx.save();
+            ctx.globalAlpha = p.alpha !== undefined ? p.alpha : 1.0;
             ctx.fillStyle = p.color;
-            ctx.fillRect(p.x, p.y, 1.5, 1.5);
+
+            if (p.type === 'ZZZ') {
+                ctx.font = `${p.size}px Arial`;
+                ctx.fillText(p.text, p.x, p.y);
+            } else if (p.type === 'DUST') {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (p.type === 'BLOOD') {
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            } else {
+                // 기본 파티클 (BIOME_TOOL 등)
+                const s = p.size || 1.5;
+                ctx.fillRect(p.x, p.y, s, s);
+            }
+            
+            ctx.restore();
         }
+
     }
 
     // --- 🚀 SPRITE CACHING SYSTEM ---
@@ -133,56 +187,64 @@ export default class EntityRenderer {
         ctx.restore();
     }
 
-    // --- 🐾 ANIMAL & HUMAN METHODS (Remains Dot-based for animation) ---
+    // --- 🐾 ANIMAL & HUMAN METHODS (LOD Optimized) ---
 
-    drawSheep(ctx, t, v, entity, time) {
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        if (t.vx !== undefined && Math.abs(t.vx) > 0.01) ctx.scale(t.vx < 0 ? -1 : 1, 1);
-        const s = entity.components.get('Life')?.isBaby ? 0.4 : 0.7;
+    drawSheep(ctx, frameIdx, size = 0.7) {
+        const s = size;
         ctx.fillStyle = '#ffffff'; ctx.fillRect(-3 * s, -4 * s, 6 * s, 4 * s); ctx.fillRect(-4 * s, -3 * s, 8 * s, 2 * s);
         ctx.fillStyle = '#eeeeee'; ctx.fillRect(3 * s, -4 * s, 2 * s, 2.5 * s);
         ctx.fillStyle = '#000000'; ctx.fillRect(4.5 * s, -3 * s, 0.5 * s, 0.5 * s);
-        ctx.fillStyle = '#bdbdbd'; ctx.fillRect(-2 * s, 0, 0.8 * s, 1.2 * s); ctx.fillRect(1.5 * s, 0, 0.8 * s, 1.2 * s);
-        ctx.restore();
+        
+        // Leg Animation based on frameIdx
+        // 0: idle, 1: leg1, 2: leg2
+        const legOsc = frameIdx === 1 ? -2 * s : (frameIdx === 2 ? 2 * s : 0);
+        ctx.fillStyle = '#bdbdbd'; 
+        ctx.fillRect(-2 * s + legOsc, 0, 0.8 * s, 1.2 * s); 
+        ctx.fillRect(1.5 * s - legOsc, 0, 0.8 * s, 1.2 * s);
     }
 
-    drawCow(ctx, t, v, entity, time) {
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        if (t.vx !== undefined && Math.abs(t.vx) > 0.01) ctx.scale(t.vx < 0 ? -1 : 1, 1);
-        const s = entity.components.get('Life')?.isBaby ? 0.5 : 0.8;
+    drawCow(ctx, frameIdx, size = 0.8) {
+        const s = size;
         ctx.fillStyle = '#ffffff'; ctx.fillRect(-4 * s, -5 * s, 8 * s, 5 * s);
         ctx.fillStyle = '#212121'; ctx.fillRect(-1 * s, -5 * s, 2 * s, 2 * s); ctx.fillRect(2 * s, -3 * s, 2 * s, 1.5 * s);
         ctx.fillStyle = '#ffffff'; ctx.fillRect(4 * s, -5 * s, 3.5 * s, 3.5 * s);
         ctx.fillStyle = '#ffca28'; ctx.fillRect(6 * s, -2.5 * s, 2 * s, 1.5 * s);
-        ctx.fillStyle = '#4e342e'; ctx.fillRect(-3 * s, 0, 1 * s, 1.5 * s); ctx.fillRect(3 * s, 0, 1 * s, 1.5 * s);
-        ctx.restore();
+        
+        const legOsc = frameIdx === 1 ? -2 * s : (frameIdx === 2 ? 2 * s : 0);
+        ctx.fillStyle = '#4e342e'; 
+        ctx.fillRect(-3 * s + legOsc, 0, 1 * s, 1.5 * s); 
+        ctx.fillRect(3 * s - legOsc, 0, 1 * s, 1.5 * s);
     }
 
-    drawPredator(ctx, t, v, entity, time) {
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        if (t.vx !== undefined && Math.abs(t.vx) > 0.01) ctx.scale(t.vx < 0 ? -1 : 1, 1);
-        const s = entity.components.get('Life')?.isBaby ? 0.4 : 0.7;
-        let mainColor = v.type === 'hyena' ? '#a1887f' : (v.type === 'wild_dog' ? '#8d6e63' : '#757575');
+    drawPredator(ctx, frameIdx, size = 0.7, type = 'wolf') {
+        const s = size;
+        let mainColor = type === 'hyena' ? '#a1887f' : (type === 'wild_dog' ? '#8d6e63' : '#757575');
         ctx.fillStyle = mainColor; ctx.fillRect(-4 * s, -3 * s, 7 * s, 3 * s);
         ctx.fillRect(3 * s, -4.5 * s, 2.5 * s, 2.5 * s); ctx.fillRect(5.5 * s, -3.5 * s, 1.5 * s, 1.5 * s);
         ctx.fillStyle = '#ff1744'; ctx.fillRect(4.5 * s, -3.5 * s, 0.5 * s, 0.5 * s);
-        ctx.restore();
+        
+        const legOsc = frameIdx === 1 ? -2 * s : (frameIdx === 2 ? 2 * s : 0);
+        ctx.fillStyle = mainColor;
+        ctx.fillRect(-3 * s + legOsc, 0, 0.8 * s, 1.2 * s);
+        ctx.fillRect(2 * s - legOsc, 0, 0.8 * s, 1.2 * s);
     }
 
-    drawHuman(ctx, t, v, entity, time) {
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        if (t.vx !== undefined && Math.abs(t.vx) > 0.01) ctx.scale(t.vx < 0 ? -1 : 1, 1);
-        const s = entity.components.get('Life')?.isBaby ? 0.4 : 0.7;
+    drawHuman(ctx, frameIdx, size = 0.7) {
+        const s = size;
         ctx.fillStyle = '#1e88e5'; ctx.fillRect(-2 * s, -6 * s, 4 * s, 6 * s);
         ctx.fillStyle = '#ffccbc'; ctx.fillRect(-1.5 * s, -9 * s, 3 * s, 3 * s);
         ctx.fillStyle = '#3e2723'; ctx.fillRect(-1.5 * s, -10 * s, 3 * s, 1.5 * s);
-        ctx.fillStyle = '#37474f'; ctx.fillRect(-2 * s, 0, 1.5 * s, 2.5 * s); ctx.fillRect(0.5 * s, 0, 1.5 * s, 2.5 * s);
-        ctx.restore();
+        
+        const legOsc = frameIdx === 1 ? -2 * s : (frameIdx === 2 ? 2 * s : 0);
+        ctx.fillStyle = '#37474f'; 
+        ctx.fillRect(-2 * s + legOsc, 0, 1.5 * s, 2.5 * s); 
+        ctx.fillRect(0.5 * s - legOsc, 0, 1.5 * s, 2.5 * s);
     }
+
+
+    // --- 🍄 OTHER NATURE METHODS ---
+
+
 
     // --- 🍄 OTHER NATURE METHODS ---
 
@@ -289,6 +351,70 @@ export default class EntityRenderer {
 
     drawResourceFallback(ctx, t, v) {
         ctx.fillStyle = v.color; const s = v.size || 0.8; ctx.fillRect(t.x, t.y, s, s);
+    }
+
+    // --- 🐾 STATE-BASED ANIMAL RENDERER ---
+
+    renderAnimal(entity, ctx, time, isHighDetail) {
+        const v = entity.components.get('Visual');
+        if (!v) return;
+
+        const type = v.type;
+
+        // 🎨 AnimalRenders를 통해 상태별 모션과 함께 그리기 실행
+        AnimalRenders.drawAnimalBody(ctx, entity, time, (sCtx, frameIdx, size) => {
+            if (type === 'sheep') this.drawSheep(sCtx, frameIdx, size);
+            else if (type === 'cow') this.drawCow(sCtx, frameIdx, size);
+            else if (type === 'human') this.drawHuman(sCtx, frameIdx, size);
+            else if (['wolf', 'hyena', 'wild_dog'].includes(type)) {
+                this.drawPredator(sCtx, frameIdx, size, type);
+            }
+        });
+    }
+
+    drawSleepParticles(ctx, t, time) {
+
+        const osc = Math.sin(time * 0.002) * 5;
+        const alpha = 0.5 + Math.sin(time * 0.005) * 0.5;
+        
+        ctx.save();
+        ctx.globalAlpha *= alpha;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '8px Arial';
+        ctx.fillText('Z', t.x + 5, t.y - 10 + osc);
+        ctx.fillText('z', t.x + 10, t.y - 15 + osc * 0.5);
+        ctx.restore();
+    }
+
+    /**
+     * AI 상태를 시각적으로 표시합니다. (상태 텍스트 + 타겟 라인)
+     */
+    renderAIDebug(ctx, t, state, id) {
+        ctx.save();
+        
+        // 1. 상태 텍스트 (머리 위)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = 'bold 8px Inter, Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(state.mode.toUpperCase(), t.x, t.y - 12);
+
+        // 2. 타겟 라인 (추격 중일 때)
+        if (state.targetId) {
+            const target = this.engine.entityManager.entities.get(state.targetId);
+            if (target) {
+                const targetPos = target.components.get('Transform');
+                if (targetPos) {
+                    ctx.beginPath();
+                    ctx.setLineDash([2, 2]); // 점선
+                    ctx.strokeStyle = state.mode === 'hunt' ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.3)';
+                    ctx.moveTo(t.x, t.y);
+                    ctx.lineTo(targetPos.x, targetPos.y);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        ctx.restore();
     }
 
     adjustColor(color, amount) {

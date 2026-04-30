@@ -1,3 +1,7 @@
+import Visual from '../components/render/Visual.js';
+import State from '../components/behavior/State.js';
+import BaseStats from '../components/stats/BaseStats.js';
+
 export default class EntityFactory {
     constructor(engine) {
         this.engine = engine;
@@ -11,20 +15,35 @@ export default class EntityFactory {
         const id = em.createEntity();
         const entity = em.entities.get(id);
         
+        // 1. Transform (위치)
         entity.components.set('Transform', { x, y, vx: 0, vy: 0 });
         
-        entity.components.set('Visual', { 
-            type: type,
-            size: options.isBaby ? 0.6 : 1.0 
-        });
+        // 2. Visual (렌더링 데이터) - 클래스 인스턴스 사용
+        const visual = new Visual(config.color || '#ffffff');
+        visual.type = type;
+        visual.size = options.isBaby ? 0.6 : 1.0;
+        entity.components.set('Visual', visual);
         
+        // 3. Animal (종 정보)
         entity.components.set('Animal', { 
             type: type, 
             isBaby: options.isBaby || false, 
             diet: config.diet || 'herbivore', 
             herdId: -1 
         });
+
+        // 4. BaseStats (새로 추가된 생존 스탯) - 클래스 인스턴스 사용
+        const stats = new BaseStats({
+            diet: config.diet || 'herbivore',
+            health: config.maxHealth || 100,
+            maxHealth: config.maxHealth || 100,
+            hunger: 50 + Math.random() * 30, // 약간 배고픈 상태로 시작
+            fatigue: Math.random() * 20,
+            speed: config.moveSpeed || 1.0
+        });
+        entity.components.set('BaseStats', stats);
         
+        // 5. Metabolism (기존 시스템 호환용)
         entity.components.set('Metabolism', { 
             stomach: options.isBaby ? 0 : (config.maxStomach || 3.0) * 0.4, 
             maxStomach: config.maxStomach || 3.0, 
@@ -33,7 +52,8 @@ export default class EntityFactory {
             isPooping: false 
         });
         
-        entity.components.set('AIState', { mode: 'wander', targetId: null });
+        // 6. AI State (상태 기계) - 클래스 인스턴스 사용
+        entity.components.set('AIState', new State());
 
         if (type === 'human') {
             entity.components.set('Civilization', { techLevel: 0, villageId: -1 });
@@ -43,6 +63,7 @@ export default class EntityFactory {
 
         return id;
     }
+
 
     createResource(type, x, y, quality = 1.0, options = {}) {
         const em = this.engine.entityManager;

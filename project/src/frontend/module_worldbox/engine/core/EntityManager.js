@@ -7,17 +7,38 @@ export default class EntityManager {
     constructor() {
         this.entities = new Map();
         this.nextId = 0;
+        this.entityPool = []; // 🗑️ 쓰레기통(재활용 대기소): 삭제된 엔티티 번호를 모아둠
     }
 
     createEntity() {
+        // 🚀 [재활용] 풀에 남은 게 있다면 새 번호를 발급하지 않고 꺼내서 재사용
+        if (this.entityPool.length > 0) {
+            const id = this.entityPool.pop();
+            this.entities.set(id, { id, components: new Map() });
+            return id;
+        }
+
         const id = this.nextId++;
         this.entities.set(id, { id, components: new Map() });
         return id;
     }
 
     removeEntity(id) {
-        this.entities.delete(id);
+        const entity = this.entities.get(id);
+        if (entity) {
+            // 🚀 [메모리 비우기] 재사용 전 데이터 초기화
+            for (const component of entity.components.values()) {
+                for (const key in component) {
+                    if (typeof component[key] === 'number') component[key] = 0;
+                    else if (typeof component[key] === 'string') component[key] = '';
+                    else component[key] = null;
+                }
+            }
+            this.entities.delete(id); // 활성 맵에서는 제거
+            this.entityPool.push(id); // 재활용 대기소로 이동
+        }
     }
+
 
     addComponent(entityId, component) {
         const entity = this.entities.get(entityId);

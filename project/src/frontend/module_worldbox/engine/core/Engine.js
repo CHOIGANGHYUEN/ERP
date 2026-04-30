@@ -10,6 +10,7 @@ import ConsumptionSystem from '../systems/economy/ConsumptionSystem.js';
 import KinematicSystem from '../systems/motion/KinematicSystem.js';
 import MetabolismSystem from '../systems/lifecycle/MetabolismSystem.js';
 import ReproductionSystem from '../systems/lifecycle/ReproductionSystem.js';
+import SpriteManager from '../systems/render/SpriteManager.js';
 import EnvironmentSystem from '../systems/lifecycle/EnvironmentSystem.js';
 import SpawnerSystem from '../systems/economy/SpawnerSystem.js';
 import WindSystem from '../systems/lifecycle/WindSystem.js';
@@ -23,6 +24,10 @@ import techTreeConfig from '../config/tech_tree.json';
 import InputSystem from '../systems/input/InputSystem.js';
 import UISystem from './UISystem.js';
 import ParticleSystem from '../systems/render/ParticleSystem.js';
+import CullingSystem from '../systems/render/CullingSystem.js';
+import RenderCoordinator from '../systems/render/RenderCoordinator.js';
+
+
 
 export default class Engine {
     constructor(canvas) {
@@ -69,18 +74,20 @@ export default class Engine {
         this.eventBus = new EventBus(); // 📡 Global Event Network 생성
         this.renderer = new EntityRenderer(this);
 
+        this.entityFactory = new EntityFactory(this);
         this.behavior = new AnimalBehaviorSystem(this.entityManager, this.eventBus, this);
         this.social = new SocialSystem(this);
-        this.gathering = new GatheringSystem(this.entityManager, this.eventBus, this); // engine 주입 필요
+        this.gathering = new GatheringSystem(this.entityManager, this.eventBus, this); 
         this.consumption = new ConsumptionSystem(this.entityManager, this.eventBus, this);
         this.kinematics = new KinematicSystem(this);
         this.metabolism = new MetabolismSystem(this.entityManager, this.eventBus, this.terrainGen);
         this.reproduction = new ReproductionSystem(this.entityManager, this.eventBus);
         this.environment = new EnvironmentSystem(this.entityManager, this.eventBus, this.terrainGen);
-        this.spawner = new SpawnerSystem(this.entityManager, this.eventBus, this.terrainGen);
+        this.spawner = new SpawnerSystem(this.entityManager, this.eventBus, this);
         this.wind = new WindSystem();
-        this.entityFactory = new EntityFactory(this);
         this.particleSystem = new ParticleSystem(this.entityManager, this.eventBus);
+        this.spriteManager = new SpriteManager(this.entityManager, this.eventBus);
+
 
         this.isRunning = false;
         this.lastTime = 0;
@@ -88,8 +95,15 @@ export default class Engine {
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
-        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false };
-        this.simParams = { spreadSpeed: 0.1, spreadAmount: 5000 }; // 🚀 Increased capacity for larger world
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true };
+
+        // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
+        window.addEventListener('WORLD_SPAWN_DUST', (e) => {
+            this.eventBus.emit('SPAWN_DUST', e.detail);
+        });
+
+        this.simParams = { spreadSpeed: 0.1, spreadAmount: 5000 };
+
 
 
 
@@ -103,6 +117,10 @@ export default class Engine {
         this.init();
         this.inputSystem = new InputSystem(this.entityManager, this.eventBus, this);
         this.uiSystem = new UISystem(this.entityManager, this.eventBus, this);
+        this.cullingSystem = new CullingSystem(this.entityManager, this.eventBus, this); // 🕶️ Culling System Init
+        this.renderCoordinator = new RenderCoordinator(this.entityManager, this.eventBus, this); // 🖼️ Render Orchestrator Init
+
+
 
         // 📡 Subscribe to UI Selection Event for Rendering
         this.eventBus.on('ENTITY_SELECTED', (id) => {
@@ -111,8 +129,8 @@ export default class Engine {
 
         // 📡 Subscribe to Spawner/Environment pixel updates
         this.eventBus.on('CACHE_PIXEL_UPDATE', (data) => {
-            // 비옥도 변화(fertility_change)나 바이옴 변화(biome_change) 시 항상 픽셀 갱신
-            if (data.reason === 'biome_change' || data.reason === 'fertility_change' || this.viewFlags.fertility) {
+            // 비옥도 변화나 바이옴 변화 시 항상 픽셀 갱신
+            if (data.reason === 'biome_change' || data.reason === 'biome_spread' || data.reason === 'fertility_change' || this.viewFlags.fertility) {
                 this.updateCachePixel(data.x, data.y);
             }
         });
@@ -195,9 +213,13 @@ export default class Engine {
             this.camera.clamp();
         }
 
+        if (this.renderCoordinator) {
+            this.renderCoordinator.resize(w, h);
+        }
         this.preRenderTerrain();
         this.chunkManager.dirtyChunks.clear();
     }
+
 
     setActiveTool(tool) {
         if (this.activeTool && this.activeTool.onMouseUp) {
@@ -237,7 +259,9 @@ export default class Engine {
             this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_xray') this.viewFlags.xray = !this.viewFlags.xray;
+        if (id === 'view_debug_ai') this.viewFlags.debugAI = !this.viewFlags.debugAI;
     }
+
 
     // 🚀 도구 및 이벤트 등에서 넘어온 명령(Command)을 일괄적으로 처리하는 중앙 분배기
     dispatchCommand(command) {
@@ -301,6 +325,8 @@ export default class Engine {
     update(dt) {
         const time = performance.now();
         this.particleSystem.update(dt, time); // ParticleSystem은 자체적으로 EventBus를 통해 파티클을 생성/관리
+        this.cullingSystem.update(dt, time); // 🕶️ Culling check before behaviors/logic
+
         this.behavior.update(dt);
         this.social.update(dt);
         this.gathering.update(dt, time);
@@ -311,6 +337,7 @@ export default class Engine {
         this.environment.update(dt, time);
         this.spawner.update(dt, time);
         this.wind.update(time);
+        this.spriteManager.update(dt, time);
         this.uiSystem.update(dt, time);
 
         if (this.selectedId && this.onEntitySelect && this.isFollowing) {
@@ -327,67 +354,13 @@ export default class Engine {
     }
 
     render() {
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.width, this.height);
-
-        this.ctx.save();
-        this.ctx.imageSmoothingEnabled = false; // 🚀 PIXEL PERFECT: No blur!
-        this.ctx.translate(0, 0); // No global offset, camera handles it
-        this.ctx.scale(this.camera.zoom, this.camera.zoom);
-        this.ctx.translate(-this.camera.x, -this.camera.y);
-
-        this.ctx.drawImage(this.terrainCanvas, 0, 0);
-        this.renderer.render(this.ctx, this.entityManager, this.particleSystem.particles, performance.now(), this.wind);
-        this.ctx.restore();
-
-        // 🔍 ENGINE-LEVEL FERTILITY TOOLTIP (Enabled via tool window)
-        if (this.viewFlags.fertilityValue && this.inputSystem && this.inputSystem.mouseWorld) {
-            this.renderFertilityTooltip();
-        }
+        // 🖼️ [Step 5: Offscreen Canvas] Delegate all rendering to the coordinator
+        this.renderCoordinator.render(this.ctx);
     }
 
 
-    renderFertilityTooltip() {
-        const worldPos = this.inputSystem.mouseWorld;
-        const screenPos = this.inputSystem.mouseScreen;
-        if (!worldPos || !screenPos) return;
 
-        const ix = Math.floor(worldPos.x);
-        const iy = Math.floor(worldPos.y);
-        
-        if (ix >= 0 && ix < this.mapWidth && iy >= 0 && iy < this.mapHeight) {
-            const idx = iy * this.mapWidth + ix;
-            const fert = this.terrainGen.fertilityBuffer[idx];
-            
-            const ctx = this.ctx;
-            const text = `FERTILITY: ${(fert * 100).toFixed(1)}%`;
-            
-            ctx.font = 'bold 14px "Courier New", monospace';
-            const metrics = ctx.measureText(text);
-            const padding = 8;
-            const w = metrics.width + padding * 2;
-            const h = 24;
-            
-            // Draw Box
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
-            ctx.lineWidth = 1;
-            ctx.fillRect(screenPos.x + 15, screenPos.y + 15, w, h);
-            ctx.strokeRect(screenPos.x + 15, screenPos.y + 15, w, h);
-            
-            // Draw Text
-            ctx.fillStyle = '#00ff00';
-            ctx.fillText(text, screenPos.x + 15 + padding, screenPos.y + 15 + 18);
-
-            // Draw mini bar
-            ctx.fillStyle = 'rgba(255,255,255,0.1)';
-            ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w, 4);
-            
-            const barColor = fert < 0.2 ? '#ff5252' : (fert < 0.6 ? '#ffeb3b' : '#00e676');
-            ctx.fillStyle = barColor;
-            ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w * fert, 4);
-        }
-    }
+    // renderFertilityTooltip is now handled by RenderCoordinator.js
 }
+
 

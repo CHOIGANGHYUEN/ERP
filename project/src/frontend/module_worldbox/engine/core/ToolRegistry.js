@@ -176,6 +176,8 @@ export const DefaultTools = [
     new ToggleTool({ id: 'view_water', name: 'Water Quality', icon: '🌊', category: 'View', flagName: 'water' }),
     new ToggleTool({ id: 'view_mineral', name: 'Mineral Density', icon: '⛏️', category: 'View', flagName: 'mineral' }),
     new ToggleTool({ id: 'view_xray', name: 'X-Ray View', icon: '👁️', category: 'View', flagName: 'xray' }),
+    new ToggleTool({ id: 'view_debug_ai', name: 'AI Paths', icon: '🛣️', category: 'View', flagName: 'debugAI' }),
     new InspectTool()
+
 
 ];

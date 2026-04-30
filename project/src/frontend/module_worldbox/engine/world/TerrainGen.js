@@ -22,12 +22,11 @@ export default class TerrainGen {
     mapWidth = 0;
     mapHeight = 0;
     biomeBuffer = null; // Uint32Array to store biome IDs
-    fertilityBuffer = null; // Float32Array to store fertility values
-    waterQualityBuffer = null; // Float32Array to store water quality
-    mineralDensityBuffer = null; // Float32Array to store mineral density
+    fertilityBuffer = null; // Uint8Array to store fertility values (0-100) ⚡ [Step 2]
+    waterQualityBuffer = null;
+    mineralDensityBuffer = null;
     constructor(entityManager) {
         this.entityManager = entityManager;
-        // this.noiseGenerator = new NoiseGenerator(); // 실제 구현 시 노이즈 생성기 주입
     }
 
     /**
@@ -45,7 +44,7 @@ export default class TerrainGen {
         this.mapWidth = mapWidth;
         this.mapHeight = mapHeight;
         this.biomeBuffer = new Uint32Array(mapWidth * mapHeight);
-        this.fertilityBuffer = new Float32Array(mapWidth * mapHeight);
+        this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight); // ⚡ Uint8 고속 배열
         this.waterQualityBuffer = new Float32Array(mapWidth * mapHeight);
         this.mineralDensityBuffer = new Float32Array(mapWidth * mapHeight);
 
@@ -210,8 +209,8 @@ export default class TerrainGen {
         const isLand = [5, 6, 7].includes(biomeId);
 
         return {
-            // 🎲 토지 지형일 경우 모든 좌표에 0.1 ~ 1.0 사이의 랜덤 비옥도 할당
-            soilFertility: isLand ? (0.1 + Math.random() * 0.9) : 0.0,
+            // 🎲 [Step 2] 0~100 사이의 정수 비옥도 할당
+            soilFertility: isLand ? Math.floor(10 + Math.random() * 90) : 0,
             waterQuality: Math.max(0, Math.min(1, waterQuality)),
             mineralDensity: Math.max(0, Math.min(1, mineralDensity)),
         };
@@ -241,9 +240,8 @@ export default class TerrainGen {
             const isLand = [4, 5, 6, 7].includes(biomeId);
             if (!isLand) return 0x000000;
 
-            // 👾 Pure Solid Palette (No Noise, No Jitter)
-            const t = Math.max(0, Math.min(1, fertility));
-            const dotValue = Math.round(t * 100);
+            // 👾 [Step 2] Uint8 (0-100) 값 직접 사용
+            const dotValue = fertility; 
 
             if (dotValue === 0) return 0x050000;
 
@@ -281,13 +279,14 @@ export default class TerrainGen {
             else { r = 255; g = 255; b = 255; }
             return (r << 16) | (g << 8) | b;
         } else {
-            // 🌿 Dynamic Biome Color based on Fertility
+            // 🌿 [Step 2] 0-100 값을 0-1 비율로 변환하여 보간
+            const fRatio = fertility / 100;
             const colorLow = biome.colorLow || [100, 100, 100];
             const colorHigh = biome.colorHigh || [200, 200, 200];
 
-            r = Math.floor(colorLow[0] + (colorHigh[0] - colorLow[0]) * fertility);
-            g = Math.floor(colorLow[1] + (colorHigh[1] - colorLow[1]) * fertility);
-            b = Math.floor(colorLow[2] + (colorHigh[2] - colorLow[2]) * fertility);
+            r = Math.floor(colorLow[0] + (colorHigh[0] - colorLow[0]) * fRatio);
+            g = Math.floor(colorLow[1] + (colorHigh[1] - colorLow[1]) * fRatio);
+            b = Math.floor(colorLow[2] + (colorHigh[2] - colorLow[2]) * fRatio);
 
             return (r << 16) | (g << 8) | b;
         }

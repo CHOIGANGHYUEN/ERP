@@ -2,10 +2,14 @@ import System from '../../core/System.js';
 import SpatialHash from '../../utils/SpatialHash.js';
 import WanderState from './states/WanderState.js';
 import HuntState from './states/HuntState.js';
+import ForageState from './states/ForageState.js';
 import EatState from './states/EatState.js';
+import SleepState from './states/SleepState.js';
 import FleeState from './states/FleeState.js';
 import GatherWoodState from './states/GatherWoodState.js';
 import BuildState from './states/BuildState.js';
+
+import { AnimalStates, DietType } from '../../components/behavior/State.js';
 
 export default class AnimalBehaviorSystem extends System {
     constructor(entityManager, eventBus, engine) {
@@ -15,13 +19,20 @@ export default class AnimalBehaviorSystem extends System {
         
         // FSM 상태 핸들러 맵
         this.states = {
-            'wander': new WanderState(this),
-            'hunt': new HuntState(this),
-            'eat': new EatState(this),
-            'flee': new FleeState(this),
+            [AnimalStates.IDLE]: new WanderState(this),
+            [AnimalStates.WALK]: new WanderState(this), // 기본 Wander 로직 재사용
+            [AnimalStates.RUN]: new WanderState(this),  // 속도 조절은 updateEntityAI에서 처리
+            [AnimalStates.HUNT]: new HuntState(this),
+            [AnimalStates.FORAGE]: new ForageState(this),
+            [AnimalStates.EAT]: new EatState(this),
+            [AnimalStates.SLEEP]: new SleepState(this),
+            [AnimalStates.FLEE]: new FleeState(this),
+            [AnimalStates.EVADE]: new FleeState(this),
             'gather_wood': new GatherWoodState(this),
             'build': new BuildState(this)
         };
+
+
     }
 
     update(dt, time) {
@@ -41,24 +52,28 @@ export default class AnimalBehaviorSystem extends System {
             const state = entity.components.get('AIState');
             const transform = entity.components.get('Transform');
             const animal = entity.components.get('Animal');
+            const stats = entity.components.get('BaseStats');
 
             if (state && transform && animal) {
                 // 🐝 벌을 위한 전용 곤충 AI 시뮬레이션
                 if (animal.type === 'bee') {
                     this.updateBeeAI(id, state, transform, animal, dt);
                 } else {
-                    this.updateEntityAI(id, state, transform, animal, dt);
+                    this.updateEntityAI(id, entity, state, transform, animal, stats, dt);
                 }
 
                 // 렌더러(EntityRenderer)와의 결합도를 끊기 위해 Visual 컴포넌트에 시각적 상태 기록
                 const visual = entity.components.get('Visual');
                 if (visual) {
-                    visual.isEating = (state.mode === 'eat');
+                    visual.isEating = (state.mode === AnimalStates.EAT);
                     visual.isInside = (state.mode === 'bee_inside');
                 }
             }
         }
     }
+
+    // ... (updateBeeAI remains unchanged, I'll just keep it or skip it in the replacement block to save tokens, 
+    // but the tool requires the full ReplacementContent for the range. I'll include it.)
 
     updateBeeAI(id, state, transform, animal, dt) {
         const em = this.entityManager;
@@ -149,11 +164,16 @@ export default class AnimalBehaviorSystem extends System {
                 transform.vx += (Math.cos(state.wanderAngle) * 400 * dt) / mass;
                 transform.vy += (Math.sin(state.wanderAngle) * 400 * dt) / mass;
 
-                // 근처의 꿀(꽃) 찾기 (공간 해시맵을 활용하여 최적화 가능하나 일단 유지)
+                // 근처의 꿀(꽃) 찾기 (공간 해시맵을 활용하여 최적화 완료)
                 if (animal.nectar < 10 && Math.random() < 0.1) {
                     let bestDist = 40000; // 반경 200px
                     let targetFlower = null;
-                    for (const [fid, fEnt] of em.entities) {
+                    
+                    const nearbyIds = this.spatialHash.query(transform.x, transform.y);
+                    for (const fid of nearbyIds) {
+                        const fEnt = em.entities.get(fid);
+                        if (!fEnt) continue;
+                        
                         const r = fEnt.components.get('Resource');
                         // 꿀(비옥도)이 남아있는 살아있는 꽃만 타겟팅
                         if (r && r.isFlower && r.storedFertility > 0) {
@@ -166,6 +186,7 @@ export default class AnimalBehaviorSystem extends System {
                 } else if (animal.nectar >= 10 && hive) {
                     state.mode = 'bee_return'; // 꿀통 꽉참 -> 귀환
                 }
+
             } else if (state.mode === 'bee_gather') {
                 const flower = em.entities.get(state.targetId);
                 if (!flower || !flower.components.get('Resource')?.isFlower) { state.mode = 'bee_wander'; return; }
@@ -211,29 +232,67 @@ export default class AnimalBehaviorSystem extends System {
         }
     }
 
-    updateEntityAI(id, state, transform, animal, dt) {
+    updateEntityAI(id, entity, state, transform, animal, stats, dt) {
         const config = this.engine.speciesConfig[animal.type] || {};
-        const maxSpeed = config.moveSpeed || 40;
+        let maxSpeed = config.moveSpeed || 40;
 
-        // 마찰력을 낮춰서 동물이 바닥에 굳는(마비되는) 현상 해결
+        // 1. 피로도 및 허기 수치 업데이트 (상태 전이는 각 State 클래스에서 담당하도록 위임)
+        if (stats) {
+            // 허기 감소율 완화 (100 -> 0까지 약 500초 소요)
+            stats.hunger -= dt * 0.2;
+            // 피로도 상승률 완화 (0 -> 100까지 약 1000초 소요)
+            stats.fatigue += dt * 0.1;
+            
+            // 사망 상태는 즉시 강제 전이 (최우선 순위)
+            if (stats.health <= 0) {
+                state.mode = AnimalStates.DIE;
+            }
+        }
+
+
+        // 2. 이동 속도 조절 (목적지 거리 기반)
+        if (state.mode === AnimalStates.WALK || state.mode === AnimalStates.RUN || state.mode === AnimalStates.HUNT || state.mode === AnimalStates.FLEE) {
+            if (state.targetId) {
+                const target = this.entityManager.entities.get(state.targetId);
+                if (target) {
+                    const tPos = target.components.get('Transform');
+                    if (tPos) {
+                        const dist = Math.sqrt((tPos.x - transform.x)**2 + (tPos.y - transform.y)**2);
+                        maxSpeed *= Math.min(1, dist / 20);
+                    }
+                }
+            }
+            // 질주/도망/추격 시 속도 1.5배 증가
+            if (state.mode === AnimalStates.RUN || state.mode === AnimalStates.FLEE || state.mode === AnimalStates.HUNT) {
+                maxSpeed *= 1.5;
+            }
+        }
+
+
+        // 3. FSM 상태 업데이트 수행
         transform.vx *= 0.95;
         transform.vy *= 0.95;
 
-        // FSM 상태 전이 및 업데이트 처리
-        const stateHandler = this.states[state.mode];
-        if (stateHandler) {
-            const nextMode = stateHandler.update(id, this.entityManager.entities.get(id), dt);
-            if (nextMode && nextMode !== state.mode) {
-                const nextHandler = this.states[nextMode];
-                if (stateHandler.exit) stateHandler.exit(id, this.entityManager.entities.get(id));
-                state.mode = nextMode;
-                if (nextHandler && nextHandler.enter) nextHandler.enter(id, this.entityManager.entities.get(id));
-            }
-        } else {
-            state.mode = 'wander'; // 알 수 없는 상태일 경우 기본값
+        // DIE 상태 전용 핸들러 (부패 로직)
+        if (state.mode === AnimalStates.DIE) {
+            this.handleDieState(entity, dt);
+            return;
         }
 
-        // 최대 속도 제한 적용 (동물 체급별 이동속도)
+        const stateHandler = this.states[state.mode];
+        if (stateHandler) {
+            const nextMode = stateHandler.update(id, entity, dt);
+            if (nextMode && nextMode !== state.mode) {
+                if (stateHandler.exit) stateHandler.exit(id, entity);
+                state.mode = nextMode;
+                const nextHandler = this.states[nextMode];
+                if (nextHandler && nextHandler.enter) nextHandler.enter(id, entity);
+            }
+        } else {
+            state.mode = AnimalStates.IDLE;
+        }
+
+        // 최대 속도 제한 적용
         const mag = Math.sqrt(transform.vx * transform.vx + transform.vy * transform.vy);
         if (mag > maxSpeed && mag > 0) {
             transform.vx = (transform.vx / mag) * maxSpeed;
@@ -241,13 +300,87 @@ export default class AnimalBehaviorSystem extends System {
         }
     }
 
-    findFood(animal, x, y) {
-        let nearestId = null;
-        let minDistSq = animal.diet === 'carnivore' ? 160000 : 62500;
+
+    // --- 🐾 상태별 핸들러 구현 ---
+
+    // --- 🐾 시스템 내부 유틸리티 ---
+
+
+    // --- 🍽️ 섭취 관련 헬퍼 메서드 ---
+
+    consumePlant(entity, plantEntity) {
+        if (!plantEntity) return;
+        // 식물 엔티티 제거 또는 자원 감소 로직 (여기서는 단순 제거로 가정)
+        this.entityManager.removeEntity(plantEntity.id);
+    }
+
+    attackAndConsumeAnimal(entity, victimEntity) {
+        if (!victimEntity) return;
+        // 사냥 로직: 체력 감소 등 (여기서는 단순 사망 상태 전환으로 가정)
+        const vState = victimEntity.components.get('AIState');
+        if (vState) vState.mode = AnimalStates.DIE;
+    }
+
+    // handleDieState: 엔티티 사망 시 서서히 부패하며 대지에 비옥도를 환원합니다.
+    handleDieState(entity, dt) {
+        const visual = entity.components.get('Visual');
+        const transform = entity.components.get('Transform');
         const em = this.entityManager;
+
+        if (visual) {
+            // 1. 알파값 감소 (페이드아웃)
+            visual.alpha = Math.max(0, visual.alpha - dt * 0.5); // 약 2초간 지속
+
+            // 2. 비옥도 환원 로직
+            if (transform && this.engine.terrainGen) {
+                const x = Math.floor(transform.x);
+                const y = Math.floor(transform.y);
+                const width = this.engine.mapWidth;
+                const height = this.engine.mapHeight;
+
+                if (x >= 0 && x < width && y >= 0 && y < height) {
+                    const idx = y * width + x;
+                    const fertilityBuffer = this.engine.terrainGen.fertilityBuffer;
+                    
+                    if (fertilityBuffer) {
+                        // 대지에 비옥도를 조금씩 주입 (정수 버퍼 호환을 위해 확률적 올림 적용)
+                        const currentFertility = fertilityBuffer[idx];
+                        const increment = dt * 10;
+                        const finalIncrement = (Math.random() < increment % 1) ? Math.floor(increment) + 1 : Math.floor(increment);
+                        
+                        if (finalIncrement > 0) {
+                            fertilityBuffer[idx] = Math.min(100, currentFertility + finalIncrement);
+                        }
+
+                        
+                        // 지형 리렌더링을 위해 청크 더티 마킹
+                        if (this.engine.chunkManager) {
+                            this.engine.chunkManager.markDirty(x, y);
+                        }
+                    }
+                }
+            }
+
+            // 3. 완전히 사라지면 엔티티 제거
+            if (visual.alpha <= 0) {
+                em.removeEntity(entity.id);
+            }
+        } else {
+            // Visual 컴포넌트가 없으면 즉시 제거
+            em.removeEntity(entity.id);
+        }
+    }
+
+
+    findFood(animalOrStats, x, y, searchRadius) {
+        let nearestId = null;
+        const diet = animalOrStats.diet || 'herbivore';
+        const myType = animalOrStats.type; // 자신의 종
         
-        // 공간 해시맵을 사용하여 검색 범위를 대폭 좁힘 (반경 계산)
-        const radius = Math.sqrt(minDistSq);
+        const radius = searchRadius || (diet === 'carnivore' ? 400 : 250);
+        let minDistSq = radius * radius;
+        
+        const em = this.entityManager;
         const nearbyIds = this.spatialHash.query(x, y, radius);
 
         for (const id of nearbyIds) {
@@ -256,12 +389,21 @@ export default class AnimalBehaviorSystem extends System {
             
             const targetAnim = entity.components.get('Animal');
             const targetRes = entity.components.get('Resource');
+            const targetStats = entity.components.get('BaseStats');
             const tPos = entity.components.get('Transform');
 
             if (!tPos) continue;
 
-            // 육식 동물의 경우: 주변의 다른 동물 찾기
-            if (animal.diet === 'carnivore' && targetAnim && targetAnim.type !== animal.type) {
+            // --- 🍖 육식/잡식의 동물 사냥 판정 ---
+            if ((diet === 'carnivore' || diet === 'omnivore') && targetAnim) {
+                // 1. 자신과 같은 종은 공격하지 않음
+                if (targetAnim.type === myType) continue;
+                // 2. 이미 죽은 동물 제외
+                if (targetStats && targetStats.health <= 0) continue;
+                
+                // 3. 육식 동물은 다른 육식 동물을 사냥하지 않음 (생태계 균형)
+                if (diet === 'carnivore' && targetStats.diet === 'carnivore') continue;
+
                 const dx = tPos.x - x;
                 const dy = tPos.y - y;
                 const distSq = dx * dx + dy * dy;
@@ -270,17 +412,23 @@ export default class AnimalBehaviorSystem extends System {
                     nearestId = id;
                 }
             }
-            // 초식/잡식 동물의 경우: 먹을 수 있는 식물이나 고기(자원) 찾기
-            else if ((animal.diet === 'herbivore' || animal.diet === 'omnivore') && targetRes && targetRes.edible) {
+
+            // --- 🌿 초식/잡식의 식물 섭취 판정 ---
+            if ((diet === 'herbivore' || diet === 'omnivore') && targetRes && targetRes.edible) {
                 const dx = tPos.x - x;
                 const dy = tPos.y - y;
                 const distSq = dx * dx + dy * dy;
-                if (distSq < minDistSq) {
-                    minDistSq = distSq;
+                
+                // 잡식은 고기를 식물보다 약간 더 선호하도록 가중치 부여 가능
+                const weight = (diet === 'omnivore') ? 1.2 : 1.0; 
+                if (distSq < minDistSq * weight) {
+                    minDistSq = distSq / weight;
                     nearestId = id;
                 }
             }
         }
         return nearestId;
     }
+
+
 }

@@ -4,9 +4,10 @@ import speciesConfig from '../../config/species.json';
 import resourceConfig from '../../config/resource_balance.json';
 
 export default class SpawnerSystem extends System {
-    constructor(entityManager, eventBus, terrainGen) {
+    constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
-        this.terrainGen = terrainGen; 
+        this.engine = engine;
+        this.terrainGen = engine.terrainGen; 
 
         this.eventBus.on('SPAWN_POOP', (payload) => this.spawnPoop(payload.x, payload.y, payload.fertilityAmount));
         this.eventBus.on('SPAWN_ENTITY', (payload) => this.spawnEntity(payload));
@@ -35,15 +36,19 @@ export default class SpawnerSystem extends System {
     }
 
     spawnResources() {
-        for (let i = 0; i < 10; i++) {
+        // 프레임당 시도 횟수를 약간 늘려 비옥한 땅에서 더 활발하게 자라도록 조정
+        for (let i = 0; i < 15; i++) {
             const x = Math.floor(Math.random() * this.terrainGen.mapWidth);
             const y = Math.floor(Math.random() * this.terrainGen.mapHeight);
             const idx = y * this.terrainGen.mapWidth + x;
             const biomeId = this.terrainGen.biomeBuffer[idx];
-            const fertility = this.terrainGen.fertilityBuffer[idx];
+            const fertilityRaw = this.terrainGen.fertilityBuffer[idx];
+            const fertility = fertilityRaw / 100; // ⚡ 정규화
 
+            // 비옥도가 0.3 이상인 초원/정글 지형에서만 자원 생성
             if (fertility > 0.3 && (biomeId === BIOME_NAMES_TO_IDS.get('GRASS') || biomeId === BIOME_NAMES_TO_IDS.get('JUNGLE'))) {
-                if (Math.random() < fertility * 0.05) {
+                // 비옥도에 비례한 확률 (최대 10%)
+                if (Math.random() < fertility * 0.1) {
                     const rand = Math.random();
                     if (fertility > 0.8 && rand < 0.05) {
                         this.spawnGenericResource(x, y, 'oak_tree');
@@ -71,99 +76,25 @@ export default class SpawnerSystem extends System {
         const envBuffer = isMineral ? this.terrainGen.mineralDensityBuffer : this.terrainGen.fertilityBuffer;
         const currentVal = envBuffer[idx] || 0;
 
-        // 수중 생물/바다 지형 예외
+        // 수중 생물/바다 지형 예외 처리
         const isAquatic = ['deep_sea_kelp', 'seaweed', 'lotus', 'waterweed', 'reed'].includes(resourceId);
         const biomeId = this.terrainGen.biomeBuffer[idx];
         const isWaterBiome = [0, 1, 2, 3].includes(biomeId);
-        if (currentVal < 0.05 && !(isAquatic && isWaterBiome)) return;
+        
+        // 정규화된 값으로 비교 (0.05 미만이면 생성 불가)
+        const normalizedVal = isMineral ? currentVal : (currentVal / 100);
+        if (normalizedVal < 0.05 && !(isAquatic && isWaterBiome)) return;
 
-        const isTree = resourceId.includes('tree');
-        const consumed = currentVal;
-
-        // [5단계 상세] 식생 스폰 시 비옥도 차감 및 0.1 하한선 보호 로직
-        // 나무는 비옥도를 더 많이 소모하지만, 최소 0.1은 남겨둠
-        envBuffer[idx] = Math.max(0.1, isTree ? currentVal * 0.1 : currentVal * 0.5);
-
-
-
-        const id = em.createEntity();
-        const entity = em.entities.get(id);
-
-        if (entity) {
-            entity.components.set('Transform', { x, y });
-            const isWithered = consumed < 0.4;
-
-            entity.components.set('Visual', {
-                type: resourceId.includes('tree') ? 'tree' : resourceId,
-                resourceId: resourceId,
-                name: config.name,
-                color: color || '#888888',
-                quality: consumed,
-                isWithered: isWithered,
-                size: resourceId.includes('tree') ? 8 : 1
-            });
-
-            entity.components.set('Resource', {
-                ...config,
-                resourceId: resourceId,
-                value: Math.floor(consumed * config.capacity),
-                storedFertility: consumed, // 뺏어온 양분 저장
-                isWithered: isWithered
-            });
-
-            // 픽셀 갱신 (구멍이 뚫린 것을 시각적으로 즉시 반영)
-            this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'fertility_change' });
-        }
-    }
-
-    spawnSheep(x, y, isBaby = false) {
-        const em = this.entityManager;
-        const config = speciesConfig['sheep'] || {};
-        const id = em.createEntity();
-        const entity = em.entities.get(id);
-        if (entity) {
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 50) * (isBaby ? 0.4 : 1) });
-            entity.components.set('Visual', { type: 'sheep', size: isBaby ? 0.6 : 1.0 });
-            entity.components.set('Animal', { type: 'sheep', isBaby: isBaby, diet: config.diet || 'herbivore', herdId: -1 });
-            entity.components.set('Metabolism', { stomach: 0, maxStomach: config.maxStomach || 3.0, digestionSpeed: config.digestionSpeed || 0.15, storedFertility: 0, isPooping: false });
-            entity.components.set('AIState', { mode: 'wander', targetId: null });
-        }
+        // 팩토리를 통해 리소스 생성
+        this.engine.entityFactory.createResource(resourceId, x, y, currentVal);
     }
 
     spawnEntity(payload) {
         const isBaby = payload.isBaby || false;
-        if (payload.type === 'sheep') this.spawnSheep(payload.x, payload.y, isBaby);
-        else if (payload.type === 'cow') this.spawnCow(payload.x, payload.y, isBaby);
-        else if (payload.type === 'human') this.spawnHuman(payload.x, payload.y, isBaby);
-    }
-    
-    spawnHuman(x, y, isBaby = false) {
-        const em = this.entityManager;
-        const config = speciesConfig['human'] || {};
-        const id = em.createEntity();
-        const entity = em.entities.get(id);
-        if (entity) {
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 70) * (isBaby ? 0.4 : 1) });
-            entity.components.set('Visual', { type: 'human', size: isBaby ? 0.6 : 1.0 });
-            entity.components.set('Animal', { type: 'human', diet: 'omnivore', isBaby: isBaby });
-            entity.components.set('Metabolism', { stomach: 1.0, maxStomach: config.maxStomach || 2.5, digestionSpeed: 0.2, storedFertility: 0 });
-            entity.components.set('AIState', { mode: 'wander' });
-        }
+        // 중앙 집중화된 EntityFactory를 사용하여 모든 동물이 동일한 컴포넌트(BaseStats 등)를 갖도록 보장
+        this.engine.entityFactory.createAnimal(payload.type, payload.x, payload.y, { isBaby });
     }
 
-    spawnCow(x, y, isBaby = false) {
-        const em = this.entityManager;
-        const config = speciesConfig['cow'] || {};
-        const id = em.createEntity();
-        const entity = em.entities.get(id);
-        if (entity) {
-            entity.components.set('Transform', { x, y, vx: 0, vy: 0, mass: (config.weight || 500) * (isBaby ? 0.3 : 1) });
-            entity.components.set('Visual', { type: 'cow', size: isBaby ? 0.6 : 1.0 });
-            entity.components.set('Animal', { type: 'cow', diet: 'herbivore', isBaby: isBaby });
-            entity.components.set('Metabolism', { stomach: 1.0, maxStomach: 5.0, digestionSpeed: 0.1, storedFertility: 0 });
-            entity.components.set('AIState', { mode: 'wander' });
-        }
-    }
 
     spawnPoop(x, y, fertilityAmount = 1.0) {
         const em = this.entityManager;
