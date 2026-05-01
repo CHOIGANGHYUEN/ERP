@@ -10,21 +10,28 @@ export default class RenderCoordinator extends System {
         super(entityManager, eventBus);
         this.engine = engine;
 
-        // 1. 🚀 가상의 도화지(Offscreen Canvas) 생성
-        this.offscreenCanvas = document.createElement('canvas');
-        this.offscreenCanvas.width = engine.width;
-        this.offscreenCanvas.height = engine.height;
-        this.offCtx = this.offscreenCanvas.getContext('2d', { alpha: false });
+        // 1. 🚀 가상의 도화지(Offscreen Canvas) 생성 및 해상도 캡핑 (4K 방지)
+        this.maxResW = 1920;
+        this.maxResH = 1080;
+        this.updateResolution(engine.width, engine.height);
         
-        console.log("RenderCoordinator: Offscreen Canvas Initialized", this.offscreenCanvas.width, this.offscreenCanvas.height);
+        this.offCtx = this.offscreenCanvas.getContext('2d', { alpha: false });
+        console.log("RenderCoordinator: Capped Offscreen Canvas Initialized", this.offscreenCanvas.width, this.offscreenCanvas.height);
+    }
+
+    updateResolution(w, h) {
+        if (!this.offscreenCanvas) this.offscreenCanvas = document.createElement('canvas');
+        
+        // 🛡️ [Memory Guard] 해상도가 너무 높으면 성능/메모리 보호를 위해 캡핑
+        this.offscreenCanvas.width = Math.min(w, this.maxResW);
+        this.offscreenCanvas.height = Math.min(h, this.maxResH);
     }
 
     /**
      * 화면 크기가 변경될 때 오프스크린 캔버스 크기도 동기화합니다.
      */
     resize(width, height) {
-        this.offscreenCanvas.width = width;
-        this.offscreenCanvas.height = height;
+        this.updateResolution(width, height);
     }
 
     /**
@@ -49,8 +56,22 @@ export default class RenderCoordinator extends System {
 
         // --- 레이어별 그리기 작업 ---
         
-        // [레이어 1] 지형 (Terrain)
-        offCtx.drawImage(engine.terrainCanvas, 0, 0);
+        // [레이어 1] 지형 (Terrain) - 가시 영역만 클리핑하여 렌더링 (성능 최적화)
+        const viewW = Math.ceil(this.offscreenCanvas.width / camera.zoom);
+        const viewH = Math.ceil(this.offscreenCanvas.height / camera.zoom);
+        
+        const sx = Math.max(0, Math.floor(camera.x));
+        const sy = Math.max(0, Math.floor(camera.y));
+        const sw = Math.min(engine.mapWidth - sx, viewW + 2);
+        const sh = Math.min(engine.mapHeight - sy, viewH + 2);
+
+        if (sw > 0 && sh > 0) {
+            offCtx.drawImage(
+                engine.terrainCanvas, 
+                sx, sy, sw, sh, // Source (Terrain Canvas)
+                sx, sy, sw, sh  // Destination (World Space)
+            );
+        }
 
         // [레이어 2] 엔티티 및 자원 (Entities)
         engine.renderer.render(
@@ -76,8 +97,9 @@ export default class RenderCoordinator extends System {
         }
 
         // 4. 🚀 [대미의 장식] 완성된 가상 도화지를 메인 화면에 한 번에 복사!
+        // 🛡️ [Scaling Fix] 캡핑된 해상도를 메인 캔버스 크기에 맞춰 확대/축소하여 출력
         mainCtx.setTransform(1, 0, 0, 1, 0, 0);
-        mainCtx.drawImage(this.offscreenCanvas, 0, 0);
+        mainCtx.drawImage(this.offscreenCanvas, 0, 0, engine.width, engine.height);
     }
 
     /**

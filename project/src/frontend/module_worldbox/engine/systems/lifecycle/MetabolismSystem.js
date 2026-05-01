@@ -10,37 +10,37 @@ export default class MetabolismSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
-        for (const [id, entity] of em.entities) {
+
+        // 🐕 1. 동물 대사 처리 (Animal Metabolism)
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+
             const animal = entity.components.get('Animal');
             const metabolism = entity.components.get('Metabolism');
             const transform = entity.components.get('Transform');
             const stats = entity.components.get('BaseStats');
-            const resource = entity.components.get('Resource');
 
-            // 1. 동물 대사 처리 (Animal Metabolism)
             if (animal && metabolism && transform) {
-                // BaseStats가 있는 경우 hunger와 stomach 동기화
-                // (hunger 100 = 배부름, stomach 가득 참 / hunger 0 = 배고픔, stomach 비어있음)
                 if (stats) {
-                    metabolism.stomach = (stats.hunger / stats.maxHunger) * metabolism.maxStomach;
-                    // 🧪 [Sync] 식사 시 축적된 고품질 영양분 데이터를 가져옴
+                    metabolism.stomach = (stats.hunger / (stats.maxHunger || 100)) * metabolism.maxStomach;
                     metabolism.storedFertility = stats.storedFertility || 0;
                 }
-
                 this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt, stats);
-                
-                // 🧪 [Reverse Sync] 소화/배설 후 변동된 데이터를 다시 저장
-                if (stats) {
-                    stats.storedFertility = metabolism.storedFertility;
-                }
-
+                if (stats) stats.storedFertility = metabolism.storedFertility;
                 const visual = entity.components.get('Visual');
-                if (visual) {
-                    visual.isPooping = metabolism.isPooping;
-                }
+                if (visual) visual.isPooping = metabolism.isPooping;
             }
+        }
 
-            // 2. 배설물 분해 및 비옥도 환원 (Poop Decomposition)
+        // 💩 2. 배설물 분해 및 비옥도 환원 (Poop Decomposition)
+        for (const id of em.resourceIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+
+            const resource = entity.components.get('Resource');
+            const transform = entity.components.get('Transform');
+
             if (resource && resource.isFertilizer && transform) {
                 this.processDecomposition(id, entity, resource, transform, dt);
             }
@@ -85,30 +85,27 @@ export default class MetabolismSystem extends System {
         if (x >= 0 && x < width && y >= 0 && y < this.terrainGen.mapHeight) {
             const idx = y * width + x;
             
-            // 배설물의 영양분을 땅으로 환원 (정수 체계에 맞게 속도 조정)
-            const releaseRate = dt * 100.0; // 초당 100 (즉, 100%) 주입 시도
-            const amount = Math.min(resource.fertilityValue || 1.0, releaseRate);
+            // 배설물의 영양분을 땅으로 환원 (8비트 정수 체계: 0-255)
+            const releaseRate = dt * 100.0; // 초당 100 주입 시도
+            const amount = Math.min(resource.fertilityValue || 10, releaseRate);
             
             if (amount > 0) {
-                // 정수 버퍼에 더하기 위해 반올림 처리
                 const current = fb[idx] || 0;
-                const next = Math.min(100, current + amount);
+                // 🚀 [Scale Fix] 최대 255까지 비옥도 누적 가능
+                const next = Math.min(255, current + amount);
                 
                 if (Math.floor(next) > current) {
                     fb[idx] = Math.floor(next);
                     if (resource.fertilityValue) resource.fertilityValue -= amount;
                     
-                    // 지형 리렌더링 및 확산 시스템 활성화
                     this.eventBus.emit('CACHE_PIXEL_UPDATE', { x, y, reason: 'fertility_change' });
                 } else if (resource.fertilityValue) {
-                    // 정수 변화가 없더라도 데이터는 차감 (나중에 한 번에 변하도록)
                     resource.fertilityValue -= amount;
                 }
             }
 
-
             // 모든 영양분이 환원되면 배설물 엔티티 제거
-            if (!resource.fertilityValue || resource.fertilityValue <= 0.01) {
+            if (!resource.fertilityValue || resource.fertilityValue <= 0.5) {
                 this.entityManager.removeEntity(id);
             }
         }

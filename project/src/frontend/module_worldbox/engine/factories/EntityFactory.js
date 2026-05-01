@@ -14,51 +14,56 @@ export default class EntityFactory {
         if (!config) return null;
 
         const id = em.createEntity();
-        const entity = em.entities.get(id);
 
         // 1. Transform (위치)
         const transform = new Transform(x, y);
         transform.vx = 0;
         transform.vy = 0;
-        entity.components.set('Transform', transform);
+        em.addComponent(id, transform);
 
-        // 2. Visual (렌더링 데이터) - 클래스 인스턴스 사용
-        entity.components.set('Visual', new Visual({
+        // 2. Visual (렌더링 데이터)
+        let baseSize = options.isBaby ? 0.6 : 1.0;
+        if (type === 'bee') baseSize = 0.8;
+
+        em.addComponent(id, new Visual({
             color: config.color || '#ffffff',
             type: type,
-            size: options.isBaby ? 0.6 : 1.0
+            size: baseSize
         }));
 
         // 3. Animal (종 정보)
-        entity.components.set('Animal', {
+        em.addComponent(id, {
             type: type,
             isBaby: options.isBaby || false,
             diet: config.diet || 'herbivore',
             herdId: -1
-        });
+        }, 'Animal');
 
-        // 4. BaseStats (새로 추가된 생존 스탯) - 클래스 인스턴스 사용
-        const stats = new BaseStats({
+        // 4. BaseStats (생존 스탯)
+        em.addComponent(id, new BaseStats({
             diet: config.diet || 'herbivore',
             health: config.maxHealth || 100,
             maxHealth: config.maxHealth || 100,
-            hunger: 50 + Math.random() * 30, // 약간 배고픈 상태로 시작
+            hunger: 50 + Math.random() * 30,
+            maxHunger: 100, // 📏 기준치 통일
             fatigue: Math.random() * 20,
             speed: config.moveSpeed || 1.0
-        });
-        entity.components.set('BaseStats', stats);
+        }));
 
-        // 5. Metabolism (기존 시스템 호환용)
-        entity.components.set('Metabolism', {
-            stomach: options.isBaby ? 0 : (config.maxStomach || 3.0) * 0.4,
-            maxStomach: config.maxStomach || 3.0,
+        // 5. Metabolism (배설/소화 전용)
+        em.addComponent(id, {
             digestionSpeed: config.digestionSpeed || 0.15,
             storedFertility: 0,
             isPooping: false
-        });
+        }, 'Metabolism');
 
-        // 6. AI State (상태 기계) - 클래스 인스턴스 사용
-        entity.components.set('AIState', new State());
+        // 6. AI State
+        em.addComponent(id, new State(), 'AIState');
+
+        // 🚀 [Critical Fix] 생성 즉시 공간 해시에 등록하여 렌더러가 바로 그릴 수 있게 함
+        if (this.engine.spatialHash) {
+            this.engine.spatialHash.insert(id, x, y, false); // false = Dynamic (Animal)
+        }
 
         return id;
     }
@@ -75,129 +80,135 @@ export default class EntityFactory {
         return id;
     }
 
-
     createResource(type, x, y, quality = 1.0, options = {}) {
         const em = this.engine.entityManager;
         const tg = this.engine.terrainGen;
         const idx = tg.getIndex(x, y);
 
-        // [5단계 상세] 식생 스폰 시 비옥도 차감 및 0.1 하한선 보호 로직
-        if (tg.isValidIndex(idx)) {
-            const biomeId = tg.biomeBuffer[idx];
-            const isLand = tg.isLand(biomeId);
+        if (!tg.isValidIndex(idx)) return null;
 
-            const lowerType = type.toLowerCase();
-            const isPlant = lowerType.includes('grass') || lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('herb');
-            const isTree = lowerType.includes('tree');
+        const biomeId = tg.biomeBuffer[idx];
+        const isLand = tg.isLand(idx);
+        const lowerType = type.toLowerCase();
+        
+        // 🌊 [Expert Terrain Validation] 지형별 식생 배치 엄격 분리
+        const isAquaticType = ['lotus', 'deep_sea_kelp', 'seaweed', 'waterweed', 'reed', 'luminous_moss'].includes(lowerType);
+        const isLandType = !isAquaticType && !['poop', 'meat', 'milk'].includes(lowerType); // 똥/고기 등은 어디든 가능
 
-            if (isLand && (isPlant || isTree)) {
-                const currentFert = tg.fertilityBuffer[idx];
-                const consumption = isTree ? 0.8 : 0.4; // 나무는 더 많이 소모
-                // 토지 지형의 생존 최솟값 0.1 하한선 방어
-                tg.fertilityBuffer[idx] = Math.max(0.1, currentFert - consumption);
-                this.engine.eventBus.emit('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'fertility_change' });
-            }
+        // 🛑 육지에 바다식물 금지, 바다에 육지식물 금지
+        if (isLand && isAquaticType) return null; 
+        if (!isLand && isLandType) return null;
+
+        const isPlant = lowerType.includes('grass') || lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('herb');
+        const isTree = lowerType.includes('tree');
+        const isSolid = isTree || ['rock', 'ore', 'stone', 'cactus', 'iron_ore', 'gold_ore'].includes(lowerType);
+
+        // [Expert Logic] 비옥도 차감 및 가치 보존
+        const currentFert = tg.fertilityBuffer[idx] || 0;
+        if (isLand && (isPlant || isTree)) {
+            // 🥗 [Integer Scaling] 소수점 차감 대신 정수 단위 차감 (255 기준)
+            const consumption = isTree ? 20 : 10; 
+            tg.fertilityBuffer[idx] = Math.max(0, currentFert - consumption);
+            this.engine.eventBus.emit('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'fertility_change' });
         }
 
-        // 🛑 [Smart Overlap Prevention] 계급제 점유 시스템
-        // 0: 빈칸, 1: 소형 식생(풀/꽃), 2: 대형 고체(나무/바위)
+        // 점유 체크
         const currentOcc = tg.getOccupancy(x, y);
-        const isSolid = type.includes('tree') || ['rock', 'ore', 'stone', 'cactus', 'iron_ore', 'gold_ore'].includes(type);
-        
-        if (currentOcc >= 2) return null; // 나무/바위 위에는 중복 설치 불가
-        if (currentOcc === 1 && !isSolid) return null; // 풀 위에 풀 중복 설치 불가
-        
-        // 나무를 심으려는데 풀이 있다면? 풀을 제거하고 나무를 심음 (Overwrite)
-        if (currentOcc === 1 && isSolid) {
-            // 해당 위치의 작은 식물 제거 로직 (선택 사항: 성능을 위해 일단 장부만 업데이트)
-        }
-
+        if (currentOcc >= 2) return null;
+        if (currentOcc === 1 && !isSolid) return null;
         tg.setOccupancy(x, y, isSolid ? 2 : 1);
 
         const id = em.createEntity();
-        const entity = em.entities.get(id);
+        em.addComponent(id, new Transform(x, y));
 
-        entity.components.set('Transform', new Transform(x, y));
-
+        // 생성 당시의 비옥도를 품질(가치)로 사용
+        const resourceValue = currentFert / 100;
 
         if (type === 'grass' || type === 'pasture_grass' || type === 'weeds') {
-            this.setupGrass(entity, quality);
+            this.setupGrass(id, resourceValue);
         }
         else if (type === 'flower' || type === 'wildflowers' || type === 'medicinal_herb' || type === 'snow_flower') {
-            this.setupFlower(entity, quality);
+            this.setupFlower(id, resourceValue);
         }
         else if (type.includes('tree')) {
             if (type.includes('fruit')) options.subtype = 'fruit';
             else if (type.includes('beehive')) options.subtype = 'beehive';
             else options.subtype = 'normal';
-            this.setupTree(entity, quality, options);
+            this.setupTree(id, resourceValue, options);
         }
         else if (type === 'mushroom' || type === 'wild_mushroom') {
-            this.setupMushroom(entity, quality);
+            this.setupMushroom(id, quality);
         }
         else if (type === 'wild_berries') {
-            this.setupBerries(entity, quality);
+            this.setupBerries(id, quality);
         }
         else if (type === 'cactus') {
-            this.setupCactus(entity, quality);
+            this.setupCactus(id, quality);
         }
         else if (['lotus', 'deep_sea_kelp', 'seaweed', 'waterweed', 'reed', 'luminous_moss'].includes(type)) {
-            this.setupAquaticPlant(entity, quality, type);
+            this.setupAquaticPlant(id, quality, type);
         }
         else if (['rock', 'ore', 'gems', 'stone', 'coal', 'iron_ore', 'gold_ore', 'silver_ore', 'surface_copper', 'obsidian', 'flint', 'salt', 'sandstone', 'deep_stone', 'manganese_nodule'].includes(type)) {
-            this.setupRock(entity, quality, type);
+            this.setupRock(id, quality, type);
         }
         else if (type === 'mud' || type === 'sand' || type === 'clay' || type === 'river_gravel') {
-            this.setupRock(entity, quality, type); // 토양성 자원도 일단 Rock 로직 재활용
+            this.setupRock(id, quality, type);
         }
         else if (type === 'poop') {
-            this.setupPoop(entity);
+            this.setupPoop(id);
         }
         else if (type === 'meat' || type === 'milk') {
-            entity.components.set('Visual', new Visual({ type: type, quality: quality }));
-            entity.components.set('Resource', { type: 'food', value: 50, edible: true });
+            em.addComponent(id, new Visual({ type: type, quality: quality }));
+            em.addComponent(id, { type: 'food', value: 50, edible: true }, 'Resource');
+        }
+
+        if (this.engine.spatialHash) {
+            this.engine.spatialHash.insert(id, x, y, true);
         }
 
         return id;
     }
 
-    setupGrass(entity, quality) {
+    setupGrass(id, quality) {
+        const em = this.engine.entityManager;
         let r, g, b;
         if (quality > 0.8) { r = 46; g = 150; b = 30; }
         else if (quality > 0.4) { r = 139; g = 195; b = 74; }
         else { r = 180; g = 180; b = 60; }
 
-        entity.components.set('Visual', new Visual({
+        em.addComponent(id, new Visual({
             type: 'grass',
             color: `rgb(${r},${g},${b})`,
             quality: quality
         }));
         const config = this.engine.resourceConfig['grass'] || { nutrition: 10, edible: true };
-        entity.components.set('Resource', { type: 'food', value: Math.floor(quality * config.nutrition), edible: config.edible, isGrass: true });
+        em.addComponent(id, { type: 'food', value: Math.floor(quality * config.nutrition), edible: config.edible, isGrass: true }, 'Resource');
     }
 
-    setupFlower(entity, quality) {
+    setupFlower(id, quality) {
+        const em = this.engine.entityManager;
         const colors = ['#ff5252', '#ff4081', '#ffeb3b', '#e040fb', '#ffffff'];
         const petalColor = colors[Math.floor(Math.random() * colors.length)];
 
-        entity.components.set('Visual', new Visual({
+        em.addComponent(id, new Visual({
             type: 'flower',
             color: petalColor,
             quality: quality
         }));
         const config = this.engine.resourceConfig['flower'] || { nutrition: 15, edible: true };
-        entity.components.set('Resource', {
+        em.addComponent(id, {
             type: 'food',
             value: Math.floor(quality * config.nutrition),
             edible: config.edible,
             isFlower: true
-        });
+        }, 'Resource');
     }
 
-    setupTree(entity, quality, options) {
-        entity.components.set('Visual', new Visual({
+    setupTree(id, quality, options) {
+        const em = this.engine.entityManager;
+        em.addComponent(id, new Visual({
             type: 'tree',
-            size: 15 + (quality * 10), // 📏 나무 크기 정상화 (15~25px)
+            size: 15 + (quality * 10),
             quality: quality,
             subtype: options.subtype || 'normal'
         }));
@@ -215,47 +226,58 @@ export default class EntityFactory {
         if (options.subtype === 'fruit' || options.subtype === 'beehive') {
             resource.foodValue = 50;
         }
-        entity.components.set('Resource', resource);
+        em.addComponent(id, resource, 'Resource');
+
+        if (options.subtype === 'beehive') {
+            em.addComponent(id, {
+                honey: 0,
+                larvaCount: 0,
+                beeCount: 0,
+                hasQueen: false,
+                maxHoney: 100
+            }, 'Hive');
+        }
     }
 
-    setupMushroom(entity, quality) {
-        entity.components.set('Visual', new Visual({ type: 'mushroom', quality: quality, color: '#d32f2f' }));
-        entity.components.set('Resource', { type: 'food', value: 15, edible: true });
+    setupMushroom(id, quality) {
+        const em = this.engine.entityManager;
+        em.addComponent(id, new Visual({ type: 'mushroom', quality: quality, color: '#d32f2f' }));
+        em.addComponent(id, { type: 'food', value: 15, edible: true }, 'Resource');
     }
 
-    setupAquaticPlant(entity, quality, type) {
-        entity.components.set('Visual', new Visual({
+    setupAquaticPlant(id, quality, type) {
+        const em = this.engine.entityManager;
+        em.addComponent(id, new Visual({
             type: type,
-            size: 10 + (quality * 5), // 💧 수생 식물 크기 보정 (10~15px)
+            size: 10 + (quality * 5),
             quality: quality,
             color: type === 'lotus' ? '#f06292' : '#2e7d32'
         }));
-        entity.components.set('Resource', { type: 'food', value: 10, isAquatic: true });
+        em.addComponent(id, { type: 'food', value: 10, isAquatic: true }, 'Resource');
     }
 
-    setupCactus(entity, quality) {
-        entity.components.set('Visual', new Visual({ type: 'cactus', quality: quality, color: '#2e7d32' }));
-        entity.components.set('Resource', { type: 'food', value: 5, edible: true });
+    setupCactus(id, quality) {
+        const em = this.engine.entityManager;
+        em.addComponent(id, new Visual({ type: 'cactus', quality: quality, color: '#2e7d32' }));
+        em.addComponent(id, { type: 'food', value: 5, edible: true }, 'Resource');
     }
 
-    setupRock(entity, quality, type) {
-        entity.components.set('Visual', new Visual({ type: 'rock', quality: quality, subtype: type }));
-        entity.components.set('Resource', { type: 'material', value: 50, isRock: true });
+    setupRock(id, quality, type) {
+        const em = this.engine.entityManager;
+        em.addComponent(id, new Visual({ type: 'rock', quality: quality, subtype: type }));
+        em.addComponent(id, { type: 'material', value: 50, isRock: true }, 'Resource');
     }
 
-    setupBerries(entity, quality) {
-        entity.components.set('Visual', new Visual({ type: 'wild_berries', quality: quality, color: '#e91e63' }));
-        entity.components.set('Resource', { type: 'food', value: 20, edible: true });
+    setupBerries(id, quality) {
+        const em = this.engine.entityManager;
+        em.addComponent(id, new Visual({ type: 'wild_berries', quality: quality, color: '#e91e63' }));
+        em.addComponent(id, { type: 'food', value: 20, edible: true }, 'Resource');
     }
 
-    setupAquaticPlant(entity, quality, type) {
-        entity.components.set('Visual', new Visual({ type: type, quality: quality }));
-        entity.components.set('Resource', { type: 'food', value: 10, edible: true, isAquatic: true });
-    }
-
-    setupPoop(entity) {
+    setupPoop(id) {
+        const em = this.engine.entityManager;
         const config = this.engine.resourceConfig['poop'] || { amount: 100 };
-        entity.components.set('Visual', new Visual({ type: 'poop' }));
-        entity.components.set('Resource', { isFertilizer: true, amount: config.amount });
+        em.addComponent(id, new Visual({ type: 'poop' }));
+        em.addComponent(id, { isFertilizer: true, amount: config.amount }, 'Resource');
     }
 }

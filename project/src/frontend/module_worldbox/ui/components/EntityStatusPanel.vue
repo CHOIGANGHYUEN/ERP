@@ -21,13 +21,13 @@
       </div>
 
       <!-- 🥩 동물 전용 상태 (위장/허기) -->
-      <template v-if="entity.maxStomach">
+      <template v-if="entity.maxHunger !== undefined">
         <div class="status-row">
           <span class="label">Stomach:</span>
           <div class="progress-bar">
-            <div class="fill stomach" :style="{ width: getPercentage(entity.stomach, entity.maxStomach) + '%' }"></div>
+            <div class="fill stomach" :style="{ width: getPercentage(entity.hunger, entity.maxHunger) + '%' }"></div>
           </div>
-          <span class="value-sm">{{ (entity.stomach || 0).toFixed(1) }} / {{ entity.maxStomach }}</span>
+          <span class="value-sm">{{ (entity.hunger || 0).toFixed(1) }} / {{ entity.maxHunger }}</span>
         </div>
 
         <!-- 😴 피로도 표시 추가 -->

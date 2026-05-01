@@ -1,3 +1,5 @@
+import { AnimalStates } from '../../components/behavior/State.js';
+
 export default class SocialSystem {
     constructor(engine) {
         this.engine = engine;
@@ -18,8 +20,11 @@ export default class SocialSystem {
             }
         }
 
-        // 2. Assign herds & apply flocking
-        for (const [id, entity] of em.entities) {
+        // 2. Assign herds & apply flocking (동물 개체만 선별하여 처리)
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+            
             const animal = entity.components.get('Animal');
             const transform = entity.components.get('Transform');
             if (animal && transform) {
@@ -92,9 +97,12 @@ export default class SocialSystem {
             }
         }
 
-        // 개체가 식사 중('eat')이거나 허기가 10% 이하로 떨어지면 무리 로직을 무시하고 생존에 집중
+        // 🥗 [Survival Priority] 식사 중이거나, 먹이를 찾는 중이거나, 허기가 임계치(60) 이하인 경우 무리 로직 차단
         const stats = em.entities.get(myId)?.components.get('BaseStats');
-        if (myState && (myState.mode === 'eat' || (stats && stats.hunger <= 10))) {
+        const isSearchingFood = myState && (myState.mode === AnimalStates.EAT || myState.mode === AnimalStates.FORAGE || myState.mode === AnimalStates.HUNT);
+        const isHungry = stats && stats.hunger < 60;
+
+        if (isSearchingFood || isHungry) {
             return;
         }
 
@@ -113,10 +121,5 @@ export default class SocialSystem {
             transform.vy += ((leaderTransform.vy || 0) - transform.vy) * 0.1 * timeScale;
         }
 
-        // Behavior: Social pause
-        if (Math.random() < 0.001) {
-            transform.vx *= 0.1;
-            transform.vy *= 0.1;
-        }
     }
 }

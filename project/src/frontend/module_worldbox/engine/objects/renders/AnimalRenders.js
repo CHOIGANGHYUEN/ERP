@@ -17,7 +17,8 @@ export const AnimalRenders = {
         // 프레임 인덱스를 4단계로 고정하여 캐시 효율 증대
         const animFrame = Math.floor(frameIdx % 4);
         const role = options.role || 'worker';
-        const key = `${type}_${mode}_${animFrame}_${color}_${role}`;
+        const hasHoney = options.nectar > 5 ? 'H' : 'N';
+        const key = `${type}_${mode}_${animFrame}_${color}_${role}_${hasHoney}`;
         if (this.spriteCache.has(key)) return this.spriteCache.get(key);
 
         const canvas = document.createElement('canvas');
@@ -41,10 +42,18 @@ export const AnimalRenders = {
         return canvas;
     },
 
+    /**
+     * 🧹 [Memory Management] 주기적으로 캐시를 비워 메모리 누수를 방지합니다.
+     */
+    clearCache() {
+        this.spriteCache.clear();
+    },
+
     drawAnimalBody(ctx, entity, time) {
         const transform = entity.components.get('Transform');
         const visual = entity.components.get('Visual');
         const state = entity.components.get('AIState');
+        const animal = entity.components.get('Animal');
         if (!transform || !visual || !state) return;
 
         const mode = state.mode;
@@ -55,7 +64,7 @@ export const AnimalRenders = {
         if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT) speedMult = 0.015;
         else if (mode === AnimalStates.SLEEP) speedMult = 0.002;
         const frameIdx = (time * speedMult);
-        const options = { role: animal?.role, entity: entity };
+        const options = { role: animal?.role, entity: entity, nectar: animal?.nectar };
         const sprite = this.getSprite(type, mode, frameIdx, visual.color, options);
 
         ctx.save();

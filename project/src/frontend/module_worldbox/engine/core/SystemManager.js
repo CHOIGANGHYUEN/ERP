@@ -1,4 +1,6 @@
 import AnimalBehaviorSystem from '../systems/behavior/AnimalBehaviorSystem.js';
+// 🚀 Cache Refresh Trigger
+import SpatialHash from '../utils/SpatialHash.js';
 import CombatSystem from '../systems/behavior/CombatSystem.js';
 import DeathProcessor from '../systems/behavior/DeathProcessor.js';
 import SocialSystem from '../systems/motion/SocialSystem.js';
@@ -22,6 +24,10 @@ export default class SystemManager {
         const em = engine.entityManager;
         const eb = engine.eventBus;
         const tg = engine.terrainGen;
+        
+        // 🚀 SHARED SPATIAL HASH: AI와 Renderer가 공통으로 사용하여 Culling 성능 극대화
+        this.spatialHash = new SpatialHash(100);
+        engine.spatialHash = this.spatialHash;
 
         // Phase 1: Environment & Input
         this.inputSystem = new InputSystem(em, eb, engine);
@@ -29,7 +35,7 @@ export default class SystemManager {
         this.environment = new EnvironmentSystem(em, eb, engine);
 
         // Phase 2: Logic & AI
-        this.behavior = new AnimalBehaviorSystem(em, eb, engine);
+        this.behavior = new AnimalBehaviorSystem(em, eb, engine, this.spatialHash);
         this.combat = new CombatSystem(em, eb);
         this.deathProcessor = new DeathProcessor(em, eb, engine);
         this.social = new SocialSystem(engine);

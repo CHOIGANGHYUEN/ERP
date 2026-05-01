@@ -16,33 +16,46 @@ export default class EntityRenderer {
 
     /** 메인 렌더링 루프 */
     render(ctx, entityManager, particles, time, wind) {
-        const entities = entityManager.entities;
-        const zoom = this.engine.camera.zoom;
+        const camera = this.engine.camera;
+        if (!camera || !this.engine.spatialHash) return;
 
-        // 60초마다 스프라이트 캐시 정리 (메모리 관리)
-        if (time % 60000 < 20) this.spriteCache.clear();
+        // 1. 🚀 [Viewport Culling] 카메라 시야 영역 내의 개체만 SpatialHash로 쿼리
+        const margin = 50;
+        const viewX = camera.x - margin;
+        const viewY = camera.y - margin;
+        const viewW = (camera.width / camera.zoom) + (margin * 2);
+        const viewH = (camera.height / camera.zoom) + (margin * 2);
 
-        // 1. 🚀 [Y-Sorting] 렌더링 순서 결정을 위해 엔티티 수집 및 정렬
+        const visibleIds = this.engine.spatialHash.queryRect(viewX, viewY, viewW, viewH);
+        
+        // 🧹 [Memory Management] 60초마다 모든 스프라이트 캐시 정리 (누수 방지)
+        if (time % 60000 < 20) {
+            this.spriteCache.clear();
+            AnimalRenders.clearCache();
+        }
+
+        // 2. 🚀 [Y-Sorting] 쿼리된 엔티티 수집 및 정렬
         const renderList = [];
-        for (const [id, entity] of entities) {
+        const processedIds = new Set(); // 중복 방지 (SpatialHash 셀 경계 중복 가능성)
+
+        for (const id of visibleIds) {
+            if (processedIds.has(id)) continue;
+            processedIds.add(id);
+
+            const entity = entityManager.entities.get(id);
+            if (!entity) continue;
+
             const t = entity.components.get('Transform');
             const v = entity.components.get('Visual');
-            if (!t || !v || v.isCulled) continue;
+            if (!t || !v) continue;
 
-            // --- 🚀 [LOD System] 저배율에서는 점으로 간소화 ---
-            if (zoom <= 0.5) {
-                const dotSize = 2 / zoom;
-                ctx.fillStyle = v.color || '#ffffff';
-                ctx.globalAlpha = v.alpha !== undefined ? v.alpha : 1.0;
-                ctx.fillRect(t.x, t.y, dotSize, dotSize);
-                ctx.globalAlpha = 1.0;
-                continue;
-            }
+            // 정밀 컬링 (SpatialHash는 셀 단위이므로 한 번 더 체크)
+            if (t.x < viewX || t.x > viewX + viewW || t.y < viewY || t.y > viewY + viewH) continue;
 
             renderList.push({ id, entity, t, v, y: t.y });
         }
 
-        // Y축 기준으로 정렬 (아래쪽에 있을수록 나중에 그려짐)
+        // 화면에 보이는 소수의 개체만 정렬하므로 매우 빠름
         renderList.sort((a, b) => a.y - b.y);
 
         // 2. 정렬된 순서대로 그리기
@@ -56,13 +69,15 @@ export default class EntityRenderer {
             }
 
             // --- 🚀 [Drawing Delegation] ---
-            const isHighDetail = zoom > 1.5;
+            const isHighDetail = camera.zoom > 1.5;
             const type = v.type;
-            const isAnimal = ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog'].includes(type);
+            // 🐾 Animal 컴포넌트가 있거나 명시된 동물 타입인 경우 Animal 렌더러 사용
+            const isAnimal = entity.components.has('Animal') || 
+                             ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee'].includes(type);
 
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
-                if (this.engine.viewFlags.debugAI && zoom > 0.8 && state) {
+                if (this.engine.viewFlags.debugAI && camera.zoom > 0.8 && state) {
                     this.renderAIDebug(ctx, t, state, id);
                 }
             } else {
@@ -106,10 +121,11 @@ export default class EntityRenderer {
         const size = v.size || 15;
         const isWithered = v.isWithered || false;
         const color = isWithered ? '#795548' : (v.color || '#2e7d32');
-        const key = `tree_${size}_${color}_${isWithered}_${v.subtype || 'normal'}`;
+        const isXRay = this.engine.viewFlags.xray || false;
+        const key = `tree_${size}_${color}_${isWithered}_${v.subtype || 'normal'}_${isXRay}`;
 
         const sprite = this.getSprite(key, (sCtx) => {
-            TreeRenderer.draw(sCtx, t, v, size, isWithered, time, wind);
+            TreeRenderer.draw(sCtx, t, v, size, isWithered, time, wind, isXRay, entity);
         }, size * 4, size * 5);
 
         const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };

@@ -14,23 +14,31 @@ export default class FoodSensor {
 
         const em = this.entityManager;
         const nearbyIds = this.spatialHash.query(x, y, radius);
+        
+        // 🚀 [Optimization] 검색 대상 수를 제한하여 밀집 지역에서의 CPU 폭주 방지
+        const scanLimit = 20;
+        let count = 0;
 
         for (const id of nearbyIds) {
+            if (count++ > scanLimit) break;
+
             const entity = em.entities.get(id);
-            if (!entity) continue;
+            if (!entity || id === animalOrStats.id) continue;
+
+            const tPos = entity.components.get('Transform');
+            if (!tPos) continue;
+
 
             const targetAnim = entity.components.get('Animal');
             const targetRes = entity.components.get('Resource');
             const targetStats = entity.components.get('BaseStats');
-            const tPos = entity.components.get('Transform');
-
-            if (!tPos) continue;
 
             if ((diet === 'carnivore' || diet === 'omnivore') && targetAnim) {
                 const distSq = this._evaluatePrey(myType, diet, targetAnim, targetStats, tPos, x, y);
                 if (distSq !== null && distSq < minDistSq) {
                     minDistSq = distSq;
                     nearestId = id;
+                    if (distSq < 225) break; // 🎯 [Early Exit]
                 }
             }
 
@@ -39,6 +47,7 @@ export default class FoodSensor {
                 if (distSq !== null && distSq < minDistSq) {
                     minDistSq = distSq;
                     nearestId = id;
+                    if (distSq < 225) break; // 🎯 [Early Exit]
                 }
             }
         }

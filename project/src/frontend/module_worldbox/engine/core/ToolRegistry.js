@@ -79,6 +79,16 @@ export class SpawnTool extends Tool {
     }
 }
 
+export class SingleSpawnTool extends Tool {
+    constructor(config) {
+        super(config);
+        this.resourceId = config.resourceId;
+    }
+    onMouseDown(worldPos) {
+        return { type: 'SPAWN_RESOURCE', payload: { type: this.resourceId, x: worldPos.x, y: worldPos.y, amount: 1 } };
+    }
+}
+
 export class ToggleTool extends Tool {
     constructor(config) {
         super(config);
@@ -140,6 +150,10 @@ export const DefaultTools = [
     new SprinkleTool({ id: 'paint_high_mountain', name: 'High Peak', icon: '🏔️', category: 'Landscape', color: '#fdfefe', biome: 'HIGH_MOUNTAIN' }),
     
     // 🌱 Nature (Plants/Trees/Organic)
+    new SingleSpawnTool({ id: 'single_tree_normal', name: 'Oak (1)', icon: '🌳', category: 'Nature', resourceId: 'oak_tree' }),
+    new SingleSpawnTool({ id: 'single_fruit_tree', name: 'Fruit (1)', icon: '🍎', category: 'Nature', resourceId: 'tree_fruit' }),
+    new SingleSpawnTool({ id: 'single_beehive_tree', name: 'Beehive (1)', icon: '🍯', category: 'Nature', resourceId: 'tree_beehive' }),
+
     new SprinkleTool({ id: 'spawn_grass', name: 'Grass', icon: '🌾', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'grass', color: '#c5e1a5', count: 12 }),
     new SprinkleTool({ id: 'spawn_flower', name: 'Flower', icon: '🌸', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'flower', color: '#ff80ab', count: 10 }),
     new SprinkleTool({ id: 'spawn_tree_normal', name: 'Oak Tree', icon: '🌳', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'oak_tree', color: '#388e3c', count: 3 }),

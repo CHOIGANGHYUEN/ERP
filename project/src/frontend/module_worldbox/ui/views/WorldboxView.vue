@@ -163,6 +163,11 @@ onMounted(() => {
     engine.onEntitySelect = (data) => {
       store.selectEntity(data);
     };
+
+    // 📡 [Real-time UI Sync] 엔진의 실시간 중계 이벤트를 스토어와 연결
+    engine.eventBus.on('SYNC_SELECTED_ENTITY', (data) => {
+      store.selectEntity(data);
+    });
     
     engine.start();
     

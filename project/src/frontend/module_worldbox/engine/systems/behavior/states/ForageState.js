@@ -34,8 +34,8 @@ export default class ForageState extends State {
             return AnimalStates.EAT;
         } else {
             const dist = Math.sqrt(distSq);
-            // HUNT(25000)보다 훨씬 낮은 힘(8000)을 사용하여 여유롭게 이동
-            const force = 8000; 
+            // 🚀 [Expert Buff] 여유로운 이동보다는 생존을 위한 적극적 이동으로 상향 (8000 -> 18000)
+            const force = 18000; 
             transform.vx += (dx / dist) * force * dt / mass;
             transform.vy += (dy / dist) * force * dt / mass;
         }

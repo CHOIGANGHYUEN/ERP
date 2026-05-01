@@ -38,9 +38,9 @@ export default class Engine {
         canvas.style.height = '100%';
 
         this.ctx = canvas.getContext('2d', { alpha: false });
-        // 🖼️ 초고해상도 1600x1600 그리드 체제로 업그레이드
-        this.mapWidth = 1600;
-        this.mapHeight = 1600;
+        // 🖼️ 최적화된 800x800 그리드 체제로 조정 (성능과 스케일의 균형)
+        this.mapWidth = 800;
+        this.mapHeight = 800;
 
 
         this.terrainCanvas = document.createElement('canvas');
@@ -87,6 +87,7 @@ export default class Engine {
         window.addEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
 
         this.simParams = { spreadSpeed: 1.0, spreadAmount: 5000 };
+        this.frameCount = 0; // 🚀 Frame Counter Init
 
         // 🌡️ [사용자 피드백 반영] 시뮬레이션 파라미터 실시간 업데이트 핸들러
         this.eventBus.on('UPDATE_SIM_PARAMS', (params) => {
@@ -197,12 +198,22 @@ export default class Engine {
     }
 
     refreshWaterPixels() {
-        this.waterPixels = [];
+        // 🚀 [Memory Optimization] 일반 배열 대신 TypedArray 사용 (메모리 파편화 방지)
+        if (!this.waterPixels || this.waterPixels.length !== this.mapWidth * this.mapHeight) {
+            this.waterPixels = new Uint32Array(this.mapWidth * this.mapHeight);
+        }
+        this.waterCount = 0;
+        
         const buffer = this.terrainGen.biomeBuffer;
-        for (let i = 0; i < buffer.length; i++) { // BIOME_NAMES_TO_IDS를 사용하여 ID로 비교
-            const b = buffer[i]; // b는 biomeId
-            if (b === BIOME_NAMES_TO_IDS.get('OCEAN') || b === BIOME_NAMES_TO_IDS.get('DEEP_OCEAN') || b === BIOME_NAMES_TO_IDS.get('LAKE') || b === BIOME_NAMES_TO_IDS.get('RIVER')) {
-                this.waterPixels.push(i);
+        const OCEAN_ID = BIOME_NAMES_TO_IDS.get('OCEAN');
+        const DEEP_ID = BIOME_NAMES_TO_IDS.get('DEEP_OCEAN');
+        const LAKE_ID = BIOME_NAMES_TO_IDS.get('LAKE');
+        const RIVER_ID = BIOME_NAMES_TO_IDS.get('RIVER');
+
+        for (let i = 0; i < buffer.length; i++) {
+            const b = buffer[i];
+            if (b === OCEAN_ID || b === DEEP_ID || b === LAKE_ID || b === RIVER_ID) {
+                this.waterPixels[this.waterCount++] = i;
             }
         }
     }
@@ -338,6 +349,7 @@ export default class Engine {
 
         this.monitor.update(time);
 
+        this.frameCount++; // 🚀 Increment frame counter
         this.update(dt);
         if (this.chunkManager.dirtyChunks.size > 0) this.renderDirtyTiles();
         this.render();
@@ -353,15 +365,44 @@ export default class Engine {
         // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달)
         this.timeSystem.update(dt * 1000);
 
-        if (this.selectedId && this.onEntitySelect && this.isFollowing) {
+        if (this.selectedId) {
             const e = this.entityManager.entities.get(this.selectedId);
             if (e) {
-                const t = e.components.get('Transform');
-                if (t) {
-                    this.camera.x = t.x - (this.width / this.camera.zoom) / 2;
-                    this.camera.y = t.y - (this.height / this.camera.zoom) / 2;
-                    this.camera.clamp();
+                // 🎥 카메라 추적 (기존 로직)
+                if (this.onEntitySelect && this.isFollowing) {
+                    const t = e.components.get('Transform');
+                    if (t) {
+                        this.camera.x = t.x - (this.width / this.camera.zoom) / 2;
+                        this.camera.y = t.y - (this.height / this.camera.zoom) / 2;
+                        this.camera.clamp();
+                    }
                 }
+
+                // 📡 [Real-time UI Sync] 선택된 개체의 최신 스탯을 UI로 전송 (매 5프레임)
+                if (this.frameCount % 5 === 0) {
+                    const stats = e.components.get('BaseStats');
+                    const state = e.components.get('AIState');
+                    const animal = e.components.get('Animal');
+                    
+                    if (stats && state && animal) {
+                        this.eventBus.emit('SYNC_SELECTED_ENTITY', {
+                            id: this.selectedId,
+                            type: animal.type,
+                            name: animal.type.toUpperCase(),
+                            state: state.mode,
+                            hunger: stats.hunger,
+                            maxHunger: stats.maxHunger || 100,
+                            health: stats.health,
+                            maxHealth: stats.maxHealth,
+                            fatigue: stats.fatigue,
+                            fertility: stats.storedFertility / 100 // UI의 Nutrients에 표시
+                        });
+                    }
+                }
+            } else {
+                // 개체가 삭제되었다면(죽음 등) 선택 해제
+                this.selectedId = null;
+                this.eventBus.emit('ENTITY_SELECTED', null);
             }
         }
     }

@@ -6,6 +6,8 @@ import resourceConfig from '../config/resource_balance.json'; // resource_balanc
 export default class EntityManager {
     constructor() {
         this.entities = new Map();
+        this.animalIds = new Set();
+        this.resourceIds = new Set();
         this.nextId = 0;
         this.entityPool = []; // 🗑️ 쓰레기통(재활용 대기소): 삭제된 엔티티 번호를 모아둠
     }
@@ -26,6 +28,9 @@ export default class EntityManager {
     removeEntity(id) {
         const entity = this.entities.get(id);
         if (entity) {
+            this.animalIds.delete(id);
+            this.resourceIds.delete(id);
+            
             // 🚀 [메모리 비우기] 재사용 전 데이터 초기화
             for (const component of entity.components.values()) {
                 for (const key in component) {
@@ -39,11 +44,15 @@ export default class EntityManager {
         }
     }
 
-
-    addComponent(entityId, component) {
+    addComponent(entityId, component, overrideName = null) {
         const entity = this.entities.get(entityId);
         if (entity) {
-            entity.components.set(component.constructor.name, component);
+            const name = overrideName || component.constructor.name;
+            entity.components.set(name, component);
+            
+            // 🚀 [Expert Tracking] 동물과 자원을 전용 세트에서 관리하여 루프 오버헤드 최소화
+            if (name === 'Animal') this.animalIds.add(entityId);
+            if (name === 'Resource') this.resourceIds.add(entityId);
         }
     }
 

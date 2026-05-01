@@ -6,214 +6,93 @@ import BeeBrain from './brains/BeeBrain.js';
 import StateFactory from './states/StateFactory.js';
 
 export default class AnimalBehaviorSystem extends System {
-    constructor(entityManager, eventBus, engine) {
+    constructor(entityManager, eventBus, engine, spatialHash) {
         super(entityManager, eventBus);
         this.engine = engine;
-        this.spatialHash = new SpatialHash(100); // 탐색 범위에 맞는 적절한 셀 크기 (100px)
+        this.spatialHash = spatialHash;
 
         // 상태 인스턴스 생성을 StateFactory로 위임 (의존성 역전)
         this.stateFactory = new StateFactory(this);
         this.foodSensor = new FoodSensor(this.entityManager, this.spatialHash);
         this.beeBrain = new BeeBrain(this.entityManager, this.eventBus, this.engine, this.spatialHash);
-
     }
 
     update(dt, time) {
         const em = this.entityManager;
+        const frameCount = this.engine.frameCount || 0;
 
-        // 1. 공간 해시맵 갱신 (먹이 탐색 등의 최적화를 위함)
-        this.spatialHash.clear();
-        for (const [id, entity] of em.entities) {
-            const transform = entity.components.get('Transform');
-            if (transform) {
-                this.spatialHash.insert(id, transform.x, transform.y);
+        // 1. 공간 해시맵 동적 갱신 (움직이는 동물만 반영하여 CPU 부하 절감)
+        this.spatialHash.clearDynamic();
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            if (entity) {
+                const transform = entity.components.get('Transform');
+                if (transform) {
+                    this.spatialHash.insert(id, transform.x, transform.y, false); // Dynamic
+                }
             }
+        }
+        
+        // 🌿 [Expert Optimization] 정적 개체(Resource) 정기 동기화
+        // 100프레임마다 전수 조사를 통해 누락된 자원이나 유령 데이터를 완벽히 정리합니다.
+        if (frameCount % 100 === 0) {
+            this.refreshStaticHash();
         }
 
         // 2. 각 엔티티별 AI 상태 업데이트
-        for (const [id, entity] of em.entities) {
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+
             const state = entity.components.get('AIState');
             const transform = entity.components.get('Transform');
             const animal = entity.components.get('Animal');
             const stats = entity.components.get('BaseStats');
 
             if (state && transform && animal) {
-                // 🐝 벌을 위한 전용 곤충 AI 시뮬레이션
-                if (animal.type === 'bee') {
-                    this.beeBrain.update(id, state, transform, animal, dt);
-                } else {
-                    this.updateEntityAI(id, entity, state, transform, animal, stats, dt);
-                }
-
-                // 렌더러(EntityRenderer)와의 결합도를 끊기 위해 Visual 컴포넌트에 시각적 상태 기록
-                const visual = entity.components.get('Visual');
-                if (visual) {
-                    visual.isEating = (state.mode === AnimalStates.EAT);
-                    visual.isInside = (state.mode === 'bee_inside');
-                }
-            }
-        }
-    }
-
-    // ... (updateBeeAI remains unchanged, I'll just keep it or skip it in the replacement block to save tokens, 
-    // but the tool requires the full ReplacementContent for the range. I'll include it.)
-
-    updateBeeAI(id, state, transform, animal, dt) {
-        const em = this.entityManager;
-        const role = animal.role || 'worker';
-        const hive = em.entities.get(animal.hiveId);
-
-        // 벌집 파괴 시 방황
-        if (!hive && state.mode === 'bee_inside') {
-            state.mode = 'bee_wander';
-            if (role !== 'worker') {
-                animal.role = 'worker'; // 여왕/애벌레도 집잃으면 일벌로 강등되어 떠돔
-                const visual = em.entities.get(id).components.get('Visual');
-                if (visual) visual.role = 'worker';
-            }
-        }
-
-        // 1. 애벌레(Larva) 로직
-        if (role === 'larva') {
-            state.mode = 'bee_inside';
-            animal.age = (animal.age || 0) + dt;
-            if (animal.age > 20) { // 20초 후 일벌로 변태
-                animal.role = 'worker';
-                animal.age = 0;
-                const visual = em.entities.get(id).components.get('Visual');
-                if (visual) visual.role = 'worker';
-            }
-            if (hive) {
-                const hPos = hive.components.get('Transform');
-                transform.x = hPos.x; transform.y = hPos.y;
-            }
-        }
-
-        // 2. 여왕벌(Queen) 로직
-        else if (role === 'queen') {
-            state.mode = 'bee_inside';
-            if (hive) {
-                const hPos = hive.components.get('Transform');
-                transform.x = hPos.x; transform.y = hPos.y;
-
-                // 일벌들이 모아온 꿀(Honey)을 소모해 새로운 애벌레 산란
-                const hRes = hive.components.get('Resource');
-                if (hRes && hRes.honey >= 30) {
-                    hRes.honey -= 30;
-                    this.engine.spawner.spawnBee(transform.x, transform.y, 'larva', animal.hiveId);
-
-                    this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
-                        x: transform.x,
-                        y: transform.y,
-                        count: 3,
-                        type: 'EFFECT',
-                        color: '#ffeb3b',
-                        speed: 2
-                    });
-                }
-            }
-        }
-
-        // 3. 일벌(Worker) 로직
-        else if (role === 'worker') {
-            animal.nectar = animal.nectar || 0;
-            if (!['bee_gather', 'bee_return', 'bee_inside', 'bee_wander'].includes(state.mode)) {
-                state.mode = 'bee_inside';
-            }
-
-            if (state.mode === 'bee_inside') {
-                animal.restTimer = (animal.restTimer || 0) + dt;
-
-                if (hive) {
-                    const hPos = hive.components.get('Transform');
-                    transform.x = hPos.x; transform.y = hPos.y;
-                    transform.vx = 0; transform.vy = 0;
-                }
-
-                // 5~10초 대기 후 꿀을 채집하러 출격
-                if (animal.restTimer > 5 + Math.random() * 5) {
-                    animal.restTimer = 0;
-                    state.mode = 'bee_wander';
-                    if (hive) transform.y -= 5; // 나무 위로 빠져나오는 연출
-                }
-            }
-            else if (state.mode === 'bee_wander') {
-                if (state.wanderAngle === undefined) state.wanderAngle = Math.random() * Math.PI * 2;
-
-                if (Math.random() < 0.1) {
-                    state.wanderAngle += (Math.random() - 0.5) * Math.PI;
-                }
-                const mass = transform.mass || 1;
-                transform.vx += (Math.cos(state.wanderAngle) * 400 * dt) / mass;
-                transform.vy += (Math.sin(state.wanderAngle) * 400 * dt) / mass;
-
-                // 근처의 꿀(꽃) 찾기 (공간 해시맵을 활용하여 최적화 완료)
-                if (animal.nectar < 10 && Math.random() < 0.1) {
-                    let bestDist = 40000; // 반경 200px
-                    let targetFlower = null;
-
-                    const nearbyIds = this.spatialHash.query(transform.x, transform.y);
-                    for (const fid of nearbyIds) {
-                        const fEnt = em.entities.get(fid);
-                        if (!fEnt) continue;
-
-                        const r = fEnt.components.get('Resource');
-                        // 꿀(비옥도)이 남아있는 살아있는 꽃만 타겟팅
-                        if (r && r.isFlower && r.storedFertility > 0) {
-                            const fPos = fEnt.components.get('Transform');
-                            const d2 = (fPos.x - transform.x) ** 2 + (fPos.y - transform.y) ** 2;
-                            if (d2 < bestDist) { bestDist = d2; targetFlower = fid; }
-                        }
+                // 🚀 [Optimization] AI 틱 최적화 완화 (5프레임 -> 2프레임)
+                if ((id + frameCount) % 2 === 0) {
+                    if (animal.type === 'bee') {
+                        this.beeBrain.update(id, state, transform, animal, dt * 2); 
+                    } else {
+                        this.updateEntityAI(id, entity, state, transform, animal, stats, dt * 2);
                     }
-                    if (targetFlower) { state.mode = 'bee_gather'; state.targetId = targetFlower; }
-                } else if (animal.nectar >= 10 && hive) {
-                    state.mode = 'bee_return'; // 꿀통 꽉참 -> 귀환
-                }
 
-            } else if (state.mode === 'bee_gather') {
-                const flower = em.entities.get(state.targetId);
-                if (!flower || !flower.components.get('Resource')?.isFlower) { state.mode = 'bee_wander'; return; }
-
-                const fPos = flower.components.get('Transform');
-                const dx = fPos.x - transform.x, dy = fPos.y - transform.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < 5) {
-                    transform.vx = 0; transform.vy = 0;
-                    // GatheringSystem.js에서 꿀 섭취 및 모드 변경(bee_return)을 처리합니다.
-                }
-                else {
-                    const mass = transform.mass || 1;
-                    transform.vx += (dx / dist) * 600 * dt / mass; transform.vy += (dy / dist) * 600 * dt / mass;
-                }
-            } else if (state.mode === 'bee_return') {
-                if (!hive) { state.mode = 'bee_wander'; return; }
-                const hPos = hive.components.get('Transform');
-                const dx = hPos.x - transform.x, dy = hPos.y - transform.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < 8) {
-                    const hRes = hive.components.get('Resource');
-                    if (hRes) hRes.honey = (hRes.honey || 0) + animal.nectar;
-                    animal.nectar = 0;
-                    state.mode = 'bee_inside'; // 집으로 쏙 들어감
-                    transform.vx = 0; transform.vy = 0;
-                } else {
-                    const mass = transform.mass || 1;
-                    transform.vx += (dx / dist) * 800 * dt / mass; transform.vy += (dy / dist) * 800 * dt / mass;
+                    const visual = entity.components.get('Visual');
+                    if (visual) {
+                        visual.isEating = (state.mode === AnimalStates.EAT);
+                        visual.isInside = (state.mode === 'bee_inside');
+                        visual.isSleeping = (state.mode === AnimalStates.SLEEP);
+                    }
                 }
             }
         }
-        transform.vx *= 0.92;
-        transform.vy *= 0.92;
+    }
 
-        const maxSpeed = role === 'larva' ? 5 : (role === 'worker' ? 45 : 20);
-        const mag = Math.sqrt(transform.vx * transform.vx + transform.vy * transform.vy);
-        if (mag > maxSpeed && mag > 0) {
-            transform.vx = (transform.vx / mag) * maxSpeed;
-            transform.vy = (transform.vy / mag) * maxSpeed;
+    refreshStaticHash() {
+        const em = this.entityManager;
+        this.spatialHash.clearAll();
+
+        // 🐕 동물(Dynamic) 개체 일괄 재등록
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            const transform = entity?.components.get('Transform');
+            if (transform) {
+                this.spatialHash.insert(id, transform.x, transform.y, false);
+            }
+        }
+
+        // 🌲 자원(Static) 개체 일괄 재등록
+        for (const id of em.resourceIds) {
+            const entity = em.entities.get(id);
+            const transform = entity?.components.get('Transform');
+            if (transform) {
+                this.spatialHash.insert(id, transform.x, transform.y, true);
+            }
         }
     }
+
+    // 🐝 [Note] 벌 AI 로직은 전용 클래스인 BeeBrain.js로 완전히 이관되었습니다.
 
     updateEntityAI(id, entity, state, transform, animal, stats, dt) {
         const config = this.engine.speciesConfig[animal.type] || {};
@@ -247,6 +126,11 @@ export default class AnimalBehaviorSystem extends System {
             stats.storedFertility += decayAmount * quality * 2.0; 
             
             if (stats.hunger < 0) stats.hunger = 0;
+
+            // 💀 [Starvation Damage] 허기가 0이면 체력이 급격히 하락 (초당 10 데미지)
+            if (stats.hunger <= 0) {
+                stats.health -= dt * 10;
+            }
             
             // 피로도 업데이트 (수면 중에는 감소, 깨어 있을 때는 증가)
             if (state.mode === AnimalStates.SLEEP) {
@@ -270,9 +154,11 @@ export default class AnimalBehaviorSystem extends System {
                 }
             }
 
-            // 사망 상태는 즉시 강제 전이 (최우선 순위)
+            // 💀 [Death Trigger] 체력이 0 이하가 되면 즉시 사망 상태로 전이
             if (stats.health <= 0) {
+                stats.health = 0;
                 state.mode = AnimalStates.DIE;
+                state.targetId = null;
             }
         }
 
@@ -336,10 +222,29 @@ export default class AnimalBehaviorSystem extends System {
     consumePlant(entity, plantEntity) {
         if (!plantEntity) return;
         
+        const stats = entity.components.get('BaseStats');
+        const plantRes = plantEntity.components.get('Resource');
+        
+        // 🌿 [Expert Update] 식물이 머금은 비옥도를 동물에게 전달
+        if (stats && plantRes) {
+            // 식물이 가진 가치(비옥도)만큼 동물의 저장된 비옥도 증가
+            const nutrientValue = plantRes.value || 5.0; 
+            stats.storedFertility = (stats.storedFertility || 0) + nutrientValue;
+            
+            // 허기 즉시 일부 회복 (품질 반영)
+            stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + nutrientValue * 2);
+            stats.digestionQuality = (stats.digestionQuality || 0.5) * 0.5 + (plantRes.value || 0.5) * 0.5;
+        }
+
         // 🌿 [Occupancy Cleanup] 자원 제거 시 점유 장부 비우기
         const pt = plantEntity.components.get('Transform');
-        if (pt && this.engine.terrainGen) {
-            this.engine.terrainGen.setOccupancy(pt.x, pt.y, 0);
+        if (pt) {
+            if (this.engine.terrainGen) {
+                this.engine.terrainGen.setOccupancy(pt.x, pt.y, 0);
+            }
+            if (this.spatialHash) {
+                this.spatialHash.remove(plantEntity.id, pt.x, pt.y, true); 
+            }
         }
 
         this.entityManager.removeEntity(plantEntity.id);

@@ -12,10 +12,13 @@ export default class EnvironmentSystem extends System {
     update(dt, time) {
         if (!this.engine.simParams) return;
 
-        // --- Biome Spreading Logic ---
-        this.spreadCooldown -= dt;
+        // 🚀 [Optimization] 환경 수치 업데이트는 5프레임에 한 번만 수행
+        if ((this.engine.frameCount || 0) % 5 !== 0) return;
+
+        // 1. 바이옴 확산 (Ecology Spreading)
+        // 비옥도는 이제 스스로 퍼지지 않으며, 소모/반환 이벤트 시에만 계산됩니다.
+        this.spreadCooldown -= dt * 5; 
         if (this.spreadCooldown <= 0) {
-            // 🌡️ [사용자 피드백 반영] 속도 수치가 높을수록 쿨다운이 짧아지도록 역수로 계산 (Higher value = Faster)
             const speed = Math.max(0.01, this.engine.simParams.spreadSpeed || 1.0);
             this.spreadCooldown = 1.0 / speed; 
             this.processBiomeSpreading();
@@ -45,7 +48,7 @@ export default class EnvironmentSystem extends System {
             }
 
             const fertility = fertilityBuffer[idx];
-            if (fertility < 0.2) { // 최소 비옥도 20% 이상 필요
+            if (fertility < 50) { // 최소 비옥도 20% 이상 필요 (Uint8 0-255 기준, 약 50)
                 continue;
             }
 

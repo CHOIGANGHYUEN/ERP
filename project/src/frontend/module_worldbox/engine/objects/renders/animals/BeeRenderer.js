@@ -4,53 +4,54 @@
  */
 export const BeeRenderer = {
     draw(ctx, frameIdx, s, mode, entity) {
-        const visual = entity ? entity.components.get('Visual') : null;
-        const role = visual ? visual.role : 'worker';
+        const animal = entity ? entity.components.get('Animal') : null;
+        const role = animal ? animal.role : 'worker';
         const time = performance.now();
         
-        // 1. 날개 (Wings) - 엄청나게 빠른 날갯짓 (Flickering)
-        const wingPulse = Math.sin(time * 0.05) > 0;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        // 🚀 [Floating Effect] 땅에 붙어있지 않게 위로 띄우고 호버링 연출
+        const hover = Math.sin(time * 0.008) * 2;
+        ctx.translate(0, -6 + hover);
+
+        const C = {
+            out: '#1a1a1a',  
+            body: '#ffeb3b', 
+            stripe: '#212121', 
+            wing: 'rgba(255, 255, 255, 0.6)',
+            honey: '#ffc107',
+            queen: '#fbc02d'
+        };
+
+        const dot = (x, y, w, h, c) => {
+            ctx.fillStyle = c;
+            ctx.fillRect(x, y, w, h);
+        };
+
+        // 1. 날개 (Wings) - 더 작고 빠른 진동
         if (role !== 'larva') {
-            if (wingPulse) {
-                ctx.fillRect(-2, -3, 1.5, 1.5);
-                ctx.fillRect(0.5, -3, 1.5, 1.5);
-            } else {
-                ctx.fillRect(-2.5, -2, 1, 1);
-                ctx.fillRect(1.5, -2, 1, 1);
-            }
-        }
-
-        // 2. 몸통 (Body) - 노랑/검정 줄무늬
-        if (role === 'larva') {
-            // 애벌레: 하얀색 덩어리
-            ctx.fillStyle = '#f5f5f5';
-            ctx.fillRect(-1, -1, 2, 2);
-            ctx.fillStyle = '#e0e0e0';
-            ctx.fillRect(0, 0, 1, 1);
-        } else if (role === 'queen') {
-            // 여왕벌: 더 크고 긴 몸체
-            ctx.fillStyle = '#fbc02d'; // Yellow
-            ctx.fillRect(-1.5, -2, 3, 4);
-            ctx.fillStyle = '#000000'; // Black Stripes
-            ctx.fillRect(-1.5, -1, 3, 1);
-            ctx.fillRect(-1.5, 1, 3, 1);
-            // 머리 부분 포인트
-            ctx.fillStyle = '#fbc02d';
-            ctx.fillRect(-0.5, -3, 1, 1);
+            const wOsc = Math.sin(time * 0.15) * 1.5;
+            dot(-2.5, -2 + wOsc, 2, 1, C.wing);
+            dot(0.5, -2 - wOsc, 2, 1, C.wing);
         } else {
-            // 일벌: 작은 둥근 몸체
-            ctx.fillStyle = '#ffeb3b'; // Yellow
-            ctx.fillRect(-1, -1.5, 2, 3);
-            ctx.fillStyle = '#212121'; // Black Stripe
-            ctx.fillRect(-1, 0, 2, 1);
+            return; // 🐛 애벌레는 렌더링하지 않음 (벌집 상태값으로만 존재)
         }
 
-        // 3. 꿀 채집 상태 표시 (Nectar)
-        const animal = entity ? entity.components.get('Animal') : null;
+        // 2. 몸통 (Body) - 3~5px 타겟 초소형 디자인
+        if (role === 'queen') {
+            // 👑 여왕벌 (4x6 규모)
+            dot(-2, -3, 4, 6, C.out); 
+            dot(-1.5, -2.5, 3, 5, C.queen); 
+            dot(-1.5, 0, 3, 1, C.stripe); // 한 줄만 선명하게
+        } 
+        else {
+            // 🐝 일벌 (3x4 규모)
+            dot(-1.5, -2, 3, 4, C.out);
+            dot(-1, -1.5, 2, 3, C.body);
+            dot(-1, 0, 2, 1, C.stripe);
+        }
+
+        // 3. 꿀 채집 상태 (Honey Spot) - 1픽셀 포인트
         if (animal && animal.nectar > 5) {
-            ctx.fillStyle = '#ffc107';
-            ctx.fillRect(-0.5, 1, 1, 1);
+            dot(-0.5, 2, 1, 1, C.honey);
         }
     }
 };

@@ -8,7 +8,9 @@ export default class GatheringSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
-        for (const [id, entity] of em.entities) {
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
             const state = entity.components.get('AIState');
             if (!state) continue;
 

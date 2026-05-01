@@ -8,22 +8,29 @@ export default class ReproductionSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
-        for (const [id, entity] of this.entityManager.entities) {
+
+        // 🐕 동물 번식 및 성장 처리 - animalIds 활용으로 최적화
+        for (const id of em.animalIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+
             const animal = entity.components.get('Animal');
             const metabolism = entity.components.get('Metabolism');
             const transform = entity.components.get('Transform');
+            const stats = entity.components.get('BaseStats');
 
             if (animal && metabolism && transform) {
-                // 1. 아기 성장 처리
+                // 1. 아기 성장 처리 (40초 후 성체로)
                 if (animal.isBaby) {
                     animal.age = (animal.age || 0) + dt;
-                    if (animal.age > 40) { // 40초 후 어른으로 성장
+                    if (animal.age > 40) {
                         animal.isBaby = false;
                         const visual = entity.components.get('Visual');
-                        if (visual) visual.size = 1.0; // 원래 크기로 복구
+                        if (visual) visual.size = 1.0; 
+                        
                         const config = speciesConfig[animal.type];
                         if (config && transform.mass) {
-                            transform.mass = config.weight; // 어른의 체급(무게)으로 복구
+                            transform.mass = config.weight || 1.0;
                         }
                     }
                 }
@@ -34,24 +41,22 @@ export default class ReproductionSystem extends System {
                 const config = speciesConfig[animal.type];
                 if (!config || !config.reproductionThreshold) continue;
 
-                // 2. 어른 동물의 번식 (위장 포만감이 번식 임계치 이상일 때)
-                if (!animal.isBaby && metabolism.stomach >= config.reproductionThreshold) {
+                // 2. 어른 동물의 번식 (허기가 충분히 채워졌을 때)
+                if (!animal.isBaby && stats && stats.hunger >= (config.reproductionThreshold || 80)) {
                     // 쿨타임 감소 및 체크
                     if (animal.reproductionCooldown > 0) {
                         animal.reproductionCooldown -= dt;
                         continue;
                     }
-
-                    // 무리 내 개체수 제한 체크 (과도한 번식 방지)
-                    // 타 시스템 의존성(SocialSystem) 제거: 개체수는 독립적으로 모니터링되거나 Event로 검증해야 함
-
-                    // 전체 월드 엔티티 제한 (최적화 방어)
-                    if (em.entities.size > 20000) continue;
+                    
+                    // 🛡️ [Performance Guard] 전체 월드 엔티티 제한 (메인 스레드 부하 방지)
+                    // 20,000마리는 너무 많음 -> 2,000마리로 현실화
+                    if (em.entities.size > 2000) continue;
 
                     // 확률적 번식 성공 (1초당 5% 확률)
                     if (Math.random() < 0.05 * dt) {
-                        // 번식 시 막대한 에너지를 소모 (포만감 대폭 하락)
-                        metabolism.stomach -= (config.maxStomach * 0.4);
+                        // 번식 시 막대한 에너지를 소모 (허기 하락)
+                        stats.hunger -= 40; 
                         animal.reproductionCooldown = 40; // 40초의 번식 쿨타임
 
                         // 새끼 스폰

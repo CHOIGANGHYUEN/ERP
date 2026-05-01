@@ -58,8 +58,35 @@ export const ResourceRenders = {
             ctx.fillRect(-cSize * 0.2, -cSize * 0.3, 1.5, 1.5); 
             ctx.fillRect(cSize * 0.25, -cSize * 0.15, 1.5, 1.5);
         } else if (v.subtype === 'beehive' && !isWithered) {
-            ctx.fillStyle = '#fbc02d';
-            ctx.fillRect(trunkW/2, -size * 0.2, 3, 4);
+            // 🍯 [Masterpiece Beehive] 고퀄리티 벌집 렌더링
+            const bx = trunkW/2 + 2;
+            const by = -size * 0.4;
+            
+            // 1. 벌집 몸체 (타원형 레이어)
+            ctx.fillStyle = '#fbc02d'; // 메인 노랑
+            ctx.beginPath();
+            ctx.ellipse(bx, by, 4, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 2. 가로 줄무늬 (질감 표현)
+            ctx.strokeStyle = '#f9a825';
+            ctx.lineWidth = 1;
+            for(let i=-3; i<=3; i+=2) {
+                ctx.beginPath();
+                ctx.moveTo(bx - 3, by + i);
+                ctx.lineTo(bx + 3, by + i);
+                ctx.stroke();
+            }
+            
+            // 3. 입구 (검은 구멍)
+            ctx.fillStyle = '#3e2723';
+            ctx.beginPath();
+            ctx.arc(bx, by + 1, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 4. 꿀 방울 (반짝임)
+            ctx.fillStyle = '#fff176';
+            ctx.fillRect(bx + 1, by - 2, 1, 1);
         }
     },
 

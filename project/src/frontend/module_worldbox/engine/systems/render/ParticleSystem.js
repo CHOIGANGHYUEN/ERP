@@ -32,7 +32,7 @@ export default class ParticleSystem extends System {
     }
 
     enforceCap() {
-        const MAX_PARTICLES = 2000;
+        const MAX_PARTICLES = 800;
         if (this.particles.length > MAX_PARTICLES) {
             this.particles.splice(0, this.particles.length - MAX_PARTICLES);
         }

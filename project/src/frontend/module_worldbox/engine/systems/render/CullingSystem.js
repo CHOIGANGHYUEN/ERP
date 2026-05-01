@@ -17,6 +17,12 @@ export default class CullingSystem extends System {
         
         if (!camera) return;
 
+        // 🚀 [Optimization] 카메라 이동 감지
+        const camMoved = this.lastCamX !== camera.x || this.lastCamY !== camera.y || this.lastZoom !== camera.zoom;
+        this.lastCamX = camera.x;
+        this.lastCamY = camera.y;
+        this.lastZoom = camera.zoom;
+
         // 1. 카메라 시야 범위 가져오기 (약간의 여유 마진 50px 추가)
         const margin = 50;
         const camX = camera.x - margin;
@@ -26,15 +32,22 @@ export default class CullingSystem extends System {
 
         // 2. 그려야 할 모든 개체를 순회하며 화면 내 존재 여부 판별
         for (const [id, entity] of em.entities) {
-            const transform = entity.components.get('Transform');
             const visual = entity.components.get('Visual');
+            if (!visual) continue;
 
-            if (transform && visual) {
+            const animal = entity.components.get('Animal');
+            
+            // 🚀 [Optimization] 카메라가 고정된 상태라면 정적 개체(Resource)는 컬링 연산 생략
+            // 단, 새로 생성된 개체(isCulled이 undefined인 경우)는 한 번 체크해야 함
+            if (!camMoved && !animal && visual.isCulled !== undefined) continue;
+
+            const transform = entity.components.get('Transform');
+            if (transform) {
                 const ex = transform.x;
                 const ey = transform.y;
 
-                // 📏 [Culling Fix] 개체의 높이를 고려하여 상단 마진을 더 넉넉하게 잡음 (나무 등 방지)
-                const topMargin = 60; // 나무 키만큼 상단 여유 확보
+                // 📏 [Culling Fix] 개체의 높이를 고려하여 상단 마진을 더 넉넉하게 잡음
+                const topMargin = 60; 
                 const isOutside = (
                     ex < camX || 
                     ex > camX + camW || 
@@ -42,7 +55,6 @@ export default class CullingSystem extends System {
                     ey > camY + camH
                 );
 
-                // 명세서 지침대로 isCulled 마킹
                 visual.isCulled = isOutside;
             }
         }

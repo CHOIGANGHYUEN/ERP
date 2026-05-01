@@ -1,5 +1,7 @@
 import { BIOME_PROPERTIES_MAP, BIOME_NAMES_TO_IDS } from '../../world/TerrainGen.js';
 import System from '../../core/System.js';
+import Transform from '../../components/motion/Transform.js';
+import Visual from '../../components/render/Visual.js';
 import speciesConfig from '../../config/species.json';
 import resourceConfig from '../../config/resource_balance.json';
 
@@ -22,8 +24,13 @@ export default class SpawnerSystem extends System {
                 else if (payload.action === 'CHANGE_BIOME') {
                     const ix = Math.floor(payload.x);
                     const iy = Math.floor(payload.y);
-                    this.terrainGen.biomeBuffer[idx] = payload.biome;
-                    this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'biome_change' });
+                    
+                    // 🌿 [Structural Fix] 바이옴 브러쉬는 이제 '식생'만 바꿉니다.
+                    // 지형(Terrain)은 그대로 유지되므로 바다가 육지가 되는 일은 발생하지 않습니다.
+                    if (this.terrainGen.isValidIndex(idx)) {
+                        this.terrainGen.biomeBuffer[idx] = payload.biome;
+                        this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'biome_change' });
+                    }
                 }
             }
         });
@@ -74,21 +81,28 @@ export default class SpawnerSystem extends System {
 
         // 수중 생물/바다 지형 예외 처리
         const isAquatic = ['deep_sea_kelp', 'seaweed', 'lotus', 'waterweed', 'reed'].includes(resourceId);
-        const biomeId = this.terrainGen.biomeBuffer[idx];
-        const isWaterBiome = [0, 1, 2, 3].includes(biomeId);
+        const isWaterTerrain = this.terrainGen.isWater(idx);
 
         // 🛑 [Manual Tool Override] 사용자가 직접 설치할 때는 환경 제약을 무시합니다.
         const normalizedVal = isMineral ? currentVal : (currentVal / 100);
-        if (!forceSpawn && normalizedVal < 0.05 && !(isAquatic && isWaterBiome)) return null;
+        if (!forceSpawn && normalizedVal < 0.05 && !(isAquatic && isWaterTerrain)) return null;
 
         // 팩토리를 통해 리소스 생성
         const treeId = this.engine.entityFactory.createResource(resourceId, x, y, normalizedVal);
 
-        // 🐝 [Beehive Integration] 벌집나무일 경우 벌들 스폰
-        if (resourceId.includes('beehive') && treeId) {
-            this.spawnBee(x, y, 'queen', treeId);
-            this.spawnBee(x, y, 'worker', treeId);
-            this.spawnBee(x, y, 'worker', treeId);
+        if (treeId) {
+            // 🚀 [Optimization] 생성 즉시 정적 공간 해시에 등록
+            const behavior = this.engine.systemManager.behavior;
+            if (behavior && behavior.spatialHash) {
+                behavior.spatialHash.insert(treeId, x, y, true); // true = Static
+            }
+
+            // 🐝 [Beehive Integration] 벌집나무일 경우 벌들 스폰
+            if (resourceId.includes('beehive')) {
+                this.spawnBee(x, y, 'queen', treeId);
+                this.spawnBee(x, y, 'worker', treeId);
+                this.spawnBee(x, y, 'worker', treeId);
+            }
         }
 
         return treeId;
@@ -102,6 +116,15 @@ export default class SpawnerSystem extends System {
             if (animal) {
                 animal.role = role;
                 animal.hiveId = hiveId;
+
+                // 🐝 [Stats Sync] 벌집 개체 수 업데이트
+                if (hiveId !== undefined && hiveId !== null) {
+                    const hive = this.entityManager.entities.get(hiveId);
+                    if (hive) {
+                        const hiveComp = hive.components.get('Hive');
+                        if (hiveComp) hiveComp.beeCount += 1;
+                    }
+                }
             }
             const visual = bee.components.get('Visual');
             if (visual) {
@@ -121,11 +144,18 @@ export default class SpawnerSystem extends System {
     spawnPoop(x, y, fertilityAmount = 1.0) {
         const em = this.entityManager;
         const id = em.createEntity();
-        const entity = em.entities.get(id);
-        if (entity) {
-            entity.components.set('Transform', { x, y });
-            entity.components.set('Visual', { type: 'poop' });
-            entity.components.set('Resource', { isFertilizer: true, amount: 100, fertilityValue: fertilityAmount });
+        
+        em.addComponent(id, new Transform(x, y));
+        em.addComponent(id, new Visual({ type: 'poop' }));
+        em.addComponent(id, { 
+            isFertilizer: true, 
+            amount: 100, 
+            fertilityValue: fertilityAmount 
+        }, 'Resource');
+
+        // 🚀 [Optimization] 생성 즉시 공간 해시에 등록
+        if (this.engine.spatialHash) {
+            this.engine.spatialHash.insert(id, x, y, true);
         }
     }
 }
