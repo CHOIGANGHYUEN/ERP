@@ -18,7 +18,8 @@ export const AnimalRenders = {
         const animFrame = Math.floor(frameIdx % 4);
         const role = options.role || 'worker';
         const hasHoney = options.nectar > 5 ? 'H' : 'N';
-        const key = `${type}_${mode}_${animFrame}_${color}_${role}_${hasHoney}`;
+        const gender = options.entity?.components.get('Animal')?.gender || 'male';
+        const key = `${type}_${mode}_${animFrame}_${color}_${role}_${hasHoney}_${gender}`;
         if (this.spriteCache.has(key)) return this.spriteCache.get(key);
 
         const canvas = document.createElement('canvas');
@@ -34,7 +35,7 @@ export const AnimalRenders = {
             case 'wolf': WolfRenderer.draw(ctx, frameIdx, s, mode); break;
             case 'wild_dog': WildDogRenderer.draw(ctx, frameIdx, s, mode); break;
             case 'hyena': HyenaRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'human': HumanRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'human': HumanRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
             case 'bee': BeeRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
         }
 

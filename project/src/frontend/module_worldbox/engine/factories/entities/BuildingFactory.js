@@ -19,7 +19,8 @@ export default class BuildingFactory extends IEntityFactory {
                 type: 'building',
                 subtype: type,
                 size: options.size || 40,
-                color: options.color || '#8d6e63'
+                color: options.color || '#8d6e63',
+                alpha: options.isBlueprint ? 0.3 : 1.0
             })
             .addComponent('Building', {
                 type: type,
@@ -27,6 +28,13 @@ export default class BuildingFactory extends IEntityFactory {
                 health: 500,
                 maxHealth: 500,
                 villageId: options.villageId || -1
+            })
+            .addComponent('Structure', {
+                type: type,
+                progress: options.isBlueprint ? 0 : 100,
+                maxProgress: 100,
+                isComplete: !options.isBlueprint,
+                isBlueprint: options.isBlueprint || false
             });
 
         // 타입별 특수 기능 조립
@@ -37,6 +45,14 @@ export default class BuildingFactory extends IEntityFactory {
         } else if (type === 'farm') {
             builder.addComponent('Storage', new Storage({ capacity: 500 }))
                    .addComponent('Farm', { cropType: 'wheat', growthRate: 0.1 });
+        } else if (type === 'bonfire') {
+            builder.withVisual({ 
+                type: 'building', 
+                subtype: 'bonfire', 
+                size: 25, 
+                color: '#ff9800',
+                alpha: options.isBlueprint ? 0.3 : 1.0
+            }).addComponent('LightSource', { intensity: 1.0, radius: 100 });
         }
 
         if (this.engine.spatialHash) {

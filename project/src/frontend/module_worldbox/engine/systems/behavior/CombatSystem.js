@@ -22,6 +22,22 @@ export default class CombatSystem extends System {
 
             if (defenderStats.health <= 0 && defenderState) {
                 defenderState.mode = AnimalStates.DIE;
+
+                // 💰 [Looting] 사망 시 재화 약탈 (인간 간의 전투 등)
+                const attackerWealth = attacker.components.get('Wealth');
+                const defenderWealth = defender.components.get('Wealth');
+                if (attackerWealth && defenderWealth) {
+                    const loot = Math.floor(defenderWealth.gold * 0.5);
+                    attackerWealth.addGold(loot);
+                    defenderWealth.gold -= loot;
+                }
+
+                // 😰 [Trauma] 주변 인간들에게 스트레스 부여
+                this.eventBus.emit('BATTLE_WITNESSED', { 
+                    x: defender.components.get('Transform')?.x, 
+                    y: defender.components.get('Transform')?.y,
+                    intensity: 20 
+                });
             }
         } else if (defenderState) {
             // 스탯이 없는 일반 객체는 즉사 처리 (기존 로직 유지)

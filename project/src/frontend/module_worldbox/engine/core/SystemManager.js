@@ -1,4 +1,5 @@
 import AnimalBehaviorSystem from '../systems/behavior/AnimalBehaviorSystem.js';
+import HumanBehaviorSystem from '../systems/behavior/HumanBehaviorSystem.js';
 // 🚀 Cache Refresh Trigger
 import SpatialHash from '../utils/SpatialHash.js';
 import CombatSystem from '../systems/behavior/CombatSystem.js';
@@ -16,6 +17,11 @@ import WindSystem from '../systems/lifecycle/WindSystem.js';
 import InputSystem from '../systems/input/InputSystem.js';
 import UISystem from './UISystem.js';
 import ParticleSystem from '../systems/render/ParticleSystem.js';
+import FarmingSystem from '../systems/economy/FarmingSystem.js';
+import LivestockSystem from '../systems/lifecycle/LivestockSystem.js';
+import EmotionSystem from '../systems/lifecycle/EmotionSystem.js';
+import VillageSystem from '../systems/civilization/VillageSystem.js';
+import ConstructionSystem from '../systems/civilization/ConstructionSystem.js';
 import CullingSystem from '../systems/render/CullingSystem.js';
 
 export default class SystemManager {
@@ -35,6 +41,7 @@ export default class SystemManager {
         this.environment = new EnvironmentSystem(em, eb, engine);
 
         // Phase 2: Logic & AI
+        this.humanBehavior = new HumanBehaviorSystem(em, eb, engine, this.spatialHash);
         this.behavior = new AnimalBehaviorSystem(em, eb, engine, this.spatialHash);
         this.combat = new CombatSystem(em, eb);
         this.deathProcessor = new DeathProcessor(em, eb, engine);
@@ -44,6 +51,13 @@ export default class SystemManager {
         this.metabolism = new MetabolismSystem(em, eb, tg);
         this.reproduction = new ReproductionSystem(em, eb);
         this.spawner = new SpawnerSystem(em, eb, engine);
+        
+        // 🌾 Economy & Lifecycle Expansion
+        this.farming = new FarmingSystem(em, eb, engine);
+        this.livestock = new LivestockSystem(em, eb, engine);
+        this.emotion = new EmotionSystem(em, eb);
+        this.villageSystem = new VillageSystem(em, eb, engine);
+        this.construction = new ConstructionSystem(em, eb, engine);
 
         // Phase 3: Physics
         this.kinematics = new KinematicSystem(engine);
@@ -65,6 +79,7 @@ export default class SystemManager {
         // [Phase 2] 물리 이동 전 객체 상태 및 AI 판단 (AI & Logic)
         this.combat.update(dt, time); // Event-driven (대기)
         this.deathProcessor.update(dt, time);
+        this.humanBehavior.update(dt, time);
         this.behavior.update(dt, time);
         this.social.update(dt);
         this.gathering.update(dt, time);
@@ -72,6 +87,11 @@ export default class SystemManager {
         this.metabolism.update(dt, time);
         this.reproduction.update(dt, time);
         this.spawner.update(dt, time);
+        this.farming.update(dt, time);
+        this.livestock.update(dt, time);
+        this.emotion.update(dt, time);
+        this.villageSystem.update(dt, time);
+        this.construction.update(dt, time);
 
         // [Phase 3] 이동 및 물리 연산 반영 (Kinematics)
         this.kinematics.update(dt);

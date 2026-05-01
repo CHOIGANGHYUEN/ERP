@@ -47,6 +47,11 @@ export default class TerrainGen {
     isWater(idx) { return this.terrain.isWater(idx); }
     isMountain(idx) { return this.terrain.isMountain(idx); }
 
+    isLandAt(x, y) {
+        const idx = this.getIndex(x, y);
+        return this.isValidIndex(idx) && this.terrain.isLand(idx);
+    }
+
     // 바이옴과 지형 버퍼에 대한 직접 참조 허용 (성능 최적화용)
     get terrainBuffer() { return this.terrain.buffer; }
     get biomeBuffer() { return this.biomes.buffer; }

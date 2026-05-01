@@ -28,6 +28,12 @@ export default class EntityManager {
     removeEntity(id) {
         const entity = this.entities.get(id);
         if (entity) {
+            const building = entity.components.get('Building');
+            if (building) {
+                console.warn(`🏢 Removing Building Entity! ID: ${id}, Type: ${building.type}`);
+                console.trace();
+            }
+            
             this.animalIds.delete(id);
             this.resourceIds.delete(id);
             

@@ -2,6 +2,7 @@ import { AnimalStates } from '../../components/behavior/State.js';
 import { AnimalRenders } from '../../objects/renders/AnimalRenders.js';
 import { NatureRenders } from '../../objects/renders/NatureRenders.js';
 import { TreeRenderer } from '../../objects/renders/nature/TreeRenderer.js';
+import { BuildRender } from '../../objects/renders/BuildRender.js';
 
 /**
  * 🎨 EntityRenderer (Refactored)
@@ -96,6 +97,7 @@ export default class EntityRenderer {
         if (!t || !v) return;
 
         ctx.save();
+        ctx.globalAlpha = v.alpha !== undefined ? v.alpha : 1.0;
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
         
         // 🌚 [Universal Shadow] 모든 자원에 지면 그림자 적용
@@ -110,6 +112,10 @@ export default class EntityRenderer {
         if (v.type === 'tree') {
             ctx.restore(); // Shadow용 translate 복구 후 전용 메서드로 위임 (내부에서 다시 save함)
             this.drawTreeCached(ctx, t, v, entity, time, wind);
+        } else if (v.type === 'building') {
+            const structure = entity.components.get('Structure');
+            BuildRender.render(ctx, v.subtype || 'default', t, v, structure);
+            ctx.restore();
         } else {
             NatureRenders.render(ctx, v.type, t, v, time, wind);
             ctx.restore();
@@ -197,21 +203,47 @@ export default class EntityRenderer {
 
     /** AI 디버그 정보 렌더링 */
     renderAIDebug(ctx, t, state, id) {
+        const entity = this.engine.entityManager.entities.get(id);
+        const isHuman = entity?.components.get('Animal')?.type === 'human';
+        
         ctx.save();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        // 인간은 시안색(#00f2ff), 일반 동물은 흰색
+        ctx.fillStyle = isHuman ? '#00f2ff' : 'rgba(255, 255, 255, 0.9)';
         ctx.font = 'bold 8px Inter, Arial';
         ctx.textAlign = 'center';
         ctx.fillText(state.mode.toUpperCase(), t.x, t.y - 12);
 
+        // 1. 타겟이 있는 경우: 타겟까지 점선 연결
         if (state.targetId) {
             const target = this.engine.entityManager.entities.get(state.targetId);
             if (target) {
                 const targetPos = target.components.get('Transform');
                 if (targetPos) {
-                    ctx.beginPath(); ctx.setLineDash([2, 2]); ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-                    ctx.moveTo(t.x, t.y); ctx.lineTo(targetPos.x, targetPos.y); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.setLineDash([2, 2]);
+                    ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.5)' : 'rgba(255, 255, 255, 0.3)';
+                    ctx.moveTo(t.x, t.y);
+                    ctx.lineTo(targetPos.x, targetPos.y);
+                    ctx.stroke();
                 }
             }
+        } 
+        // 2. 타겟은 없지만 배회 방향(wanderAngle)이 있는 경우: 진행 방향 화살표 표시
+        else if (state.wanderAngle !== undefined) {
+            const len = 15;
+            const tx = t.x + Math.cos(state.wanderAngle) * len;
+            const ty = t.y + Math.sin(state.wanderAngle) * len;
+            
+            ctx.beginPath();
+            ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)';
+            ctx.moveTo(t.x, t.y);
+            ctx.lineTo(tx, ty);
+            // 작은 화살표 머리
+            const head = 4;
+            ctx.lineTo(tx - head * Math.cos(state.wanderAngle - 0.5), ty - head * Math.sin(state.wanderAngle - 0.5));
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(tx - head * Math.cos(state.wanderAngle + 0.5), ty - head * Math.sin(state.wanderAngle + 0.5));
+            ctx.stroke();
         }
         ctx.restore();
     }

@@ -3,7 +3,7 @@ import Camera from './Camera.js';
 import EntityRenderer from '../systems/render/EntityRenderer.js';
 import EntityManager from './EntityManager.js';
 import EventBus from './EventBus.js';
-import EntityFactory from '../factories/EntityFactory.js';
+import FactoryProvider from '../factories/core/FactoryProvider.js';
 import ChunkManager from '../world/ChunkManager.js';
 import StatsMonitor from './StatsMonitor.js';
 import speciesConfig from '../config/species.json'; // 🚀 LOAD SPECIES 
@@ -61,7 +61,7 @@ export default class Engine {
         this.eventBus = new EventBus(); // 📡 Global Event Network 생성
         this.renderer = new EntityRenderer(this);
 
-        this.entityFactory = new EntityFactory(this);
+        this.factoryProvider = new FactoryProvider(this); 
 
         // 단일 책임 원칙(SRP) 준수를 위한 시스템 매니저 도입
         this.systemManager = new SystemManager(this);
@@ -302,7 +302,7 @@ export default class Engine {
                 if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
                 break;
             case 'SPAWN_RESOURCE':
-                this.entityFactory.createResource(command.payload.type, command.payload.x, command.payload.y, command.payload.amount);
+                this.factoryProvider.spawn('resource', command.payload.type, command.payload.x, command.payload.y, { quality: command.payload.amount });
                 break;
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);
@@ -362,8 +362,8 @@ export default class Engine {
         // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
         this.systemManager.update(dt, time);
         
-        // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달)
-        this.timeSystem.update(dt * 1000);
+        // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달, 엔진 인스턴스 공유)
+        this.timeSystem.update(dt * 1000, this);
 
         if (this.selectedId) {
             const e = this.entityManager.entities.get(this.selectedId);
@@ -388,7 +388,7 @@ export default class Engine {
                         this.eventBus.emit('SYNC_SELECTED_ENTITY', {
                             id: this.selectedId,
                             type: animal.type,
-                            name: animal.type.toUpperCase(),
+                            name: animal.type.charAt(0).toUpperCase() + animal.type.slice(1),
                             state: state.mode,
                             hunger: stats.hunger,
                             maxHunger: stats.maxHunger || 100,

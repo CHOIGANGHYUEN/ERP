@@ -13,25 +13,46 @@ export default class TimeSystem {
         this.timeScale = 0.16667; 
         
         this.isPaused = false;
+        this.years = 1; // 🗓️ 시작 년도
+        this.yearTimer = 0; // 나이 증가를 위한 타이머
     }
 
     /**
-     * 매 프레임마다 시간을 업데이트합니다.
+     * 매 프레임마다 시간을 업데이트하고 엔티티의 나이를 증가시킵니다.
      * @param {number} deltaTime - 프레임 간격 (ms)
+     * @param {Object} engine - 엔진 인스턴스
      */
-    update(deltaTime) {
+    update(deltaTime, engine) {
         if (this.isPaused) return;
 
-        // deltaTime(ms)을 기준으로 게임 내 시간 계산
-        // 기본값: 1초(1000ms)당 게임 시간 1분 흐름
         const minutesPerTick = (deltaTime / 1000) * this.timeScale * 60;
-        
         this.minutes += minutesPerTick;
+        this.yearTimer += minutesPerTick;
+
+        // 🗓️ 10분(게임 시간)마다 1년이 흐름
+        if (this.yearTimer >= 10) {
+            this.years++;
+            this.yearTimer = 0;
+            this.incrementWorldAge(engine);
+        }
 
         if (this.minutes >= 60) {
             const hAdd = Math.floor(this.minutes / 60);
             this.hours = (this.hours + hAdd) % 24;
             this.minutes = this.minutes % 60;
+        }
+    }
+
+    /** 🌍 월드 전체 개체의 나이 증가 */
+    incrementWorldAge(engine) {
+        if (!engine || !engine.entityManager) return;
+        const entities = engine.entityManager.getEntitiesByComponent('Age');
+        for (const entity of entities) {
+            const age = entity.components.get('Age');
+            if (age) {
+                age.currentAge += 1;
+                age.updateStage();
+            }
         }
     }
 

@@ -55,7 +55,10 @@ export default class AnimalBehaviorSystem extends System {
                     if (animal.type === 'bee') {
                         this.beeBrain.update(id, state, transform, animal, dt * 2); 
                     } else {
-                        this.updateEntityAI(id, entity, state, transform, animal, stats, dt * 2);
+                        // 인간(human)은 HumanBehaviorSystem에서 별도로 처리하므로 스킵
+                        if (animal.type !== 'human') {
+                            this.updateEntityAI(id, entity, state, transform, animal, stats, dt * 2);
+                        }
                     }
 
                     const visual = entity.components.get('Visual');

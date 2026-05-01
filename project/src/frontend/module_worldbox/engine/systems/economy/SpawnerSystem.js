@@ -88,15 +88,10 @@ export default class SpawnerSystem extends System {
         if (!forceSpawn && normalizedVal < 0.05 && !(isAquatic && isWaterTerrain)) return null;
 
         // 팩토리를 통해 리소스 생성
-        const treeId = this.engine.entityFactory.createResource(resourceId, x, y, normalizedVal);
+        const category = isMineral ? 'resource' : 'nature';
+        const treeId = this.engine.factoryProvider.spawn(category, resourceId, x, y, { quality: normalizedVal });
 
         if (treeId) {
-            // 🚀 [Optimization] 생성 즉시 정적 공간 해시에 등록
-            const behavior = this.engine.systemManager.behavior;
-            if (behavior && behavior.spatialHash) {
-                behavior.spatialHash.insert(treeId, x, y, true); // true = Static
-            }
-
             // 🐝 [Beehive Integration] 벌집나무일 경우 벌들 스폰
             if (resourceId.includes('beehive')) {
                 this.spawnBee(x, y, 'queen', treeId);
@@ -109,7 +104,7 @@ export default class SpawnerSystem extends System {
     }
 
     spawnBee(x, y, role = 'worker', hiveId = null) {
-        const id = this.engine.entityFactory.createAnimal('bee', x, y);
+        const id = this.engine.factoryProvider.spawn('animal', 'bee', x, y);
         const bee = this.entityManager.entities.get(id);
         if (bee) {
             const animal = bee.components.get('Animal');
@@ -136,26 +131,11 @@ export default class SpawnerSystem extends System {
 
     spawnEntity(payload) {
         const isBaby = payload.isBaby || false;
-        // 중앙 집중화된 EntityFactory를 사용하여 모든 동물이 동일한 컴포넌트(BaseStats 등)를 갖도록 보장
-        this.engine.entityFactory.createAnimal(payload.type, payload.x, payload.y, { isBaby });
+        const category = payload.type === 'human' ? 'human' : 'animal';
+        this.engine.factoryProvider.spawn(category, payload.type, payload.x, payload.y, { isBaby });
     }
 
-
     spawnPoop(x, y, fertilityAmount = 1.0) {
-        const em = this.entityManager;
-        const id = em.createEntity();
-        
-        em.addComponent(id, new Transform(x, y));
-        em.addComponent(id, new Visual({ type: 'poop' }));
-        em.addComponent(id, { 
-            isFertilizer: true, 
-            amount: 100, 
-            fertilityValue: fertilityAmount 
-        }, 'Resource');
-
-        // 🚀 [Optimization] 생성 즉시 공간 해시에 등록
-        if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true);
-        }
+        this.engine.factoryProvider.spawn('resource', 'poop', x, y, { quality: fertilityAmount });
     }
 }

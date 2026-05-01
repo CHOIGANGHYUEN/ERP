@@ -1,14 +1,15 @@
+
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
 import BaseStats from '../../components/stats/BaseStats.js';
 import State from '../../components/behavior/State.js';
 import Age from '../../components/stats/Age.js';
-import Emotion from '../../components/stats/Emotion.js';
-import Wealth from '../../components/resource/Wealth.js';
+import Builder from '../../components/civilization/Builder.js';
 
 /**
- * 👤 HumanFactory
- * 인간 엔티티 조립을 전담하며, 복합적인 사회적 컴포넌트를 주입합니다.
+ * 👨‍👩‍👧‍👦 HumanFactory
+ * 인류 엔티티의 정교한 조립을 담당합니다.
+ * 성별, 전문성, 문명 관련 컴포넌트를 통합 관리합니다.
  */
 export default class HumanFactory extends IEntityFactory {
     create(type, x, y, options = {}) {
@@ -18,30 +19,57 @@ export default class HumanFactory extends IEntityFactory {
         const builder = new EntityBuilder(em);
         const id = builder.id;
 
+        // 🧬 성별 결정 (남성: male, 여성: female)
+        const gender = options.gender || (Math.random() > 0.5 ? 'male' : 'female');
+
         builder
             .withTransform(x, y)
             .withVisual({
-                color: '#ffcc80',
                 type: 'human',
-                size: options.isBaby ? 0.7 : 1.0
+                gender: gender,
+                color: gender === 'male' ? '#448aff' : '#ff4081', // 남성: 시안/블루, 여성: 핑크
+                size: options.isBaby ? 0.6 : 1.0,
+                isBaby: options.isBaby || false
             })
-            .addComponent('Animal', { type: 'human', isBaby: options.isBaby || false, diet: 'omnivore' })
+            .addComponent('Animal', {
+                type: 'human',
+                isBaby: options.isBaby || false,
+                diet: 'omnivore',
+                gender: gender
+            })
             .addComponent('BaseStats', new BaseStats({
-                health: 100, maxHealth: 100,
-                hunger: 70, maxHunger: 100,
-                fatigue: 0, speed: config.moveSpeed || 1.2
+                health: config.maxHealth || 120,
+                maxHealth: config.maxHealth || 120,
+                hunger: options.isBaby ? 80 : (60 + Math.random() * 20),
+                maxHunger: 100,
+                fatigue: Math.random() * 10,
+                speed: config.moveSpeed || 1.1,
+                strength: 15
             }))
+            .addComponent('Metabolism', {
+                digestionSpeed: config.digestionSpeed || 0.1,
+                storedFertility: 0,
+                isPooping: false
+            })
             .addComponent('AIState', new State())
             .addComponent('Age', new Age({
-                currentAge: options.isBaby ? 0 : 20 + Math.random() * 10,
-                maxAge: 80 + Math.random() * 20
+                currentAge: options.isBaby ? 0 : 18 + Math.random() * 5,
+                maxAge: config.maxLifespan || (60 + Math.random() * 20)
             }))
-            .addComponent('Emotion', new Emotion())
-            .addComponent('Wealth', new Wealth({ gold: options.initialGold || 10 }))
-            .addComponent('Inventory', { items: {}, capacity: 50 })
-            .addComponent('Civilization', { villageId: -1, techLevel: 0 })
-            .addComponent('Builder', { buildSpeed: 5, isBuilding: false });
+            .addComponent('Builder', new Builder())
+            .addComponent('Inventory', {
+                wood: 0,
+                stone: 0,
+                food: 0,
+                capacity: 20
+            });
 
+        // 마을 소속 설정 (옵션)
+        if (options.villageId) {
+            builder.addComponent('VillageMember', { villageId: options.villageId });
+        }
+
+        // 공간 해시 등록
         if (this.engine.spatialHash) {
             this.engine.spatialHash.insert(id, x, y, false);
         }
