@@ -5,6 +5,7 @@ import BaseStats from '../../components/stats/BaseStats.js';
 import State from '../../components/behavior/State.js';
 import Age from '../../components/stats/Age.js';
 import Builder from '../../components/civilization/Builder.js';
+import Inventory from '../../components/resource/Inventory.js';
 
 /**
  * 👨‍👩‍👧‍👦 HumanFactory
@@ -48,6 +49,8 @@ export default class HumanFactory extends IEntityFactory {
             }))
             .addComponent('Metabolism', {
                 digestionSpeed: config.digestionSpeed || 0.1,
+                stomach: 50, // 초기 위장 상태 (BaseStats와 연동됨)
+                maxStomach: 100,
                 storedFertility: 0,
                 isPooping: false
             })
@@ -57,17 +60,10 @@ export default class HumanFactory extends IEntityFactory {
                 maxAge: config.maxLifespan || (60 + Math.random() * 20)
             }))
             .addComponent('Builder', new Builder())
-            .addComponent('Inventory', {
-                wood: 0,
-                stone: 0,
-                food: 0,
-                capacity: 20
-            });
+            .addComponent('Inventory', new Inventory(20));
 
-        // 마을 소속 설정 (옵션)
-        if (options.villageId) {
-            builder.addComponent('VillageMember', { villageId: options.villageId });
-        }
+        // 문명 소속 설정 (기본값 -1)
+        builder.addComponent('Civilization', { villageId: options.villageId || -1 });
 
         // 공간 해시 등록
         if (this.engine.spatialHash) {

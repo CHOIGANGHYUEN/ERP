@@ -1,4 +1,5 @@
 import System from '../../core/System.js';
+import Pathfinder from '../../utils/Pathfinder.js';
 
 export default class ConstructionSystem extends System {
     constructor(entityManager, eventBus, engine) {
@@ -70,17 +71,8 @@ export default class ConstructionSystem extends System {
                         this.finalizeBuilding(target, targetId, structure);
                     }
                 } else {
-                    // 청사진을 향해 이동 (안정적인 추적 로직)
-                    const speed = 70; // 건축 이동 속도
-                    const dist = Math.sqrt(distSq);
-                    
-                    if (dist > 0.1) {
-                        transform.vx = (dx / dist) * speed;
-                        transform.vy = (dy / dist) * speed;
-                    } else {
-                        transform.vx = 0;
-                        transform.vy = 0;
-                    }
+                    // 청사진을 향해 이동 (경로 탐색 적용)
+                    Pathfinder.followPath(transform, state, targetPos, 70, em);
                 }
             }
         }

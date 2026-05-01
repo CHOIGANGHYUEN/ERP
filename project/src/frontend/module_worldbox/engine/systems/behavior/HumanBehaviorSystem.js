@@ -90,41 +90,47 @@ export default class HumanBehaviorSystem extends System {
         const timeSystem = this.engine.timeSystem;
         const hour = timeSystem.hours;
         const timeScale = timeSystem.timeScale;
-        
+
+        // 수면 중에는 허기/피로 업데이트 속도를 줄임
+        const activityMult = (state.mode === AnimalStates.SLEEP) ? 0.3 : 1.0;
+
         // 1. 🍖 허기 업데이트
-        const hungerRate = 1.0 * timeScale;
+        const hungerRate = 1.0 * timeScale * activityMult;
         stats.hunger = Math.max(0, stats.hunger - dt * hungerRate);
-        
+
         if (stats.hunger <= 0) {
-            stats.health -= dt * 10;
+            stats.health -= dt * 5; // 굶주림 데미지 (조금 완화)
         }
 
-        // 2. 💤 피로도 업데이트 (낮/밤 생체 리듬)
+        // 2. 💤 피로도 업데이트 (낮/밤 생체 리듬) — timeScale 적용
         const isNight = hour >= 22 || hour < 5;
         const isEvening = hour >= 20 && hour < 22;
-        
-        let fatigueRate = 0.1; // 기본 피로도 상승률
+
+        let fatigueRate = 0.05 * timeScale; // 기본 피로도 (timeScale 반영)
         if (isNight) fatigueRate *= 3;
         else if (isEvening) fatigueRate *= 1.5;
 
         if (state.mode === AnimalStates.SLEEP) {
-            stats.fatigue = Math.max(0, stats.fatigue - dt * 0.5 * timeScale);
+            // 수면 중 피로 회복
+            stats.fatigue = Math.max(0, stats.fatigue - dt * 0.8 * timeScale);
             // 아침이 되고 충분히 쉬었으면 기상
             if (hour >= 5 && hour < 20 && stats.fatigue < 10) {
                 state.mode = AnimalStates.IDLE;
             }
         } else {
-            stats.fatigue += dt * fatigueRate * timeScale;
+            stats.fatigue = Math.min(stats.maxFatigue || 100, stats.fatigue + dt * fatigueRate);
             // 극한 피로 또는 밤에 피곤할 때 수면 전이
-            if (stats.fatigue >= 100 || (isNight && stats.fatigue > 40 && Math.random() < 0.01)) {
+            if (stats.fatigue >= 100 || (isNight && stats.fatigue > 50 && Math.random() < 0.005)) {
                 state.mode = AnimalStates.SLEEP;
+                state.targetId = null; // 수면 시 현재 목표 해제
             }
         }
-        
+
         // 💀 사망 판정
         if (stats.health <= 0) {
             stats.health = 0;
             state.mode = AnimalStates.DIE;
+            state.targetId = null;
         }
     }
 

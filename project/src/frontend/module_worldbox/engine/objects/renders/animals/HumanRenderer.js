@@ -6,6 +6,17 @@ export const HumanRenderer = {
         const isSleeping = mode === 'sleep';
         const isEating = mode === 'eat' || mode === 'forage';
         const isDead = mode === 'die';
+        const isChopping = mode === 'gather_wood';
+        const isDepositing = mode === 'deposit';
+        const aiState = entity?.components.get('AIState');
+        const chopTimer = aiState?.chopTimer || 0;
+        const chopPhase = aiState?.isChopping ? Math.min(1, chopTimer / 0.4) : 0; // 0→1 타격 진행도
+        
+        const inventory = entity?.components.get('Inventory');
+        const totalItems = inventory?.getTotal() || 0;
+        const isCarrying = totalItems > 0;
+        const carryingWood = inventory?.items?.wood > 0;
+        const carryingFood = inventory?.items?.food > 0;
         
         const gender = entity?.components.get('Animal')?.gender || 'male';
         const isMale = gender === 'male';
@@ -52,8 +63,25 @@ export const HumanRenderer = {
         }
 
         // 👕 Torso (Premium Layered Look)
-        if (isRunning) ctx.rotate(0.12);
+        if (isRunning || isDepositing) ctx.rotate(0.12);
         
+        // 🎒 짐(Backpack / Load) 그리기 (몸통 뒤쪽에 렌더링되도록, 회전 전에 그리는게 좋지만 이미 회전했으므로 약간 뒤쪽(-x)에 배치)
+        if (isCarrying && !isSleeping && !isDead) {
+            // 나무를 나를 때
+            if (carryingWood) {
+                dot(-4.5, -9, 3, 7, '#5d4037'); // 통나무 메고 있는 모습
+                dot(-4.5, -8, 3, 1, '#3e2723'); // 나무 결
+                dot(-4.5, -5, 3, 1, '#3e2723');
+            } 
+            // 식량 등을 나를 때 (자루)
+            else if (carryingFood) {
+                dot(-5.0, -8, 4, 5, '#d7ccc8'); // 베이지색 자루
+                dot(-4.5, -8.5, 3, 1, '#8d6e63'); // 자루 묶음
+            } else {
+                dot(-4.5, -7.5, 3, 4, '#8d6e63'); // 일반 가방
+            }
+        }
+
         dot(-2.4, -8.5, 4.8, 5.5, C.shirt); // Body
         dot(-2.4, -3.5, 4.8, 0.8, C.shirt_dark); // Belt/Trim
         
@@ -106,12 +134,40 @@ export const HumanRenderer = {
                 let tx = ox + (osc * armSweep);
                 let ty = oy;
                 if (isEating) { tx = 1.5; ty = -10.5; }
-                
+
                 dot(tx, ty, 1.8, 2.5, isFront ? C.shirt : C.shirt_dark);
                 dot(tx, ty + 2.5, 1.8, 2.0, C.skin); // Hands
             };
-            drawArm(-3.8, -8, -armOsc, false);
-            drawArm(2.0, -8, armOsc, true);
+
+            if (isChopping && aiState?.isChopping) {
+                // 🪓 도끼질 애니메이션: 오른팔이 위→아래로 강하게 내려침
+                // chopPhase: 0(팔 들기) → 1(타격)
+                const swingUp = -12 + chopPhase * 8;  // Y: -12 → -4 (내리침)
+                const swingX = 1.0 + chopPhase * 1.5; // X: 약간 앞으로
+
+                // 왼팔은 정상 (안정 역할)
+                dot(-3.8, -8, 1.8, 2.5, C.shirt_dark);
+                dot(-3.8, -5.5, 1.8, 2.0, C.skin);
+
+                // 오른팔 (내려치는 팔)
+                dot(swingX, swingUp, 1.8, 4.5, C.shirt);
+                dot(swingX, swingUp + 4.5, 1.8, 2.0, C.skin);
+
+                // 🪓 도끼 그리기 (오른손 끝에)
+                const axeX = swingX + 0.5;
+                const axeY = swingUp + 6.0;
+                // 도끼 자루
+                dot(axeX, axeY, 1, 4, '#5d4037');
+                // 도끼날
+                ctx.fillStyle = '#9e9e9e';
+                ctx.fillRect(Math.floor(axeX * s) - 3, Math.floor(axeY * s) - 1, 5, 3);
+                ctx.fillStyle = '#e0e0e0'; // 날 하이라이트
+                ctx.fillRect(Math.floor(axeX * s) - 2, Math.floor(axeY * s) - 1, 4, 1);
+            } else {
+                // 기본 팔 + 나무 이동 중일 때는 일반 걷기 팔
+                drawArm(-3.8, -8, -armOsc, false);
+                drawArm(2.0, -8, armOsc, true);
+            }
         }
 
         ctx.restore();

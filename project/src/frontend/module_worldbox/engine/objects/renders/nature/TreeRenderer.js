@@ -4,6 +4,16 @@
  */
 export const TreeRenderer = {
     draw(ctx, t, v, size, isWithered, time, wind, isXRay = false, entity = null) {
+        // 🌲 [FALLING] 쓰러지는 나무 애니메이션
+        const res = entity?.components.get('Resource');
+        if (res && res.isFalling) {
+            // fallProgress: 0(서있음) → 1(쓰러짐 완료), dt 기반으로 EntityRenderer에서 증가
+            const fallAngle = (res.fallProgress || 0) * (Math.PI / 2) * (res.fallDirection || 1);
+            ctx.rotate(fallAngle);
+            // 완전히 쓰러지면 렌더링하지 않음 (EntityRenderer에서 제거 처리)
+            if (res.fallProgress >= 1.0) return;
+        }
+
         const trunkW = Math.max(1, Math.floor(size / 4));
         const trunkH = isWithered ? Math.floor(size * 0.7) : size;
         

@@ -32,6 +32,17 @@ export default class AnimalBehaviorSystem extends System {
                 }
             }
         }
+
+        // 🏘️ 건물(Static) 동적 해시 삽입 (건설 직후 즉시 반영을 위해)
+        for (const id of em.buildingIds) {
+            const entity = em.entities.get(id);
+            if (entity) {
+                const transform = entity.components.get('Transform');
+                if (transform) {
+                    this.spatialHash.insert(id, transform.x, transform.y, true); // Static
+                }
+            }
+        }
         
         // 🌿 [Expert Optimization] 정적 개체(Resource) 정기 동기화
         // 100프레임마다 전수 조사를 통해 누락된 자원이나 유령 데이터를 완벽히 정리합니다.
@@ -87,6 +98,15 @@ export default class AnimalBehaviorSystem extends System {
 
         // 🌲 자원(Static) 개체 일괄 재등록
         for (const id of em.resourceIds) {
+            const entity = em.entities.get(id);
+            const transform = entity?.components.get('Transform');
+            if (transform) {
+                this.spatialHash.insert(id, transform.x, transform.y, true);
+            }
+        }
+
+        // 🏘️ 건물(Static) 개체 일괄 재등록
+        for (const id of em.buildingIds) {
             const entity = em.entities.get(id);
             const transform = entity?.components.get('Transform');
             if (transform) {

@@ -7,6 +7,11 @@ export const BuildRender = {
     render(ctx, type, t, v, structure) {
         ctx.save();
         
+        // 완성된 건물은 기본적으로 불투명하게 처리 (청사진 투명도 해제)
+        if (structure && structure.isComplete) {
+            ctx.globalAlpha = 1.0;
+        }
+        
         switch (type) {
             case 'bonfire':
                 this.drawBonfire(ctx, t, v);

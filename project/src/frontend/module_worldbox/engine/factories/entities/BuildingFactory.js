@@ -59,6 +59,21 @@ export default class BuildingFactory extends IEntityFactory {
             this.engine.spatialHash.insert(id, x, y, true);
         }
 
+        // 🌱 건물이 설치된 자리는 비옥도를 0으로 만들어 자원(나무 등)이 생성되지 않도록 함
+        if (this.engine.terrainGen) {
+            const size = options.size || 40;
+            const radius = Math.floor(size / 2);
+            for (let dx = -radius; dx <= radius; dx++) {
+                for (let dy = -radius; dy <= radius; dy++) {
+                    const idx = this.engine.terrainGen.getIndex(x + dx, y + dy);
+                    if (this.engine.terrainGen.isValidIndex(idx)) {
+                        this.engine.terrainGen.fertilityBuffer[idx] = 0;
+                    }
+                }
+            }
+            this.engine.eventBus.emit('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'building_placed' });
+        }
+
         return id;
     }
 }

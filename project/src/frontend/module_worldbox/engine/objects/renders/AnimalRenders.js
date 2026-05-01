@@ -62,7 +62,7 @@ export const AnimalRenders = {
         
         // 상태별 애니메이션 속도 차등 적용
         let speedMult = 0.008;
-        if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT) speedMult = 0.015;
+        if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT || mode === 'deposit') speedMult = 0.015;
         else if (mode === AnimalStates.SLEEP) speedMult = 0.002;
         const frameIdx = (time * speedMult);
         const options = { role: animal?.role, entity: entity, nectar: animal?.nectar };
@@ -74,7 +74,7 @@ export const AnimalRenders = {
         if (visual.flipX) ctx.scale(-1, 1);
 
         // 🚀 고도화된 상태별 물리 변환 적용
-        this.applyAdvancedStateMotion(ctx, type, mode, time);
+        this.applyAdvancedStateMotion(ctx, type, mode, time, entity);
 
         const displaySize = visual.size * 22; 
         ctx.drawImage(sprite, -16 * (displaySize / 32), -24 * (displaySize / 32), displaySize, displaySize);
@@ -84,7 +84,7 @@ export const AnimalRenders = {
     /**
      * 🌀 물리 기반 상태별 모션 변환 (Breathing, Swaying, Chewing)
      */
-    applyAdvancedStateMotion(ctx, type, mode, time) {
+    applyAdvancedStateMotion(ctx, type, mode, time, entity) {
         // 1. 공통 사망 처리
         if (mode === AnimalStates.DIE) {
             ctx.filter = 'grayscale(100%) brightness(80%)';
@@ -101,8 +101,8 @@ export const AnimalRenders = {
 
             case AnimalStates.EAT:
             case AnimalStates.FORAGE:
-                // 🍎 식사: 머리를 위아래로 흔드는 저작 운동 (번역: translate)
-                const chew = Math.abs(Math.sin(time * 0.01)) * 1.2;
+                // 🍎 식사: 머리를 위아래로 흔드는 저작 운동 (더 역동적으로 상향)
+                const chew = Math.abs(Math.sin(time * 0.015)) * 3.5;
                 ctx.translate(0, chew);
                 break;
 
@@ -118,6 +118,17 @@ export const AnimalRenders = {
                 // 🚶 보행: 일정한 리듬의 상하 바운스
                 ctx.translate(0, Math.sin(time * 0.01) * 0.8);
                 break;
+
+            case 'gather_wood': {
+                // 🪓 도끼질: 상체를 앞으로 기울이고 미세한 충격 진동
+                const aiState = entity?.components?.get?.('AIState');
+                if (aiState?.isChopping) {
+                    const chopPhase = Math.min(1, (aiState.chopTimer || 0) / 0.4);
+                    ctx.rotate(0.1 * chopPhase); // 앞으로 기울기
+                    ctx.translate(0, chopPhase * 1.5); // 아래로 약간
+                }
+                break;
+            }
 
             default:
                 // 🧘 대기: 미세한 대기 호흡
