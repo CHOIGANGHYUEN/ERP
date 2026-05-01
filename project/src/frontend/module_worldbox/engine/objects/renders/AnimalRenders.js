@@ -1,91 +1,126 @@
 import { AnimalStates } from '../../components/behavior/State.js';
+import { SheepRenderer } from './animals/SheepRenderer.js';
+import { CowRenderer } from './animals/CowRenderer.js';
+import { WolfRenderer } from './animals/WolfRenderer.js';
+import { WildDogRenderer } from './animals/WildDogRenderer.js';
+import { HyenaRenderer } from './animals/HyenaRenderer.js';
+import { HumanRenderer } from './animals/HumanRenderer.js';
+import { BeeRenderer } from './animals/BeeRenderer.js';
 
 /**
- * 🎨 AnimalRenders Module
- * 
- * 동물의 상태별 디테일한 모션과 캔버스 변환(Transform)을 담당합니다.
- * 수학적 보간을 통해 생동감 있는 도트 애니메이션을 구현합니다.
+ * 🎨 AnimalRenders Module (Advanced Animation Engine)
  */
 export const AnimalRenders = {
-    /**
-     * 동물의 몸체를 그립니다. (상태별 모션 포함)
-     */
-    drawAnimalBody(ctx, entity, time, drawSpriteFn) {
+    spriteCache: new Map(),
+
+    getSprite(type, mode, frameIdx, color, options = {}) {
+        // 프레임 인덱스를 4단계로 고정하여 캐시 효율 증대
+        const animFrame = Math.floor(frameIdx % 4);
+        const role = options.role || 'worker';
+        const key = `${type}_${mode}_${animFrame}_${color}_${role}`;
+        if (this.spriteCache.has(key)) return this.spriteCache.get(key);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(16, 24);
+        
+        const s = 1;
+        switch (type) {
+            case 'sheep': SheepRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'cow': CowRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'wolf': WolfRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'wild_dog': WildDogRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'hyena': HyenaRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'human': HumanRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'bee': BeeRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
+        }
+
+        this.spriteCache.set(key, canvas);
+        return canvas;
+    },
+
+    drawAnimalBody(ctx, entity, time) {
         const transform = entity.components.get('Transform');
         const visual = entity.components.get('Visual');
         const state = entity.components.get('AIState');
-
         if (!transform || !visual || !state) return;
 
-        ctx.save();
+        const mode = state.mode;
+        const type = visual.type;
         
-        // 1. 기본 위치 및 반전 처리
+        // 상태별 애니메이션 속도 차등 적용
+        let speedMult = 0.008;
+        if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT) speedMult = 0.015;
+        else if (mode === AnimalStates.SLEEP) speedMult = 0.002;
+        const frameIdx = (time * speedMult);
+        const options = { role: animal?.role, entity: entity };
+        const sprite = this.getSprite(type, mode, frameIdx, visual.color, options);
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
         ctx.translate(transform.x, transform.y);
         if (visual.flipX) ctx.scale(-1, 1);
 
-        // 2. 상태별 디테일 모션 적용
-        const mode = state.mode;
-        this.applyStateMotion(ctx, mode, time, visual, transform);
+        // 🚀 고도화된 상태별 물리 변환 적용
+        this.applyAdvancedStateMotion(ctx, type, mode, time);
 
-        // 3. 실제 스프라이트 그리기 (전달받은 그리기 함수 실행)
-        // currentFrame을 활용하여 애니메이션 시퀀스 반영
-        const frameIdx = visual.animations[mode]?.frames[visual.currentFrame] || 0;
-        
-        if (visual.alpha !== undefined) ctx.globalAlpha = visual.alpha;
-        
-        drawSpriteFn(ctx, frameIdx, visual.size);
-
+        const displaySize = visual.size * 22; 
+        ctx.drawImage(sprite, -16 * (displaySize / 32), -24 * (displaySize / 32), displaySize, displaySize);
         ctx.restore();
     },
 
     /**
-     * 상태에 따른 수학적 보간 및 필터 적용
+     * 🌀 물리 기반 상태별 모션 변환 (Breathing, Swaying, Chewing)
      */
-    applyStateMotion(ctx, mode, time, visual, transform) {
+    applyAdvancedStateMotion(ctx, type, mode, time) {
+        // 1. 공통 사망 처리
+        if (mode === AnimalStates.DIE) {
+            ctx.filter = 'grayscale(100%) brightness(80%)';
+            return;
+        }
 
+        // 2. 상태별 공통 물리 효과
         switch (mode) {
             case AnimalStates.SLEEP:
-            case AnimalStates.IDLE:
-            case 'wander':
-                // 😤 숨쉬는 모션 (Y축 스케일 바운스)
-                const breath = Math.sin(time * 0.003) * 0.05;
-                ctx.scale(1, 1 + breath);
+                // 💤 수면: 느린 호흡 (상하 스케일링)
+                const sleepBreath = Math.sin(time * 0.002) * 0.03;
+                ctx.scale(1, 1 + sleepBreath);
+                break;
+
+            case AnimalStates.EAT:
+            case AnimalStates.FORAGE:
+                // 🍎 식사: 머리를 위아래로 흔드는 저작 운동 (번역: translate)
+                const chew = Math.abs(Math.sin(time * 0.01)) * 1.2;
+                ctx.translate(0, chew);
+                break;
+
+            case AnimalStates.RUN:
+            case AnimalStates.HUNT:
+            case AnimalStates.FLEE:
+                // ⚡ 질주: 몸체를 앞으로 기울임 (역동성 강조)
+                ctx.rotate(0.08);
+                ctx.translate(0, Math.sin(time * 0.02) * 1.5); // 상하 요동 증가
                 break;
 
             case AnimalStates.WALK:
-            case AnimalStates.FORAGE:
-                // 🚶 걷는 모션 (가벼운 상하 흔들림)
-                const bob = Math.sin(time * 0.01) * 1.5;
-                ctx.translate(0, bob);
+                // 🚶 보행: 일정한 리듬의 상하 바운스
+                ctx.translate(0, Math.sin(time * 0.01) * 0.8);
                 break;
 
-
-            case AnimalStates.RUN:
-            case AnimalStates.FLEE:
-            case AnimalStates.EVADE:
-            case AnimalStates.HUNT:
-                // 🏃 달리기 모션 (전진 방향으로 10도 기울기)
-                ctx.rotate(0.15); // 약 8.5도
-                // 먼지 파티클 생성 (랜덤 확률)
-                if (Math.random() < 0.05) {
-                    // EntityRenderer에서 접근 가능한 eventBus를 통해 파티클 생성
-                    window.dispatchEvent(new CustomEvent('WORLD_SPAWN_DUST', { detail: { x: transform.x, y: transform.y } }));
-                }
-                break;
-
-
-            case AnimalStates.EAT:
-                // 🍎 고개 끄덕임 모션
-                const peck = Math.abs(Math.sin(time * 0.01)) * 2;
-                ctx.translate(0, peck);
-                break;
-
-            case AnimalStates.DIE:
-                // 💀 사망 모션 (그레이스케일 + 가라앉기)
-                ctx.filter = 'grayscale(100%)';
-                const sink = (1.0 - (visual.alpha || 1.0)) * 5;
-                ctx.translate(0, sink);
+            default:
+                // 🧘 대기: 미세한 대기 호흡
+                const idleBreath = Math.sin(time * 0.003) * 0.015;
+                ctx.scale(1 + idleBreath, 1 - idleBreath);
                 break;
         }
-    }
+
+        // 3. 종별 특수 모션 추가 (필요시)
+        if (type === 'sheep' && mode === AnimalStates.WALK) {
+            ctx.rotate(Math.sin(time * 0.01) * 0.05); // 양 특유의 뒤뚱거림
+        }
+    },
+
+    drawSheep() {}, drawCow() {}, drawWolf() {}, drawWildDog() {}, drawHyena() {}, drawHuman() {}, drawPredator() {}
 };

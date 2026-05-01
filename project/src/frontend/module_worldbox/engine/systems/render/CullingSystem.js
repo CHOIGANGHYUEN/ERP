@@ -33,11 +33,12 @@ export default class CullingSystem extends System {
                 const ex = transform.x;
                 const ey = transform.y;
 
-                // 카메라 바운딩 박스 안에 있는지 검사
+                // 📏 [Culling Fix] 개체의 높이를 고려하여 상단 마진을 더 넉넉하게 잡음 (나무 등 방지)
+                const topMargin = 60; // 나무 키만큼 상단 여유 확보
                 const isOutside = (
                     ex < camX || 
                     ex > camX + camW || 
-                    ey < camY || 
+                    ey < camY - topMargin || 
                     ey > camY + camH
                 );
 

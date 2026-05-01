@@ -61,9 +61,16 @@ export default class RenderCoordinator extends System {
             engine.wind
         );
 
+        // [바람 뷰 오버레이]
+        if (engine.viewFlags.wind) {
+            this.renderWindOverlay(offCtx);
+        }
+
         offCtx.restore();
 
         // [레이어 3] UI 및 툴팁 (Screen Space)
+        this.renderTimeHUD(offCtx); // ⏳ 시간 HUD 추가
+        
         if (engine.viewFlags.fertilityValue && engine.inputSystem && engine.inputSystem.mouseWorld) {
             this.renderFertilityTooltip(offCtx);
         }
@@ -71,6 +78,57 @@ export default class RenderCoordinator extends System {
         // 4. 🚀 [대미의 장식] 완성된 가상 도화지를 메인 화면에 한 번에 복사!
         mainCtx.setTransform(1, 0, 0, 1, 0, 0);
         mainCtx.drawImage(this.offscreenCanvas, 0, 0);
+    }
+
+    /**
+     * ⏳ [Expert Design] 상단 중앙 시간 표시 HUD
+     */
+    renderTimeHUD(ctx) {
+        const timeStr = this.engine.timeSystem.getFormattedTime();
+        const w = 120;
+        const h = 40;
+        const x = (this.offscreenCanvas.width / 2) - (w / 2);
+        const y = 20;
+
+        // 1. 글래스모피즘 배경
+        ctx.save();
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillStyle = 'rgba(20, 20, 25, 0.7)'; // 어두운 반투명 배경
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        
+        // 둥근 사각형 그리기
+        this.drawRoundedRect(ctx, x, y, w, h, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // 2. 디지털 시간 텍스트
+        ctx.font = 'bold 22px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // 텍스트 광원 효과
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = '#00e676';
+        ctx.fillStyle = '#00e676'; // 사이버틱한 녹색
+        ctx.fillText(timeStr, x + w / 2, y + h / 2 + 2);
+        
+        ctx.restore();
+    }
+
+    drawRoundedRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
     }
 
     // Engine.js에 있던 툴팁 로직을 이곳으로 이관하여 통합 관리합니다.
@@ -111,5 +169,56 @@ export default class RenderCoordinator extends System {
             ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w * fert, 4);
 
         }
+    }
+
+    /** 🌬️ [Wind View] 월드 전역 바람 흐름 시각화 */
+    renderWindOverlay(ctx) {
+        const wind = this.engine.wind;
+        const spacing = 40; // 화살표 간격
+        const camera = this.engine.camera;
+        
+        // 화면에 보이는 영역만 렌더링 (Culling)
+        const startX = Math.floor(camera.x / spacing) * spacing;
+        const startY = Math.floor(camera.y / spacing) * spacing;
+        const endX = startX + this.engine.width / camera.zoom + spacing;
+        const endY = startY + this.engine.height / camera.zoom + spacing;
+
+        ctx.save();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(100, 200, 255, 0.6)';
+        ctx.fillStyle = 'rgba(100, 200, 255, 0.6)';
+
+        for (let y = startY; y < endY; y += spacing) {
+            for (let x = startX; x < endX; x += spacing) {
+                const sway = wind.getSway(x, y);
+                
+                ctx.save();
+                ctx.translate(x, y);
+                
+                // 화살표 그리기
+                const angle = Math.atan2(sway.y, sway.x);
+                const length = Math.sqrt(sway.x * sway.x + sway.y * sway.y) * 10;
+                
+                ctx.rotate(angle);
+                
+                // 몸통
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(length, 0);
+                ctx.stroke();
+                
+                // 촉 (Head)
+                if (length > 2) {
+                    ctx.beginPath();
+                    ctx.moveTo(length, 0);
+                    ctx.lineTo(length - 4, -3);
+                    ctx.lineTo(length - 4, 3);
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+        ctx.restore();
     }
 }

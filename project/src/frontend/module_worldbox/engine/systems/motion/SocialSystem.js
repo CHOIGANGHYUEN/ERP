@@ -92,8 +92,9 @@ export default class SocialSystem {
             }
         }
 
-        // 개체가 식사 중('eat')일 때는 무리의 이동(응집/정렬)을 무시하고 각자 밥을 먹도록 독립시킴
-        if (myState && myState.mode === 'eat') {
+        // 개체가 식사 중('eat')이거나 허기가 10% 이하로 떨어지면 무리 로직을 무시하고 생존에 집중
+        const stats = em.entities.get(myId)?.components.get('BaseStats');
+        if (myState && (myState.mode === 'eat' || (stats && stats.hunger <= 10))) {
             return;
         }
 

@@ -25,8 +25,89 @@ export default class TerrainGen {
     fertilityBuffer = null; // Uint8Array to store fertility values (0-100) ⚡ [Step 2]
     waterQualityBuffer = null;
     mineralDensityBuffer = null;
+    occupancyBuffer = null; // 🌿 자원 중첩 생성 방지용 (0: 빈칸, 1: 점유됨)
     constructor(entityManager) {
         this.entityManager = entityManager;
+    }
+
+    isValidIndex(idx) {
+        return idx >= 0 && idx < this.biomeBuffer.length;
+    }
+
+    getCoord(idx) {
+        const x = idx % this.mapWidth;
+        const y = Math.floor(idx / this.mapWidth);
+        return { x, y };
+    }
+
+    getIndex(x, y) {
+        return Math.floor(y) * this.mapWidth + Math.floor(x);
+    }
+
+    isLand(biomeId) {
+        return [5, 6, 7].includes(biomeId); // dirt, grass, jungle
+    }
+
+    isWater(biomeId) {
+        return [0, 1, 2, 3].includes(biomeId); // deep_ocean, ocean, lake, river
+    }
+
+    isMountain(biomeId) {
+        return [8, 9].includes(biomeId); // low_mountain, high_mountain
+    }
+
+    /**
+     * 🗺️ 특정 월드 좌표의 바이옴 ID를 반환합니다.
+     */
+    getBiomeAt(x, y) {
+        const idx = this.getIndex(x, y);
+        if (this.isValidIndex(idx)) {
+            return this.biomeBuffer[idx];
+        }
+        return -1;
+    }
+
+    setOccupancy(x, y, value) {
+        const idx = this.getIndex(x, y);
+        if (this.isValidIndex(idx)) {
+            this.occupancyBuffer[idx] = value;
+        }
+    }
+
+    getOccupancy(x, y) {
+        const idx = this.getIndex(x, y);
+        return this.isValidIndex(idx) ? this.occupancyBuffer[idx] : 0;
+    }
+
+    /**
+     * 🐾 동물이 해당 좌표로 이동할 수 있는지 확인합니다. (물과 산 회피용)
+     */
+    isNavigable(x, y) {
+        const idx = this.getIndex(x, y);
+        if (!this.isValidIndex(idx)) return false;
+        
+        const biomeId = this.biomeBuffer[idx];
+        const occupancy = this.occupancyBuffer[idx];
+        
+        // 1. 물(Water)과 산(Mountain) 회피
+        if (this.isWater(biomeId) || this.isMountain(biomeId)) return false;
+        
+        // 2. 고체 자원(Solid Objects) 회피 (나무, 바위 등)
+        if (occupancy >= 2) return false;
+
+        return true;
+    }
+
+    setOccupancy(x, y, value) {
+        const idx = this.getIndex(x, y);
+        if (this.isValidIndex(idx)) {
+            this.occupancyBuffer[idx] = value;
+        }
+    }
+
+    getOccupancy(x, y) {
+        const idx = this.getIndex(x, y);
+        return this.isValidIndex(idx) ? this.occupancyBuffer[idx] : 0;
     }
 
     /**
@@ -47,6 +128,8 @@ export default class TerrainGen {
         this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight); // ⚡ Uint8 고속 배열
         this.waterQualityBuffer = new Float32Array(mapWidth * mapHeight);
         this.mineralDensityBuffer = new Float32Array(mapWidth * mapHeight);
+        this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight); // 🌿 자원 추적용 초기화
+        this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight); // 🏗️ 초기화
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -158,7 +241,7 @@ export default class TerrainGen {
         // These are examples and can be refined based on game design.
 
         // 육상 지형: 비옥도 계산 (DIRT:5, GRASS:6, JUNGLE:7)
-        if ([5, 6, 7].includes(biomeId)) {
+        if (this.isLand(biomeId)) {
             // 흙(DIRT)의 경우에도 환경 요인에 따라 잠재적 비옥도를 높게 가지도록 보정
             let base = biomeId === 5 ? 0.8 : (biome.baseSoilFertility || 0.0);
             const altitudeInfluence = Math.max(0, 1 - Math.pow(Math.abs(altitude - 0.55) * 2.5, 2));
@@ -206,7 +289,7 @@ export default class TerrainGen {
             }
         }
 
-        const isLand = [5, 6, 7].includes(biomeId);
+        const isLand = this.isLand(biomeId);
 
         return {
             // 🎲 [Step 2] 0~100 사이의 정수 비옥도 할당
@@ -241,7 +324,7 @@ export default class TerrainGen {
             if (!isLand) return 0x000000;
 
             // 👾 [Step 2] Uint8 (0-100) 값 직접 사용
-            const dotValue = fertility; 
+            const dotValue = fertility;
 
             if (dotValue === 0) return 0x050000;
 
@@ -256,7 +339,7 @@ export default class TerrainGen {
             else if (dotValue < 80) { r = 150; g = 255; b = 30; } // High
             else if (dotValue < 90) { r = 50; g = 255; b = 70; }  // Very High
             else { r = 0; g = 255; b = 100; }                    // Max (1.0)
-            
+
             return (r << 16) | (g << 8) | b;
         } else if (viewFlags.water) {
             const wq = this.waterQualityBuffer[idx];

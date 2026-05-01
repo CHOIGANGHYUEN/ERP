@@ -36,8 +36,18 @@ export default class EatState extends State {
                 this.system.consumePlant(entity, target);
             }
 
-            // 허기 점진적 회복
-            stats.hunger = Math.min(stats.maxHunger, stats.hunger + dt * 20);
+            // 허기 점진적 회복 및 배설 게이지 축적
+            const fillAmount = dt * 20;
+            stats.hunger = Math.min(stats.maxHunger, stats.hunger + fillAmount);
+            
+            // 🧪 [사용자 피드백 반영] 식물의 품질을 '소화 품질'로 기록
+            if (targetRes && targetRes.edible) {
+                const quality = (target.components.get('Visual')?.quality || 0.5);
+                // 기존 음식과 섞이는 효과 (가중 평균)
+                stats.digestionQuality = (stats.digestionQuality || 0.5) * 0.7 + quality * 0.3;
+            }
+
+            stats.waste = Math.min(stats.maxWaste, stats.waste + fillAmount * 0.8); // 💩 먹는 만큼 쌓임
         }
 
 

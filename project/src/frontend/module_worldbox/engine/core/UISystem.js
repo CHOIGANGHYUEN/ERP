@@ -53,6 +53,7 @@ export default class UISystem extends System {
         if (!target) return null;
 
         const m = target.components.get('Metabolism');
+        const s = target.components.get('BaseStats'); // 📊 New Stats Component
         const a = target.components.get('Animal');
         const v = target.components.get('Visual');
         const r = target.components.get('Resource');
@@ -62,7 +63,10 @@ export default class UISystem extends System {
         let type = v?.type || a?.type || 'unknown';
         let subType = v?.treeType || v?.role || null;
         let state = 'Normal';
-        let fertility = m?.storedFertility || r?.storedFertility || 0;
+        
+        // 🧪 [사용자 피드백 반영] 동물의 경우 축적된 영양분(비옥도)을 정확히 매핑
+        let fertility = s ? (s.storedFertility || 0) : (m?.storedFertility || r?.storedFertility || 0);
+        
         let inhabitants = null;
         let animalYield = null;
 
@@ -103,9 +107,15 @@ export default class UISystem extends System {
             }
         }
 
+        // 📏 UI용 데이터 정규화 (동물의 경우 배설 임계치 15.0 기준)
+        const normalizedFertility = a ? Math.min(1.0, fertility / 15.0) : fertility;
+
         return {
             id: target.id, type: type, subType: subType, name: name, state: state,
-            stomach: m?.stomach, maxStomach: m?.maxStomach, fertility: fertility,
+            stomach: s ? s.hunger : m?.stomach, 
+            maxStomach: s ? 100 : m?.maxStomach, 
+            fatigue: s?.fatigue || 0, // 😴 추가된 피로도 수치
+            fertility: normalizedFertility,
             quality: v?.quality, inhabitants: inhabitants, resourceValue: r?.value || r?.amount || 0,
             animalYield: animalYield,
             rank: a?.rank

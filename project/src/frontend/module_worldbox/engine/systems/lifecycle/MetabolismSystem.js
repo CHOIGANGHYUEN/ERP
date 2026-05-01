@@ -5,7 +5,7 @@ export default class MetabolismSystem extends System {
     constructor(entityManager, eventBus, terrainGen) {
         super(entityManager, eventBus);
         this.terrainGen = terrainGen; // TerrainGen 인스턴스 주입
-        this.excreteThreshold = 1.0;
+        this.excreteThreshold = 15.0; // 💩 배설 임계값 상향 (더 많이 먹고 영양가 높은 똥을 싸도록)
     }
 
     update(dt, time) {
@@ -23,9 +23,16 @@ export default class MetabolismSystem extends System {
                 // (hunger 100 = 배부름, stomach 가득 참 / hunger 0 = 배고픔, stomach 비어있음)
                 if (stats) {
                     metabolism.stomach = (stats.hunger / stats.maxHunger) * metabolism.maxStomach;
+                    // 🧪 [Sync] 식사 시 축적된 고품질 영양분 데이터를 가져옴
+                    metabolism.storedFertility = stats.storedFertility || 0;
                 }
 
-                this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt);
+                this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt, stats);
+                
+                // 🧪 [Reverse Sync] 소화/배설 후 변동된 데이터를 다시 저장
+                if (stats) {
+                    stats.storedFertility = metabolism.storedFertility;
+                }
 
                 const visual = entity.components.get('Visual');
                 if (visual) {
@@ -40,15 +47,11 @@ export default class MetabolismSystem extends System {
         }
     }
 
-    processInternalMetabolism(id, entity, animal, metabolism, transform, dt) {
+    processInternalMetabolism(id, entity, animal, metabolism, transform, dt, stats) {
         // 소화 로직: 위장(stomach)의 내용물을 저장된 비옥도(storedFertility)로 전환
         if (metabolism.stomach > 0) {
-            const processRate = metabolism.digestionSpeed || 0.1;
-            const amount = Math.min(metabolism.stomach, processRate * dt);
-            // 소화된 만큼 저장된 비옥도 수치 증가
-            metabolism.storedFertility += amount * 2.0; 
-            
-            // Note: 실제 stomach 수치는 AnimalBehaviorSystem에서 hunger 감소로 자연스럽게 줄어듦
+            // 소화 속도에 따른 처리 (여기서는 배설 게이지 축적을 위한 시간 흐름으로 사용)
+            // 비옥도 수치 자체는 이미 EatState에서 식물의 품질을 기반으로 stats.storedFertility에 쌓여 있습니다.
         }
 
         // 배설 로직: 저장된 비옥도가 임계치를 넘으면 배설물 생성
@@ -63,9 +66,10 @@ export default class MetabolismSystem extends System {
             this.eventBus.emit('SPAWN_POOP', { 
                 x: transform.x, 
                 y: transform.y, 
-                fertilityAmount: metabolism.storedFertility 
+                fertilityAmount: metabolism.storedFertility // 🧪 이미 식사 품질이 반영된 값
             });
             metabolism.storedFertility = 0;
+            if (stats) stats.storedFertility = 0; // 동기화 초기화
         } else if (metabolism.isPooping) {
             // 배설 모션 종료 확률
             if (Math.random() < 0.05) metabolism.isPooping = false;

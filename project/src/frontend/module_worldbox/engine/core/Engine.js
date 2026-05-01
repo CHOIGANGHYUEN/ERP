@@ -3,17 +3,6 @@ import Camera from './Camera.js';
 import EntityRenderer from '../systems/render/EntityRenderer.js';
 import EntityManager from './EntityManager.js';
 import EventBus from './EventBus.js';
-import AnimalBehaviorSystem from '../systems/behavior/AnimalBehaviorSystem.js';
-import SocialSystem from '../systems/motion/SocialSystem.js';
-import GatheringSystem from '../systems/economy/GatheringSystem.js';
-import ConsumptionSystem from '../systems/economy/ConsumptionSystem.js';
-import KinematicSystem from '../systems/motion/KinematicSystem.js';
-import MetabolismSystem from '../systems/lifecycle/MetabolismSystem.js';
-import ReproductionSystem from '../systems/lifecycle/ReproductionSystem.js';
-import SpriteManager from '../systems/render/SpriteManager.js';
-import EnvironmentSystem from '../systems/lifecycle/EnvironmentSystem.js';
-import SpawnerSystem from '../systems/economy/SpawnerSystem.js';
-import WindSystem from '../systems/lifecycle/WindSystem.js';
 import EntityFactory from '../factories/EntityFactory.js';
 import ChunkManager from '../world/ChunkManager.js';
 import StatsMonitor from './StatsMonitor.js';
@@ -21,11 +10,9 @@ import speciesConfig from '../config/species.json'; // 🚀 LOAD SPECIES
 import resourceConfig from '../config/resource_balance.json'; // 🚀 LOAD RESOURCES
 import buildingsConfig from '../config/buildings.json';
 import techTreeConfig from '../config/tech_tree.json';
-import InputSystem from '../systems/input/InputSystem.js';
-import UISystem from './UISystem.js';
-import ParticleSystem from '../systems/render/ParticleSystem.js';
-import CullingSystem from '../systems/render/CullingSystem.js';
 import RenderCoordinator from '../systems/render/RenderCoordinator.js';
+import SystemManager from './SystemManager.js';
+import TimeSystem from '../systems/core/TimeSystem.js';
 
 
 
@@ -75,23 +62,19 @@ export default class Engine {
         this.renderer = new EntityRenderer(this);
 
         this.entityFactory = new EntityFactory(this);
-        this.behavior = new AnimalBehaviorSystem(this.entityManager, this.eventBus, this);
-        this.social = new SocialSystem(this);
-        this.gathering = new GatheringSystem(this.entityManager, this.eventBus, this); 
-        this.consumption = new ConsumptionSystem(this.entityManager, this.eventBus, this);
-        this.kinematics = new KinematicSystem(this);
-        this.metabolism = new MetabolismSystem(this.entityManager, this.eventBus, this.terrainGen);
-        this.reproduction = new ReproductionSystem(this.entityManager, this.eventBus);
-        this.environment = new EnvironmentSystem(this.entityManager, this.eventBus, this.terrainGen);
-        this.spawner = new SpawnerSystem(this.entityManager, this.eventBus, this);
-        this.wind = new WindSystem();
-        this.particleSystem = new ParticleSystem(this.entityManager, this.eventBus);
-        this.spriteManager = new SpriteManager(this.entityManager, this.eventBus);
 
+        // 단일 책임 원칙(SRP) 준수를 위한 시스템 매니저 도입
+        this.systemManager = new SystemManager(this);
+        this.inputSystem = this.systemManager.inputSystem;
+        this.environment = this.systemManager.environment;
+        this.particleSystem = this.systemManager.particleSystem;
+        this.wind = this.systemManager.wind;
+        this.spawner = this.systemManager.spawner;
 
         this.isRunning = false;
         this.lastTime = 0;
         this.time = 0;
+        this.timeSystem = new TimeSystem(); // ⏳ World Clock Init
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
@@ -103,7 +86,29 @@ export default class Engine {
         };
         window.addEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
 
-        this.simParams = { spreadSpeed: 0.1, spreadAmount: 5000 };
+        this.simParams = { spreadSpeed: 1.0, spreadAmount: 5000 };
+
+        // 🌡️ [사용자 피드백 반영] 시뮬레이션 파라미터 실시간 업데이트 핸들러
+        this.eventBus.on('UPDATE_SIM_PARAMS', (params) => {
+            this.simParams = { ...this.simParams, ...params };
+        });
+
+        // 🎨 [사용자 피드백 반영] 전체 배경 칠하기(Fill) 핸들러
+        this.eventBus.on('APPLY_FILL_TOOL', (payload) => {
+            const biomeId = payload.biome;
+            const width = this.mapWidth;
+            const height = this.mapHeight;
+            const buffer = this.terrainGen.biomeBuffer;
+            
+            for (let i = 0; i < buffer.length; i++) {
+                // 바다가 아닌 육지(DIRT, GRASS 등)만 채우기 대상으로 설정
+                if (this.terrainGen.isLand(buffer[i])) {
+                    buffer[i] = biomeId;
+                }
+            }
+            // 전체 렌더링 갱신 통보 (메모리 효율을 위해 전체 업데이트 플래그 사용 가능)
+            this.eventBus.emit('CACHE_PIXEL_UPDATE', { all: true, reason: 'fill_biome' });
+        });
 
 
 
@@ -116,12 +121,7 @@ export default class Engine {
         this.monitor = new StatsMonitor(this);
 
         this.init();
-        this.inputSystem = new InputSystem(this.entityManager, this.eventBus, this);
-        this.uiSystem = new UISystem(this.entityManager, this.eventBus, this);
-        this.cullingSystem = new CullingSystem(this.entityManager, this.eventBus, this); // 🕶️ Culling System Init
         this.renderCoordinator = new RenderCoordinator(this.entityManager, this.eventBus, this); // 🖼️ Render Orchestrator Init
-
-
 
         // 📡 Subscribe to UI Selection Event for Rendering
         this.eventBus.on('ENTITY_SELECTED', (id) => {
@@ -130,6 +130,11 @@ export default class Engine {
 
         // 📡 Subscribe to Spawner/Environment pixel updates
         this.eventBus.on('CACHE_PIXEL_UPDATE', (data) => {
+            // 전체 갱신 요청 (예: 배경 칠하기)
+            if (data.all) {
+                this.preRenderTerrain();
+                return;
+            }
             // 비옥도 변화나 바이옴 변화 시 항상 픽셀 갱신
             if (data.reason === 'biome_change' || data.reason === 'biome_spread' || data.reason === 'fertility_change' || this.viewFlags.fertility) {
                 this.updateCachePixel(data.x, data.y);
@@ -286,13 +291,16 @@ export default class Engine {
                 if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
                 break;
             case 'SPAWN_RESOURCE':
-                this.entityManager.createResourceNode(command.payload.x, command.payload.y, command.payload.type, command.payload.amount);
+                this.entityFactory.createResource(command.payload.type, command.payload.x, command.payload.y, command.payload.amount);
                 break;
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);
                 break;
             case 'INSPECT':
                 this.eventBus.emit('INSPECT_REQUEST', command.payload.worldPos);
+                break;
+            case 'APPLY_FILL_TOOL':
+                this.eventBus.emit('APPLY_FILL_TOOL', command.payload);
                 break;
         }
         if (this.isRunning) return;
@@ -313,11 +321,11 @@ export default class Engine {
     destroy() {
         this.stop();
         window.removeEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
-        
-        if (this.particleSystem && this.particleSystem.destroy) {
-            this.particleSystem.destroy();
+
+        if (this.systemManager && this.systemManager.destroy) {
+            this.systemManager.destroy();
         }
-        
+
         if (this.chunkManager && this.chunkManager.destroy) {
             this.chunkManager.destroy();
         }
@@ -338,21 +346,12 @@ export default class Engine {
 
     update(dt) {
         const time = performance.now();
-        this.particleSystem.update(dt, time); // ParticleSystem은 자체적으로 EventBus를 통해 파티클을 생성/관리
-        this.cullingSystem.update(dt, time); // 🕶️ Culling check before behaviors/logic
 
-        this.behavior.update(dt);
-        this.social.update(dt);
-        this.gathering.update(dt, time);
-        this.consumption.update(dt);
-        this.kinematics.update(dt);
-        this.metabolism.update(dt, time);
-        this.reproduction.update(dt, time);
-        this.environment.update(dt, time);
-        this.spawner.update(dt, time);
-        this.wind.update(time);
-        this.spriteManager.update(dt, time);
-        this.uiSystem.update(dt, time);
+        // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
+        this.systemManager.update(dt, time);
+        
+        // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달)
+        this.timeSystem.update(dt * 1000);
 
         if (this.selectedId && this.onEntitySelect && this.isFollowing) {
             const e = this.entityManager.entities.get(this.selectedId);
@@ -376,5 +375,3 @@ export default class Engine {
 
     // renderFertilityTooltip is now handled by RenderCoordinator.js
 }
-
-

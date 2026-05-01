@@ -3,20 +3,20 @@
 본 리스트는 중복 로직 제거, 응집도 향상, 결합도 저하 및 코드 일관성 유지를 위한 20가지 핵심 점검 항목입니다.
 
 ## 1. 중복되는 로직 (Duplication)
-- [ ] **[중복] 동물별 공통 뼈대 로직 통합**
+- [x] **[중복] 동물별 공통 뼈대 로직 통합**
   - 대상: `engine/factories/EntityFactory.js`, `engine/systems/behavior/AnimalBehaviorSystem.js`
   - 내용: 양, 소, 늑대 등 개별 동물의 생성 및 상태 업데이트 시 반복되는 물리/속성 설정 로직을 `EntityFactory` 내 공통 메서드로 묶거나 부모 클래스/컴포넌트 패턴으로 통합.
   - **상세 작업 계획:**
-    - [ ] `EntityFactory.js`: `createHuman` 전용 메서드 분리 및 `human` 하드코딩 로직 제거.
-    - [ ] `EntityFactory.js`: `createResource`의 `if-else` 블록을 자원 타입별(Plant, Tree, Mineral) 전용 메서드로 분할하여 구조 개선.
+    - [x] `EntityFactory.js`: `createHuman` 전용 메서드 분리 및 `human` 하드코딩 로직 제거.
+    - [x] `EntityFactory.js`: `createResource`의 `if-else` 블록을 자원 타입별(Plant, Tree, Mineral) 전용 메서드로 분할하여 구조 개선.
     - [ ] `AnimalBehaviorSystem.js`: `updateBeeAI`의 거대 로직을 `BeeState` 계열 클래스들로 분리하여 일반 동물 AI 업데이트 흐름(`updateEntityAI`)과 통합.
-    - [ ] `AnimalBehaviorSystem.js`: `findFood` 내의 사냥/식물 탐색 로직을 독립적인 헬퍼 메서드로 분리하여 응집도 향상.
+    - [x] `AnimalBehaviorSystem.js`: `findFood` 내의 사냥/식물 탐색 로직을 독립적인 헬퍼 메서드로 분리하여 응집도 향상.
 
-- [ ] **[중복] 지형 판정 및 좌표 계산 로직 분리**
+- [x] **[중복] 지형 판정 및 좌표 계산 로직 분리**
   - 내용: 스폰 가능 타일 여부, 유효 좌표 확인 등 지형 관련 판정 로직이 여러 시스템에 산재해 있는지 확인 후 `TerrainGen.js` 혹은 유틸리티로 분리.
   - **상세 작업 계획:**
-    - [ ] `TerrainGen.js`: `isLand(biomeId)` 헬퍼 메서드 추가 및 각 시스템(`EnvironmentSystem`, `SpawnerSystem`, `EntityFactory`)의 `[5, 6, 7]` 하드코딩 교체.
-    - [ ] `TerrainGen.js`: `isValidIndex(idx)` 및 `getCoord(idx)` 등 좌표 연산 로직 통합 관리.
+    - [x] `TerrainGen.js`: `isLand(biomeId)` 헬퍼 메서드 추가 및 각 시스템(`EnvironmentSystem`, `SpawnerSystem`, `EntityFactory`)의 `[5, 6, 7]` 하드코딩 교체.
+    - [x] `TerrainGen.js`: `isValidIndex(idx)` 및 `getCoord(idx)` 등 좌표 연산 로직 통합 관리.
 
 - [ ] **[중복] 데이터 직렬화 보일러플레이트 제거**
   - 내용: 엔티티 데이터를 JSON으로 변환하거나 불러올 때 반복되는 속성 할당 코드를 자동화된 매핑 로직으로 개선.
@@ -24,26 +24,26 @@
     - [ ] `EntityManager.js`: `removeEntity`의 수동 속성 초기화 로직을 컴포넌트별 `reset()` 메서드로 추상화하여 유지보수성 향상.
     - [ ] `EntityManager.js`: `createResourceNode`와 `EntityFactory.js`의 `createResource` 간 중복된 자원 설정 로직을 `EntityFactory`로 단일화.
 
-- [ ] **[중복] 바운딩 박스(AABB) 및 충돌 연산 통합**
+- [x] **[중복] 바운딩 박스(AABB) 및 충돌 연산 통합**
   - 대상: `engine/systems/motion/KinematicSystem.js`, `engine/utils/SpatialHash.js`
   - 내용: 두 객체가 겹쳤을 때 밀어내는 수학적 바운딩 박스(AABB) 연산이 다른 이동 컨트롤러 내부에도 하드코딩으로 중복 구현되어 있는지 점검.
   - **상세 작업 계획:**
-    - [ ] `KinematicSystem.js`: 현재 누락된 객체 간 분리(Separation/Push) 로직 구현 및 `SpatialHash`를 활용한 최적화 적용.
-    - [ ] `engine/utils/MathUtils.js` 신설: AABB 충돌 판정 및 거리 기반 밀어내기 연산을 공통 함수로 분리.
+    - [x] `KinematicSystem.js`: 현재 누락된 객체 간 분리(Separation/Push) 로직 구현 및 `SpatialHash`를 활용한 최적화 적용.
+    - [x] `engine/utils/MathUtils.js` 신설: AABB 충돌 판정 및 거리 기반 밀어내기 연산을 공통 함수로 분리.
 
-- [ ] **[중복] 데미지 및 방어력 계산 공식 단일화**
+- [x] **[중복] 데미지 및 방어력 계산 공식 단일화**
   - 대상: `engine/systems/behavior/AnimalBehaviorSystem.js`, `engine/components/stats/BaseStats.js`
   - 내용: 동물, 몬스터, 플레이어의 방어력 및 데미지 계산 공식이 여러 클래스에 흩어져 중복 처리되고 있는지 점검.
   - **상세 작업 계획:**
-    - [ ] `CombatSystem.js` 신설: `AnimalBehaviorSystem`에 산재한 공격/피격 로직(`attackAndConsumeAnimal` 등)을 분리하여 공통 시스템으로 구축.
-    - [ ] `BaseStats.js`: 데미지 적용 시 방어력 감쇄 로직을 컴포넌트 내부 메서드로 캡슐화.
+    - [x] `CombatSystem.js` 신설: `AnimalBehaviorSystem`에 산재한 공격/피격 로직(`attackAndConsumeAnimal` 등)을 분리하여 공통 시스템으로 구축.
+    - [x] `BaseStats.js`: 데미지 적용 시 방어력 감쇄 로직을 컴포넌트 내부 메서드로 캡슐화.
 
 ## 2. 응집도가 높은지 (High Cohesion)
-- [ ] **[응집] Engine 클래스의 책임 분산 (God Class 방지)**
+- [x] **[응집] Engine 클래스의 책임 분산 (God Class 방지)**
   - 대상: `engine/core/Engine.js`
   - 내용: 날씨 변화, 시간 흐름, 엔티티 스폰, 데이터 저장 등 서로 다른 성격의 도메인이 하나의 God Class에 몰려 단일 책임 원칙(SRP)을 위배하는지 점검.
   - **상세 작업 계획:**
-    - [ ] `SystemManager.js` 도입: `Engine` 생성자에서 수동으로 초기화/업데이트하는 15개 이상의 시스템 관리 로직 분리.
+    - [x] `SystemManager.js` 도입: `Engine` 생성자에서 수동으로 초기화/업데이트하는 15개 이상의 시스템 관리 로직 분리.
     - [ ] `ViewManager.js`: `viewFlags` 관리 및 `toggleView` 로직을 분리하여 엔진 코어 비대화 방지.
 
 - [ ] **[응집] 도메인 로직과 렌더링 로직의 엄격한 분리**
@@ -65,11 +65,11 @@
   - **상세 작업 계획:**
     - [ ] `AnimalBehaviorSystem.js`: 거대한 `findFood` 및 `updateBeeAI` 로직을 각각 `Sensor` 모듈과 종별 전용 `Brain` 클래스로 위임.
 
-- [ ] **[응집] 엔티티 사망 처리 프로세스 위임**
+- [x] **[응집] 엔티티 사망 처리 프로세스 위임**
   - 대상: `engine/systems/behavior/AnimalBehaviorSystem.js` (`handleDieState`)
   - 내용: 사망 시 드랍 아이템, 파티클 생성, 비옥도 환원 로직이 하나의 함수에 하드코딩되어 있는지 점검.
   - **상세 작업 계획:**
-    - [ ] `DeathProcessor.js` 신설: 사망 로직의 각 단계를 `EventBus`로 전송하여 드랍 시스템(`DropSystem`)과 파티클 시스템(`ParticleSystem`)이 독립적으로 처리하게 함.
+    - [x] `DeathProcessor.js` 신설: 사망 로직의 각 단계를 `EventBus`로 전송하여 드랍 시스템(`DropSystem`)과 파티클 시스템(`ParticleSystem`)이 독립적으로 처리하게 함.
 
 ## 3. 결합도가 낮은지 (Low Coupling)
 - [ ] **[결합] 내비게이션 인터페이스 의존성 점검**
@@ -127,8 +127,8 @@
   - **상세 작업 계획:**
     - [ ] 에러 처리 표준화: 성능 민감 구간(루프)은 `null` 반환 경계 검사로 통일하고, 데이터 로딩 등 초기화 구간은 `throw new Error()` 방식으로 일원화하여 프로젝트 표준 방식을 정해 통일.
 
-- [ ] **[일관] 상태 업데이트 주기 및 방식 통일**
+- [x] **[일관] 상태 업데이트 주기 및 방식 통일**
   - 대상: `engine/core/Engine.js` (`update` 루프)
   - 내용: 상태 업데이트 주기의 일관성 점검. 어떤 로직은 매 틱마다 update()를 돌며 폴링(Polling) 방식으로 검사하고, 어떤 로직은 이벤트 기반(Event-driven)으로만 동작하여 아키텍처가 통일되지 않았는지 확인.
   - **상세 작업 계획:**
-    - [ ] `Engine.js`: 각 시스템의 업데이트 순서를 명시적으로 관리하고, 상태 변화 알림은 `EventBus`로, 지속적인 물리/AI 연산은 `update` 루프로 명확히 이원화하여 아키텍처 일관성 확보.
+    - [x] `Engine.js`: 각 시스템의 업데이트 순서를 명시적으로 관리하고, 상태 변화 알림은 `EventBus`로, 지속적인 물리/AI 연산은 `update` 루프로 명확히 이원화하여 아키텍처 일관성 확보.

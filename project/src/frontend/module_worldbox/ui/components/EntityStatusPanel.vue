@@ -30,6 +30,15 @@
           <span class="value-sm">{{ (entity.stomach || 0).toFixed(1) }} / {{ entity.maxStomach }}</span>
         </div>
 
+        <!-- 😴 피로도 표시 추가 -->
+        <div class="status-row" v-if="entity.fatigue !== undefined">
+          <span class="label">Fatigue:</span>
+          <div class="progress-bar">
+            <div class="fill fatigue" :style="{ width: entity.fatigue + '%' }"></div>
+          </div>
+          <span class="value-sm">{{ Math.floor(entity.fatigue) }}%</span>
+        </div>
+
         <div class="status-row" v-if="entity.animalYield">
           <span class="label">Yield:</span>
           <span class="value yield-text">{{ entity.animalYield }}</span>
@@ -39,7 +48,7 @@
       <!-- 🌱 식물/나무 전용 상태 (비옥도, 품질) -->
       <template v-if="entity.quality !== undefined || entity.fertility !== undefined">
         <div class="status-row">
-          <span class="label">Fertility (Quality):</span>
+          <span class="label">{{ entity.maxStomach ? 'Nutrients:' : 'Fertility:' }}</span>
           <div class="progress-bar">
             <div class="fill fertility" :style="{ width: getPercentage(entity.fertility, 1.0) + '%' }"></div>
           </div>
@@ -148,6 +157,7 @@ const getPercentage = (val, max) => {
 .progress-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; margin: 0 10px; overflow: hidden; }
 .fill { height: 100%; transition: width 0.2s ease; }
 .fill.stomach { background: #ff9800; }
+.fill.fatigue { background: #9c27b0; } /* 😴 세련된 보라색 피로도 바 */
 .fill.fertility { background: #4caf50; }
 
 .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 5px 0; }

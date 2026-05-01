@@ -7,25 +7,23 @@ export default class SpawnerSystem extends System {
     constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
         this.engine = engine;
-        this.terrainGen = engine.terrainGen; 
+        this.terrainGen = engine.terrainGen;
 
         this.eventBus.on('SPAWN_POOP', (payload) => this.spawnPoop(payload.x, payload.y, payload.fertilityAmount));
         this.eventBus.on('SPAWN_ENTITY', (payload) => this.spawnEntity(payload));
 
         this.eventBus.on('APPLY_TOOL_EFFECT', (payload) => {
-            const idx = Math.floor(payload.y) * this.terrainGen.mapWidth + Math.floor(payload.x);
-            if (idx >= 0 && idx < this.terrainGen.biomeBuffer.length) {
+            const idx = this.terrainGen.getIndex(payload.x, payload.y);
+            if (this.terrainGen.isValidIndex(idx)) {
                 if (payload.action.startsWith('SPAWN_')) {
                     const resourceId = payload.resourceId || payload.action.replace('SPAWN_', '').toLowerCase();
-                    this.spawnGenericResource(payload.x, payload.y, resourceId, payload.color, payload.treeType);
-                } 
+                    this.spawnGenericResource(payload.x, payload.y, resourceId, payload.color, payload.treeType, true);
+                }
                 else if (payload.action === 'CHANGE_BIOME') {
                     const ix = Math.floor(payload.x);
                     const iy = Math.floor(payload.y);
-                    if (idx >= 0 && idx < this.terrainGen.biomeBuffer.length) {
-                        this.terrainGen.biomeBuffer[idx] = payload.biome;
-                        this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'biome_change' });
-                    }
+                    this.terrainGen.biomeBuffer[idx] = payload.biome;
+                    this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: ix, y: iy, reason: 'biome_change' });
                 }
             }
         });
@@ -40,7 +38,7 @@ export default class SpawnerSystem extends System {
         for (let i = 0; i < 15; i++) {
             const x = Math.floor(Math.random() * this.terrainGen.mapWidth);
             const y = Math.floor(Math.random() * this.terrainGen.mapHeight);
-            const idx = y * this.terrainGen.mapWidth + x;
+            const idx = this.terrainGen.getIndex(x, y);
             const biomeId = this.terrainGen.biomeBuffer[idx];
             const fertilityRaw = this.terrainGen.fertilityBuffer[idx];
             const fertility = fertilityRaw / 100; // ⚡ 정규화
@@ -62,15 +60,13 @@ export default class SpawnerSystem extends System {
         }
     }
 
-    spawnGenericResource(x, y, resourceId, color, treeTypeOverride = null) {
+    spawnGenericResource(x, y, resourceId, color, treeTypeOverride = null, forceSpawn = false) {
         if (resourceId === 'plant') resourceId = 'grass';
         const em = this.entityManager;
         const config = resourceConfig[resourceId];
-        if (!config) return;
+        if (!config) return null;
 
-        const ix = Math.floor(x);
-        const iy = Math.floor(y);
-        const idx = iy * this.terrainGen.mapWidth + ix;
+        const idx = this.terrainGen.getIndex(x, y);
 
         const isMineral = config.type === 'mineral' || config.type === 'geological' || config.type === 'material';
         const envBuffer = isMineral ? this.terrainGen.mineralDensityBuffer : this.terrainGen.fertilityBuffer;
@@ -80,13 +76,39 @@ export default class SpawnerSystem extends System {
         const isAquatic = ['deep_sea_kelp', 'seaweed', 'lotus', 'waterweed', 'reed'].includes(resourceId);
         const biomeId = this.terrainGen.biomeBuffer[idx];
         const isWaterBiome = [0, 1, 2, 3].includes(biomeId);
-        
-        // 정규화된 값으로 비교 (0.05 미만이면 생성 불가)
+
+        // 🛑 [Manual Tool Override] 사용자가 직접 설치할 때는 환경 제약을 무시합니다.
         const normalizedVal = isMineral ? currentVal : (currentVal / 100);
-        if (normalizedVal < 0.05 && !(isAquatic && isWaterBiome)) return;
+        if (!forceSpawn && normalizedVal < 0.05 && !(isAquatic && isWaterBiome)) return null;
 
         // 팩토리를 통해 리소스 생성
-        this.engine.entityFactory.createResource(resourceId, x, y, currentVal);
+        const treeId = this.engine.entityFactory.createResource(resourceId, x, y, normalizedVal);
+
+        // 🐝 [Beehive Integration] 벌집나무일 경우 벌들 스폰
+        if (resourceId.includes('beehive') && treeId) {
+            this.spawnBee(x, y, 'queen', treeId);
+            this.spawnBee(x, y, 'worker', treeId);
+            this.spawnBee(x, y, 'worker', treeId);
+        }
+
+        return treeId;
+    }
+
+    spawnBee(x, y, role = 'worker', hiveId = null) {
+        const id = this.engine.entityFactory.createAnimal('bee', x, y);
+        const bee = this.entityManager.entities.get(id);
+        if (bee) {
+            const animal = bee.components.get('Animal');
+            if (animal) {
+                animal.role = role;
+                animal.hiveId = hiveId;
+            }
+            const visual = bee.components.get('Visual');
+            if (visual) {
+                visual.role = role; // 렌더러에서 크기나 색상 차이를 위해 사용
+            }
+        }
+        return id;
     }
 
     spawnEntity(payload) {

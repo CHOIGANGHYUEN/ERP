@@ -105,9 +105,27 @@ export class InspectTool extends Tool {
     }
 }
 
+export class FillTool extends Tool {
+    constructor(config) {
+        super(config);
+        this.biome = config.biome;
+    }
+    get isInstant() { return true; }
+    onMouseDown() {
+        return { 
+            type: 'APPLY_FILL_TOOL', 
+            payload: { biome: BIOME_NAMES_TO_IDS.get(this.biome) } 
+        };
+    }
+}
+
 // 🚀 DI Config: 신규 도구 추가 시 이곳에 선언하기만 하면 전체 시스템이 자동으로 연동됨 (개방폐쇄 원칙)
 export const DefaultTools = [
     new MoveTool(),
+    
+    // 🎨 Fill (Instant Whole-map actions)
+    new FillTool({ id: 'fill_grass', name: 'Fill Meadow', icon: '🎨', category: 'Landscape', biome: 'GRASS' }),
+    new FillTool({ id: 'fill_dirt', name: 'Fill Dirt', icon: '🧱', category: 'Landscape', biome: 'DIRT' }),
     
     // 🌍 Landscape (Biomes)
     new SprinkleTool({ id: 'paint_grass', name: 'Meadow', icon: '🌱', category: 'Landscape', color: '#a8e063', biome: 'GRASS' }),

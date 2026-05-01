@@ -1,86 +1,30 @@
 {
     "sheep": {
-        "id": "sheep",
-        "name": "Sheep",
-        "diet": "herbivore",
-        "maxStomach": 3.0,
-        "digestionSpeed": 0.15,
-        "excreteThreshold": 1.0,
-        "reproductionThreshold": 1.5,
-        "moveSpeed": 35,
-        "weight": 50,
-        "herdLimit": 20
-    },
-    "human": {
-        "id": "human",
-        "name": "Human",
-        "diet": "omnivore",
-        "maxStomach": 2.5,
-        "digestionSpeed": 0.2,
-        "excreteThreshold": 1.2,
-        "reproductionThreshold": 1.8,
-        "moveSpeed": 45,
-        "weight": 70,
-        "herdLimit": 5
-    },
-    "bee": {
-        "id": "bee",
-        "name": "Bee",
-        "diet": "herbivore",
-        "maxStomach": 1.0,
-        "digestionSpeed": 0.1,
-        "excreteThreshold": 2.0,
-        "reproductionThreshold": 0.0,
-        "moveSpeed": 45,
-        "weight": 1,
-        "herdLimit": 50
-    },
-    "cow": {
-        "id": "cow",
-        "name": "Cow",
-        "diet": "herbivore",
-        "maxStomach": 5.0,
-        "digestionSpeed": 0.1,
-        "excreteThreshold": 1.5,
-        "reproductionThreshold": 3.0,
-        "moveSpeed": 25,
-        "weight": 500,
-        "herdLimit": 10
+        "moveSpeed": 30,
+        "runSpeedMultiplier": 1.4,
+        "hungerDecayRate": 0.2,
+        "fatigueIncreaseRate": 0.1,
+        "approachSlowdownRadius": 20
     },
     "wolf": {
-        "id": "wolf",
-        "name": "Wolf",
-        "diet": "carnivore",
-        "maxStomach": 3.0,
-        "digestionSpeed": 0.15,
-        "excreteThreshold": 1.5,
-        "reproductionThreshold": 2.0,
-        "moveSpeed": 55,
-        "weight": 40,
-        "herdLimit": 6
+        "moveSpeed": 45,
+        "runSpeedMultiplier": 1.6,
+        "hungerDecayRate": 0.15,
+        "fatigueIncreaseRate": 0.08,
+        "approachSlowdownRadius": 30
     },
-    "hyena": {
-        "id": "hyena",
-        "name": "Hyena",
-        "diet": "carnivore",
-        "maxStomach": 3.5,
-        "digestionSpeed": 0.2,
-        "excreteThreshold": 1.5,
-        "reproductionThreshold": 2.5,
-        "moveSpeed": 50,
-        "weight": 50,
-        "herdLimit": 10
+    "human": {
+        "moveSpeed": 40,
+        "runSpeedMultiplier": 1.5,
+        "hungerDecayRate": 0.25,
+        "fatigueIncreaseRate": 0.12,
+        "approachSlowdownRadius": 20
     },
-    "wild_dog": {
-        "id": "wild_dog",
-        "name": "Wild Dog",
-        "diet": "carnivore",
-        "maxStomach": 2.5,
-        "digestionSpeed": 0.1,
-        "excreteThreshold": 1.0,
-        "reproductionThreshold": 1.5,
-        "moveSpeed": 60,
-        "weight": 25,
-        "herdLimit": 12
+    "bee": {
+        "moveSpeed": 45,
+        "runSpeedMultiplier": 1.0,
+        "hungerDecayRate": 0.1,
+        "fatigueIncreaseRate": 0.05,
+        "approachSlowdownRadius": 5
     }
 }
