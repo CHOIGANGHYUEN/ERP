@@ -48,6 +48,30 @@ export default class State extends Component {
         this.wanderAngle = Math.random() * Math.PI * 2; // 배회(Wander) 방향 (무작위)
         this.stateTimer = 0;          // 특정 상태(대기, 휴식 등)에 머문 시간 기록용
         this.searchCooldown = 0;      // 먹이 탐색 쿨다운
+
+        // 🧠 [Ecological Cycle Update] 상태 스택 (인터럽트 대응)
+        this.modeStack = []; 
     }
 
+    /**
+     * 🚀 현재 상태를 스택에 저장하고 새로운 상태로 전환합니다. (인터럽트)
+     */
+    pushMode(nextMode) {
+        if (this.mode === nextMode) return;
+        this.modeStack.push(this.mode);
+        this.mode = nextMode;
+        this.stateTimer = 0; // 타이머 초기화
+    }
+
+    /**
+     * 🔙 이전 상태로 복구합니다. 스택이 비어있으면 IDLE로 돌아갑니다.
+     */
+    popMode() {
+        if (this.modeStack.length > 0) {
+            this.mode = this.modeStack.pop();
+        } else {
+            this.mode = 'idle';
+        }
+        this.stateTimer = 0;
+    }
 }

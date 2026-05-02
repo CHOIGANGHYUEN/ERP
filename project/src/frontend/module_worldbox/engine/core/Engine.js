@@ -152,6 +152,16 @@ export default class Engine {
             this.refreshWaterPixels();
         });
 
+        // 💀 [God Power] 엔티티 강제 제거 요청 처리
+        this.eventBus.on('ENTITY_KILL_REQUEST', (id) => {
+            console.log(`💀 God Power: Removing entity ${id}`);
+            this.entityManager.removeEntity(id);
+            if (this.selectedId === id) {
+                this.selectedId = null;
+                this.eventBus.emit('ENTITY_SELECTED', null);
+            }
+        });
+
         // 📡 Subscribe to Stats updates
         // Engine은 StatsMonitor를 통해 통계를 관리하므로, EventBus를 통해 업데이트를 받습니다.
         this.eventBus.on('STATS_UPDATED', (payload) => {

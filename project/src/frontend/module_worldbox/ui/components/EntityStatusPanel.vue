@@ -36,23 +36,36 @@
         </span>
       </div>
 
-      <!-- 🥩 동물 전용 상태 (위장/허기) -->
+      <!-- 🥩 동물/인간 공통 상태 (위장/허기, 피로도, 나이) -->
       <template v-if="entity.maxHunger !== undefined">
+        <!-- ⏳ 나이 및 성장 단계 -->
+        <div class="status-row age-row" v-if="entity.age !== undefined">
+          <span class="label">Age:</span>
+          <span class="value age-text">
+            {{ Math.floor(entity.age) }}y <span class="stage-tag">{{ entity.growthStage }}</span>
+          </span>
+        </div>
+
         <div class="status-row">
-          <span class="label">Stomach:</span>
+          <span class="label">Hunger:</span>
           <div class="progress-bar">
             <div class="fill stomach" :style="{ width: getPercentage(entity.hunger, entity.maxHunger) + '%' }"></div>
           </div>
-          <span class="value-sm">{{ (entity.hunger || 0).toFixed(1) }} / {{ entity.maxHunger }}</span>
+          <span class="value-sm">{{ (entity.hunger || 0).toFixed(0) }}%</span>
         </div>
 
-        <!-- 😴 피로도 표시 추가 -->
         <div class="status-row" v-if="entity.fatigue !== undefined">
           <span class="label">Fatigue:</span>
           <div class="progress-bar">
             <div class="fill fatigue" :style="{ width: entity.fatigue + '%' }"></div>
           </div>
           <span class="value-sm">{{ Math.floor(entity.fatigue) }}%</span>
+        </div>
+
+        <!-- 🧠 AI 상태 스택 (인터럽트 확인용) -->
+        <div class="status-row" v-if="entity.modeStackCount > 0">
+          <span class="label">Waiting Tasks:</span>
+          <span class="value stack-count">⏳ {{ entity.modeStackCount }} stored</span>
         </div>
 
         <div class="status-row" v-if="entity.animalYield">
@@ -117,6 +130,14 @@
           </div>
         </div>
       </template>
+
+      <!-- 💀 KILL BUTTON (God Power) -->
+      <div class="divider"></div>
+      <div class="action-section">
+        <button class="kill-btn" @click="handleKill">
+          <span class="kill-icon">💀</span> ELIMINATE
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -131,6 +152,12 @@ const entity = computed(() => store.selectedEntity);
 
 const closePanel = () => {
   store.clearSelection();
+};
+
+const handleKill = () => {
+  if (entity.value && confirm(`Are you sure you want to eliminate ${entity.value.name}?`)) {
+    store.killEntity(entity.value.id);
+  }
 };
 
 // 직업 메타데이터 (이모지, 한글명, 색상)
@@ -186,6 +213,8 @@ const getItemEmoji = (type) => {
   top: 20px;
   right: 20px;
   width: 250px;
+  max-height: 85vh;
+  overflow-y: auto;
   background: rgba(15, 15, 20, 0.9);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -196,6 +225,21 @@ const getItemEmoji = (type) => {
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
   font-family: sans-serif;
   z-index: 1100;
+}
+
+/* Custom Scrollbar */
+.entity-status-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.entity-status-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.entity-status-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+.entity-status-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 10px; }
@@ -293,6 +337,69 @@ const getItemEmoji = (type) => {
 .target-text.is-searching {
   color: #ffca28;
   animation: blink 1.5s infinite;
+}
+
+/* ⏳ Age & AI Stack Styles */
+.age-row {
+  margin-bottom: 4px;
+}
+.age-text {
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stage-tag {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  text-transform: uppercase;
+  color: #81d4fa;
+  border: 1px solid rgba(129, 212, 250, 0.3);
+}
+.stack-count {
+  color: #ce93d8;
+  font-size: 0.8rem;
+}
+
+/* 💀 God Power: KILL Button */
+.action-section {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.kill-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.3);
+}
+
+.kill-btn:hover {
+  filter: brightness(1.2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 15px rgba(211, 47, 47, 0.4);
+}
+
+.kill-btn:active {
+  transform: translateY(0);
+}
+
+.kill-icon {
+  font-size: 1rem;
 }
 
 @keyframes blink {

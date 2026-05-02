@@ -64,9 +64,17 @@ export default class EatState extends State {
                 } else if (targetRes && targetRes.edible) {
                     this.system.consumePlant(entity, target);
                 }
+                
                 state.timer = 0;
-                state.targetId = null; // 이 음식은 먹었음, 다음 판단은 Brain에게 위임
-                return AnimalStates.IDLE;
+                state.targetId = null; 
+                
+                // 🔙 [Ecological Cycle] 이전 작업으로 복귀 (인터럽트 종료)
+                if (state.popMode) {
+                    state.popMode();
+                } else {
+                    state.mode = AnimalStates.IDLE;
+                }
+                return state.mode;
             }
 
             // 식물 소화 품질 기록

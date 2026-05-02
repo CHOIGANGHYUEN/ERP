@@ -225,15 +225,17 @@ export default class TargetManager {
         let bestId = null;
 
         for (const [id, entity] of this.entityManager.entities) {
-            const blueprint = entity.components.get('Blueprint');
+            const structure = entity.components.get('Structure');
             const transform = entity.components.get('Transform');
-
-            if (blueprint && transform && !blueprint.isFinished) {
+            
+            // 🏗️ Structure 컴포넌트의 isBlueprint 플래그로 판단
+            if (structure && structure.isBlueprint && transform && !structure.isComplete) {
                 // 🛑 [Blacklist Check] 도달 불가능 타겟 제외
                 const aiState = this.entityManager.entities.get(requesterId)?.components.get('AIState');
                 if (aiState && aiState.unreachableTargets && aiState.unreachableTargets.has(id)) {
                     continue;
                 }
+
                 const dx = transform.x - pos.x;
                 const dy = transform.y - pos.y;
                 const distSq = dx * dx + dy * dy;

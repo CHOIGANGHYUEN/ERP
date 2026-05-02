@@ -322,6 +322,13 @@ export default class Pathfinder {
 
                 if (state.pathIndex < state.path.length) {
                     const targetWp = state.path[state.pathIndex];
+
+                    // 🚧 [Real-time Obstacle Detection] 다음 지점까지 막혔는지 실시간 체크
+                    if (this.isLineBlocked(transform.x, transform.y, targetWp.x, targetWp.y, engine)) {
+                        state.path = null; // 경로 무효화 -> 다음 프레임에 재탐색 유도
+                        return false;
+                    }
+
                     const nx = targetWp.x - transform.x;
                     const ny = targetWp.y - transform.y;
                     const d = Math.hypot(nx, ny);
@@ -337,21 +344,50 @@ export default class Pathfinder {
         return false;
     }
 
+    /**
+     * 🚧 경로상에 지형이나 건물이 가로막고 있는지 검사
+     */
     static isLineBlocked(x1, y1, x2, y2, engine) {
         if (!engine || !engine.terrainGen) return false;
         const dx = x2 - x1;
         const dy = y2 - y1;
         const dist = Math.hypot(dx, dy);
         const steps = Math.ceil(dist / 10);
-        for (let i = 1; i < steps; i++) {
+        
+        const em = engine.entityManager;
+        const spatialHash = engine.spatialHash;
+
+        for (let i = 1; i <= steps; i++) {
             const tx = x1 + (dx * i / steps);
             const ty = y1 + (dy * i / steps);
+
+            // 1. 지형 검사 (물, 산 등)
             if (!engine.terrainGen.isNavigable(tx, ty)) return true;
 
-            // 직선 경로상에 바다가 포함되어 있는지도 엄격하게 물(Biome 0~3)만 체크
+            // 🌊 바다 체크 (Biome 0~3)
             if (typeof engine.terrainGen.getBiomeAt === 'function') {
                 const biomeId = engine.terrainGen.getBiomeAt(Math.floor(tx), Math.floor(ty));
                 if (biomeId !== undefined && biomeId < 4) return true;
+            }
+
+            // 2. 건물 검사 (SpatialHash를 이용한 효율적인 충돌 감지)
+            if (spatialHash) {
+                const nearby = spatialHash.query(tx, ty, 15);
+                for (const id of nearby) {
+                    const ent = em.entities.get(id);
+                    if (ent && ent.components.has('Building')) {
+                        const struct = ent.components.get('Structure');
+                        if (struct && struct.isBlueprint) continue; // 블루프린트는 통과 가능
+
+                        const bPos = ent.components.get('Transform');
+                        const bVis = ent.components.get('Visual');
+                        if (bPos && bVis) {
+                            const r = (bVis.size || 40) * 0.4; // 실제 히트박스 반경
+                            const distToB = Math.hypot(tx - bPos.x, ty - bPos.y);
+                            if (distToB < r) return true; // 건물에 가로막힘
+                        }
+                    }
+                }
             }
         }
         return false;

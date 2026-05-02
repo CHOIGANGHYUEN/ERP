@@ -73,14 +73,12 @@ export default class EconomyManager {
             }
 
             // 🏗️ 청사진 캐싱 (건설 AI용)
-            const bp = entity.components.get('Blueprint');
-            if (bp && !bp.isFinished) {
-                if (!this.blueprints) this.blueprints = [];
+            const structure = entity.components.get('Structure');
+            if (structure && structure.isBlueprint && !structure.isComplete) {
                 this.blueprints.push({
                     id,
-                    x: transform.x,
-                    y: transform.y,
-                    progress: bp.progress || 0
+                    type: structure.type,
+                    progress: structure.progress
                 });
             }
         }

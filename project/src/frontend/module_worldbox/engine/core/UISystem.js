@@ -147,6 +147,8 @@ export default class UISystem extends System {
             };
         }
 
+        const ageComp = target.components.get('Age');
+
         return {
             id: target.id, type: type, subType: subType, name: name, state: state,
             hunger: s ? s.hunger : m?.stomach, 
@@ -161,7 +163,12 @@ export default class UISystem extends System {
             jobType: civ?.jobType || null,
             targetId: targetId,
             targetName: targetName,
-            inventory: inventoryData
+            inventory: inventoryData,
+            
+            // 🧠 [Ecological Lifecycle Data]
+            age: ageComp?.currentAge,
+            growthStage: ageComp?.growthStage,
+            modeStackCount: stateComp?.modeStack?.length || 0
         };
     }
 

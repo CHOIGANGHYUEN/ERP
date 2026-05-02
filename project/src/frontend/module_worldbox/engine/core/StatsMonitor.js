@@ -34,11 +34,33 @@ export default class StatsMonitor {
             this.entityCount = this.engine.entityManager.entities.size;
 
             if (this.onUpdate) {
+                // 🏘️ 마을 통계 수집
+                const villageStats = [];
+                const civSystem = this.engine.systemManager.civilization;
+                if (civSystem && civSystem.villages) {
+                    for (const [vId, village] of civSystem.villages) {
+                        const blackboard = this.engine.systemManager.blackboard;
+                        const storages = blackboard?.storages?.filter(s => s.villageId === vId) || [];
+                        const totalFood = storages.reduce((sum, s) => sum + (s.items['food'] || 0), 0);
+                        const totalWood = storages.reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
+                        
+                        villageStats.push({
+                            id: vId,
+                            name: village.name || `Village ${vId}`,
+                            population: village.members?.size || 0,
+                            food: Math.floor(totalFood),
+                            wood: Math.floor(totalWood),
+                            houses: village.buildings?.filter(b => b.type === 'house').length || 0
+                        });
+                    }
+                }
+
                 this.onUpdate({ 
                     fps: this.fps,
                     entityCount: this.entityCount,
                     totalFertility: this.allocatedFertility,
-                    totalMaxFertility: this.maxPotentialFertility
+                    totalMaxFertility: this.maxPotentialFertility,
+                    villages: villageStats
                 });
             }
         }

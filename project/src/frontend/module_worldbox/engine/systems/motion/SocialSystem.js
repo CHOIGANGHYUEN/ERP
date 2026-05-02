@@ -121,20 +121,8 @@ export default class SocialSystem {
             return;
         }
 
-        const dx = leaderTransform.x - transform.x;
-        const dy = leaderTransform.y - transform.y;
-        const distSq = dx * dx + dy * dy;
-        const timeScale = dt * 60;
-
-        if (distSq > 900) {
-            // 리더와 30px 이상 떨어지면 리더를 향해 이동 (Cohesion)
-            transform.vx += dx * 0.05 * timeScale;
-            transform.vy += dy * 0.05 * timeScale;
-        } else {
-            // 리더와 충분히 가까워지면 리더의 이동 방향과 속도를 따라함 (Alignment)
-            transform.vx += ((leaderTransform.vx || 0) - transform.vx) * 0.1 * timeScale;
-            transform.vy += ((leaderTransform.vy || 0) - transform.vy) * 0.1 * timeScale;
-        }
-
+        // 🛑 [Legacy Cleanup] Pathfinder 없이 속도를 직접 조작하던 로직 제거
+        // 이제 모든 배회 및 이동은 WanderState 등에서 Pathfinder를 통해 정식으로 수행됩니다.
+        return;
     }
 }

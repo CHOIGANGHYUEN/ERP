@@ -38,8 +38,16 @@ export default class TimeSystem {
 
         if (this.minutes >= 60) {
             const hAdd = Math.floor(this.minutes / 60);
+            const oldHours = this.hours;
             this.hours = (this.hours + hAdd) % 24;
             this.minutes = this.minutes % 60;
+
+            // 🌙 주야간 이벤트 브로드캐스트
+            if (oldHours < 22 && this.hours >= 22) {
+                engine.eventBus.emit('NIGHT_TIME', { hours: this.hours });
+            } else if (oldHours < 6 && this.hours >= 6) {
+                engine.eventBus.emit('DAY_TIME', { hours: this.hours });
+            }
         }
     }
 

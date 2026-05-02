@@ -1,30 +1,65 @@
 {
     "sheep": {
+        "diet": "herbivore",
         "moveSpeed": 30,
         "runSpeedMultiplier": 1.4,
-        "hungerDecayRate": 0.2,
-        "fatigueIncreaseRate": 0.1,
+        "hungerDecayRate": 0.1,
+        "fatigueIncreaseRate": 0.05,
+        "lifespan": 15,
         "approachSlowdownRadius": 20
     },
+    "cow": {
+        "diet": "herbivore",
+        "moveSpeed": 25,
+        "runSpeedMultiplier": 1.2,
+        "hungerDecayRate": 0.08,
+        "fatigueIncreaseRate": 0.04,
+        "lifespan": 20,
+        "approachSlowdownRadius": 25
+    },
     "wolf": {
-        "moveSpeed": 45,
-        "runSpeedMultiplier": 1.6,
-        "hungerDecayRate": 0.15,
+        "diet": "carnivore",
+        "moveSpeed": 50,
+        "runSpeedMultiplier": 1.8,
+        "hungerDecayRate": 0.12,
         "fatigueIncreaseRate": 0.08,
+        "lifespan": 12,
+        "approachSlowdownRadius": 35
+    },
+    "wild_dog": {
+        "diet": "carnivore",
+        "moveSpeed": 55,
+        "runSpeedMultiplier": 1.7,
+        "hungerDecayRate": 0.15,
+        "fatigueIncreaseRate": 0.1,
+        "lifespan": 10,
+        "approachSlowdownRadius": 30
+    },
+    "hyena": {
+        "diet": "carnivore",
+        "moveSpeed": 48,
+        "runSpeedMultiplier": 1.6,
+        "hungerDecayRate": 0.12,
+        "fatigueIncreaseRate": 0.08,
+        "lifespan": 14,
         "approachSlowdownRadius": 30
     },
     "human": {
+        "diet": "omnivore",
         "moveSpeed": 40,
         "runSpeedMultiplier": 1.5,
-        "hungerDecayRate": 0.25,
-        "fatigueIncreaseRate": 0.12,
+        "hungerDecayRate": 0.15,
+        "fatigueIncreaseRate": 0.1,
+        "lifespan": 80,
         "approachSlowdownRadius": 20
     },
     "bee": {
+        "diet": "herbivore",
         "moveSpeed": 45,
         "runSpeedMultiplier": 1.0,
-        "hungerDecayRate": 0.1,
-        "fatigueIncreaseRate": 0.05,
+        "hungerDecayRate": 0.2,
+        "fatigueIncreaseRate": 0.15,
+        "lifespan": 1,
         "approachSlowdownRadius": 5
     }
 }

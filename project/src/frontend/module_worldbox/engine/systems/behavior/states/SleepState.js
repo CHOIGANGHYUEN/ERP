@@ -23,6 +23,10 @@ export default class SleepState extends State {
 
         // 4. 피로도가 충분히 회복되면 깨어남
         if (stats.fatigue <= 5) {
+            if (state.popMode) {
+                state.popMode();
+                return state.mode;
+            }
             return AnimalStates.IDLE;
         }
 

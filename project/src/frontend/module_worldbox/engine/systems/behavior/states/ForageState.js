@@ -64,7 +64,10 @@ export default class ForageState extends State {
             return AnimalStates.EAT;
         } else {
             // 🚀 [Troubleshooting 3] 초식동물도 장애물(건물)을 피해 먹이를 찾도록 A* 적용
-            const speed = (entity.components.get('BaseStats')?.speed || 0.8) * 50;
+            // 🚀 [Bug Fix] 과도한 속도 배율(*50) 제거. BaseStats.speed는 이미 초당 픽셀 속도임.
+            const stats = entity.components.get('BaseStats');
+            const speed = (stats?.speed || 40); 
+            
             if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine) === -1) {
                 // 🌊 도달할 수 없는 곳(바다 건너)이면 즉시 포기
                 state.targetId = null;

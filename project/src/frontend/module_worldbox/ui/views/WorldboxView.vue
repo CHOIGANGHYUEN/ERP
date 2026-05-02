@@ -8,6 +8,7 @@
       <EntityStatusPanel />
 
       <!-- TOP LEFT DEBUG PANEL -->
+      <!-- TOP LEFT DEBUG PANEL -->
       <div class="debug-panel">
         <div class="debug-header">🔬 SIMULATION DEBUG</div>
         <div class="debug-item">
@@ -22,7 +23,22 @@
           FPS: {{ fps }} | Entities: {{ entityCount }} <br/>
           Fertility: {{ (totalFertility / 100).toLocaleString() }} / {{ (totalMaxFertility / 100).toLocaleString() }} ({{ ((totalFertility / totalMaxFertility) * 100).toFixed(1) }}%)
         </div>
+      </div>
 
+      <!-- 🏘️ Village Management Panel -->
+      <div class="village-panel" v-if="store.villages.length > 0">
+        <div class="panel-header-v">🏘️ VILLAGE STATUS</div>
+        <div class="village-list">
+          <div v-for="v in store.villages" :key="v.id" class="village-card">
+            <div class="v-name">{{ v.name }}</div>
+            <div class="v-stats">
+              <div class="v-stat" title="Population">👤 {{ v.population }}</div>
+              <div class="v-stat" title="Food Stock">🍖 {{ v.food }}</div>
+              <div class="v-stat" title="Wood Stock">🪵 {{ v.wood }}</div>
+              <div class="v-stat" title="Houses">🏠 {{ v.houses }}</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="top-bar">
@@ -160,6 +176,10 @@ onMounted(() => {
     engine = new Engine(gameCanvas.value);
     const store = useWorldboxStore();
     
+    // 🌍 Global access for UI components
+    window.gameEngine = engine;
+    window.eventBus = engine.eventBus;
+    
     engine.onEntitySelect = (data) => {
       store.selectEntity(data);
     };
@@ -179,6 +199,11 @@ onMounted(() => {
       entityCount.value = stats.entityCount;
       totalFertility.value = Math.floor(stats.totalFertility);
       totalMaxFertility.value = Math.floor(stats.totalMaxFertility);
+      
+      // 🏘️ Store 동기화
+      if (stats.villages) {
+        store.updateVillageStats(stats.villages);
+      }
     };
 
 
@@ -283,6 +308,70 @@ const handleGodPower = (toolId) => {
   margin-top: 5px;
   color: #aaa;
   font-size: 0.65rem;
+}
+
+/* 🏘️ Village Panel Styles */
+.village-panel {
+  position: absolute;
+  top: 210px; /* Below debug panel */
+  left: 20px;
+  width: 200px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  pointer-events: auto;
+  color: #eee;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-header-v {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #4caf50;
+  border-bottom: 1px solid rgba(76, 175, 80, 0.3);
+  padding-bottom: 4px;
+}
+
+.village-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.village-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.v-name {
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.v-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.v-stat {
+  font-size: 0.65rem;
+  color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 input[type="range"] {

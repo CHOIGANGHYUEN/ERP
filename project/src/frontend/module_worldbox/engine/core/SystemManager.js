@@ -47,13 +47,13 @@ export default class SystemManager {
         // Phase 2: Logic & AI
         this.humanBehavior = new HumanBehaviorSystem(em, eb, engine, this.spatialHash);
         this.behavior = new AnimalBehaviorSystem(em, eb, engine, this.spatialHash);
-        this.combat = new CombatSystem(em, eb);
+        this.combat = new CombatSystem(em, eb, engine);
         this.deathProcessor = new DeathProcessor(em, eb, engine);
         this.social = new SocialSystem(engine);
         this.gathering = new GatheringSystem(em, eb, engine);
         this.consumption = new ConsumptionSystem(em, eb, engine);
         this.metabolism = new MetabolismSystem(em, eb, tg);
-        this.reproduction = new ReproductionSystem(em, eb);
+        this.reproduction = new ReproductionSystem(em, eb, engine);
         this.spawner = new SpawnerSystem(em, eb, engine);
         
         // 🌾 Economy & Lifecycle Expansion

@@ -36,7 +36,7 @@ export default class HumanBrain {
         
         if (state.mode === 'deposit' && !isFull) {
             // 건축가이거나 촌장인데 나무가 있다면 건설지로 가는 것이 더 효율적 (강제 반납 해제)
-            const isWorker = civ?.jobType === 'builder' || civ?.jobType === 'mayor';
+            const isWorker = civ?.jobType === 'architect' || civ?.jobType === 'chief';
             if (isWorker && (inventory?.items['wood'] || 0) >= 5) {
                 // 아래 직업 판단 로직을 타게 함
             } else {
@@ -58,8 +58,8 @@ export default class HumanBrain {
         // ------------------ 생존 욕구 충족 완료 ------------------ //
 
         // 🚀 [Resource Scarcity Logic] - 최우선 순위로 격상
-        // 건축가(Builder), 촌장(Mayor), 또는 직업이 없는 경우
-        const isBuilder = state.mode === 'build' || civ?.jobType === 'builder' || civ?.jobType === 'mayor';
+        // 건축가(Architect), 촌장(Chief), 또는 직업이 없는 경우
+        const isBuilder = state.mode === 'build' || civ?.jobType === 'architect' || civ?.jobType === 'chief';
         const isUnemployed = !civ?.jobType || civ?.jobType === 'unemployed' || civ?.jobType === 'none';
 
         if (isBuilder || isUnemployed) {
@@ -75,6 +75,9 @@ export default class HumanBrain {
                 
                 if (storages.length === 0 || totalWoodInVillage < 5) {
                     return 'gather_wood';
+                } else {
+                    // 창고에 나무가 있다면 직접 가지러 가도록 건설 모드 제안
+                    return 'build';
                 }
             }
         }
@@ -89,30 +92,55 @@ export default class HumanBrain {
             }
         }
 
-        // 5. 인벤토리가 꽉 찼더라도 건설할 건물이 있다면 건설지로 직행 (자원 소모가 우선)
-        const blueprints = this.engine.systemManager.blackboard.blueprints || [];
-        const hasBlueprints = blueprints.length > 0;
-        const storages = this.engine.systemManager.blackboard.storages || [];
+        // 5. 건설 우선순위 절대화 (창고보다 우선)
+        const blackboard = this.engine.systemManager.blackboard;
+        const blueprints = blackboard.blueprints || [];
+        const storages = blackboard.storages || [];
+        const totalWoodInVillage = storages.reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
+        
+        // 🏗️ 이중 체크: 블랙보드에 없으면 공간 쿼리로 한 번 더 확인 (전역 범위 10000px)
+        let hasBlueprints = blueprints.length > 0;
+        if (!hasBlueprints) {
+            const nearestBP = this.em.findNearestEntityWithComponent(
+                entity.components.get('Transform').x, 
+                entity.components.get('Transform').y, 
+                10000, 
+                (ent) => {
+                    const struc = ent.components.get('Structure');
+                    return struc && struc.isBlueprint && !struc.isComplete;
+                },
+                this.engine.spatialHash
+            );
+            if (nearestBP) hasBlueprints = true;
+        }
 
-        if (hasBlueprints && (inventory?.items['wood'] || 0) >= 5) {
-            return 'build';
+        const woodInInv = (inventory?.items['wood'] || 0);
+
+        if (hasBlueprints) {
+            // 주머니에 나무가 5개 이상 있거나, 창고에 나무가 5개 이상 있다면 건설 모드 진입
+            if (woodInInv >= 5 || totalWoodInVillage >= 5) {
+                return 'build';
+            }
+            // 둘 다 없다면? 직접 캐러 가야 함 (무한 루프 방지)
+            this.engine.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '🪵🪓?', duration: 500 });
+            return 'gather_wood';
         }
 
         // 6. 인벤토리가 꽉 찼고, 더 이상 지을 건물도 없을 때만 창고에 보관
         if (inventory && inventory.getTotal() >= inventory.capacity) {
             if (storages.length > 0) return 'deposit';
-            // 창고도 없고 지을 건물도 없다면 일단 대기 (WANDER/IDLE)
         }
 
         // 🚨 [직업 배정 누락 및 촌장 노동 완벽 보완] 
-        // 촌장이거나 직업이 없는 경우, 또는 현재 할 일이 없어 노는 상태(IDLE)라면 생산적인 일을 찾습니다.
-        if (isUnemployed || civ?.jobType === 'mayor' || baseDecision === AnimalStates.IDLE) {
-            if (stats.hunger > 45) { // 생존이 보장된 상태라면
+        if (isUnemployed || civ?.jobType === 'chief' || baseDecision === AnimalStates.IDLE) {
+            if (stats.hunger > 35) { 
                 if (hasBlueprints) {
-                    return 'build';
+                    if (woodInInv >= 5 || totalWoodInVillage >= 5) return 'build';
+                    this.engine.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '🪵?', duration: 500 });
+                    return 'gather_wood';
                 }
-
-                // 2순위: 벌목
+                // 촌장 전용: 지을 게 없다면 건설보다는 마을을 살피는 느낌으로 방황 유도
+                if (civ?.jobType === 'chief') return AnimalStates.WANDER;
                 return 'gather_wood';
             }
         }

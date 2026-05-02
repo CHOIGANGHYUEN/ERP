@@ -47,7 +47,9 @@ export default class HuntState extends State {
             return AnimalStates.EAT;
         } else {
             // 🚀 [Troubleshooting 3] 동물도 장애물을 피해 타겟을 추적하도록 A* 적용
-            const speed = (entity.components.get('BaseStats')?.speed || 1.0) * 60; // 초당 60px 내외
+            // 🚀 [Bug Fix] 과도한 속도 배율(*60) 제거. BaseStats.speed는 이미 초당 픽셀 속도임.
+            const stats = entity.components.get('BaseStats');
+            const speed = (stats?.speed || 45) * 1.2; // 사냥 시에는 평소보다 20% 더 빠르게 질주
             if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine) === -1) {
                 // 도달 불가한 사냥감일 경우 추적 포기
                 state.targetId = null;

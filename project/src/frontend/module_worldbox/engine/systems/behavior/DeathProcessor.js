@@ -62,7 +62,26 @@ export default class DeathProcessor extends System {
             }
         }
 
-        // 2. 아이템 드롭 (벌이 아닌 경우에만 고기 생성)
+        // 2. 인벤토리 드롭 (가지고 있던 자원을 월드에 환원)
+        const inventory = entity.components.get('Inventory');
+        if (inventory && inventory.items) {
+            for (const [itemType, count] of Object.entries(inventory.items)) {
+                if (count > 0) {
+                    // 고기(meat)는 아래에서 별도로 생성하므로 중복 방지
+                    if (itemType === 'meat') continue; 
+                    
+                    for (let i = 0; i < Math.min(5, count); i++) { // 너무 많이 드랍하면 성능 저하되므로 최대 5개 제한
+                        this.eventBus.emit('SPAWN_ENTITY', { 
+                            type: itemType, 
+                            x: transform.x + (Math.random() - 0.5) * 20, 
+                            y: transform.y + (Math.random() - 0.5) * 20 
+                        });
+                    }
+                }
+            }
+        }
+
+        // 3. 아이템 드롭 (벌이 아닌 경우에만 고기 생성)
         const animal = entity.components.get('Animal');
         if (animal && animal.type !== 'bee') {
             this.eventBus.emit('SPAWN_ENTITY', { 
@@ -72,13 +91,23 @@ export default class DeathProcessor extends System {
             });
         }
 
-        // 3. 사회적 스탯 갱신 (벌집 등)
+        // 4. [Village Cleanup] 직업 및 마을 할당 해제
+        const civ = entity.components.get('Civilization');
+        if (civ && civ.villageId !== undefined) {
+            this.eventBus.emit('VILLAGER_DEATH', { 
+                entityId: entity.id, 
+                villageId: civ.villageId,
+                jobType: civ.jobType
+            });
+        }
+
+        // 5. 사회적 스탯 갱신 (벌집 등)
         this.updateHiveStatsOnDeath(entity);
 
-        // 4. 공간 해시 정리
+        // 6. 공간 해시 정리
         this.cleanupSpatialHash(entity, transform);
 
-        // 5. 소멸 이벤트 전파
+        // 7. 소멸 이벤트 전파
         this.eventBus.emit('ENTITY_DECAYED', { id: entity.id, transform });
     }
 

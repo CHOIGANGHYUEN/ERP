@@ -10,37 +10,70 @@ export default class MetabolismSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
+        const engine = this.engine; // Engine 참조 (speciesConfig 접근용)
+        const speciesConfig = engine?.speciesConfig || {};
 
-        // 🐕 1. 동물 대사 처리 (Animal Metabolism)
+        // 🐕 모든 생명체 대사 처리 (Animals & Humans)
         for (const id of em.animalIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
 
-            const animal = entity.components.get('Animal');
-            const metabolism = entity.components.get('Metabolism');
-            const transform = entity.components.get('Transform');
             const stats = entity.components.get('BaseStats');
+            const age = entity.components.get('Age');
+            const animal = entity.components.get('Animal');
+            const jobCtrl = entity.components.get('JobController');
+            const transform = entity.components.get('Transform');
+            const metabolism = entity.components.get('Metabolism');
 
-            if (animal && metabolism && transform) {
-                if (stats) {
-                    metabolism.stomach = (stats.hunger / (stats.maxHunger || 100)) * metabolism.maxStomach;
-                    metabolism.storedFertility = stats.storedFertility || 0;
+            if (!stats || !animal) continue;
+
+            const config = speciesConfig[animal.type] || {};
+            
+            // ⏳ 1. 허기 및 피로도 감쇄
+            const hungerDecay = (config.hungerDecayRate || 0.1) * dt;
+            const fatigueIncrease = (config.fatigueIncreaseRate || 0.05) * dt;
+            
+            stats.hunger = Math.max(0, stats.hunger - hungerDecay);
+            stats.fatigue = Math.min(stats.maxFatigue || 100, stats.fatigue + fatigueIncrease);
+
+            // 👴 2. 노화 처리 (1시간마다 1달 정도 나이를 먹는 느낌으로 밸런싱)
+            if (age) {
+                // dt는 초 단위. 3600초(1시간)마다 0.08세(약 1개월) 증가
+                age.currentAge += dt * 0.00002; 
+                if (age.currentAge >= age.maxAge) {
+                    stats.health = 0; // 자연사
                 }
+            }
+
+            // 💀 3. 아사 처리
+            if (stats.hunger <= 0) {
+                stats.health -= dt * 5; // 굶주림으로 인한 서서히 사망
+            }
+
+            // 🆘 4. 생존 인터럽트 트리거 (JobController 보유 시)
+            if (jobCtrl) {
+                if (stats.hunger < 30) {
+                    jobCtrl.requestSurvivalInterrupt(entity, 'eat');
+                } else if (stats.fatigue > 80) {
+                    jobCtrl.requestSurvivalInterrupt(entity, 'sleep');
+                }
+            }
+
+            // 💩 5. 배설 로직 (기존 로직 유지 및 보강)
+            if (metabolism && transform) {
+                metabolism.stomach = (stats.hunger / (stats.maxHunger || 100)) * metabolism.maxStomach;
+                metabolism.storedFertility = stats.storedFertility || 0;
                 this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt, stats);
                 if (stats) stats.storedFertility = metabolism.storedFertility;
-                const visual = entity.components.get('Visual');
-                if (visual) visual.isPooping = metabolism.isPooping;
             }
         }
 
-        // 💩 2. 배설물 분해 및 비옥도 환원 (Poop Decomposition)
+        // 💩 6. 배설물 분해 (기존 로직 유지)
         for (const id of em.resourceIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
-
             const resource = entity.components.get('Resource');
             const transform = entity.components.get('Transform');
-
             if (resource && resource.isFertilizer && transform) {
                 this.processDecomposition(id, entity, resource, transform, dt);
             }

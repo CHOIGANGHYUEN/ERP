@@ -55,6 +55,13 @@ export default class AnimalBehaviorSystem extends System {
                     if (animal.type === 'bee') {
                         this.beeBrain.update(id, state, transform, animal, dt * 2); 
                     } else {
+                        // 🥩 [Diet Sync] 이미 소환된 개체들의 식성이 설정 파일과 다르면 강제 동기화 (레거시 데이터 보정)
+                        const config = this.engine.speciesConfig[animal.type];
+                        if (config && config.diet && animal.diet !== config.diet) {
+                            animal.diet = config.diet;
+                            if (stats) stats.diet = config.diet;
+                        }
+
                         // 인간(human)은 HumanBehaviorSystem에서 별도로 처리하므로 스킵
                         if (animal.type !== 'human') {
                             this.updateEntityAI(id, entity, state, transform, animal, stats, dt * 2);

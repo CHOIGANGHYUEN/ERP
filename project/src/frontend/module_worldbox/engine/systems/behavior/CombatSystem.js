@@ -2,8 +2,9 @@ import System from '../../core/System.js';
 import { AnimalStates } from '../../components/behavior/State.js';
 
 export default class CombatSystem extends System {
-    constructor(entityManager, eventBus) {
+    constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
+        this.engine = engine;
 
         // 이벤트 버스를 구독하여 타 시스템과의 강결합 방지
         this.eventBus.on('COMBAT_ATTACK', this.handleAttack.bind(this));
@@ -19,6 +20,18 @@ export default class CombatSystem extends System {
         if (attackerStats && defenderStats) {
             const damage = attackerStats.strength || 10;
             defenderStats.takeDamage(damage);
+
+            // 🎨 시각적 피드백 트리거 (공격/피격 모션 - 타임스탬프 방식)
+            const totalTime = this.engine.time || Date.now();
+            const attackerVisual = attacker.components.get('Visual');
+            const defenderVisual = defender.components.get('Visual');
+            
+            if (attackerVisual) {
+                attackerVisual.lastAttackTime = totalTime;
+            }
+            if (defenderVisual) {
+                defenderVisual.lastHitTime = totalTime;
+            }
 
             if (defenderStats.health <= 0 && defenderState) {
                 defenderState.mode = AnimalStates.DIE;

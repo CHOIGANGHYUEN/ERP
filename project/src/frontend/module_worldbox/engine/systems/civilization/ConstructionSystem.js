@@ -119,14 +119,18 @@ export default class ConstructionSystem extends System {
                         state.targetId = null;
                         state.path = null;
 
-                        // 건물 밖으로 밀어내기 (끼임 방지)
+                        // 건물 밖으로 밀어내기 (끼임 방지 - 부드럽게 위치 조정)
                         const transform = entity.components.get('Transform');
                         if (transform) {
                             const dx = transform.x - targetPos.x;
                             const dy = transform.y - targetPos.y;
                             const d = Math.hypot(dx, dy) || 1;
-                            transform.x += (dx / d) * 45; 
-                            transform.y += (dy / d) * 45;
+                            
+                            // 📏 고정값 45px 대신, 건물의 중심에서 약 30px 지점으로 부드럽게 재배치
+                            const pushDist = 30; 
+                            transform.x = targetPos.x + (dx / d) * pushDist; 
+                            transform.y = targetPos.y + (dy / d) * pushDist;
+                            
                             transform.vx = 0;
                             transform.vy = 0;
                         }

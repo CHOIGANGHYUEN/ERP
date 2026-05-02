@@ -27,7 +27,20 @@ export default class WanderState extends State {
 
                     if (state.targetId) {
                         state.searchCooldown = 0;
-                        return (animal.diet === DietType.HERBIVORE) ? AnimalStates.FORAGE : AnimalStates.HUNT;
+                        
+                        const targetEnt = this.system.engine.entityManager.entities.get(state.targetId);
+                        const isTargetAnimal = targetEnt && targetEnt.components.has('Animal');
+
+                        // 🍖 식성에 따른 행동 결정
+                        if (animal.diet === DietType.CARNIVORE) return AnimalStates.HUNT;
+                        if (animal.diet === DietType.HERBIVORE) return AnimalStates.FORAGE;
+                        
+                        // 🍱 잡식성(Omnivore)의 경우 타겟의 종류에 따라 결정
+                        if (animal.diet === DietType.OMNIVORE) {
+                            return isTargetAnimal ? AnimalStates.HUNT : AnimalStates.FORAGE;
+                        }
+                        
+                        return AnimalStates.FORAGE; // Fallback
                     }
                     
                     // 🧪 [Expert Optimization] 배가 고플수록 더 자주 수색하도록 쿨타임 조절

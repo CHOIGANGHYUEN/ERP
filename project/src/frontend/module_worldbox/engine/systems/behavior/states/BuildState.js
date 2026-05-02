@@ -37,7 +37,9 @@ export default class BuildState extends State {
         }
 
         const blueprint = em.entities.get(state.targetId);
-        if (!blueprint || !blueprint.components.has('Blueprint')) {
+        const structure = blueprint?.components.get('Structure');
+
+        if (!blueprint || !structure || !structure.isBlueprint) {
             state.targetId = null;
             state.buildPhase = 'CHECK_RESOURCES';
             return null;

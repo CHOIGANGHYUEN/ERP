@@ -97,9 +97,28 @@ export const AnimalRenders = {
     },
 
     /**
-     * 🌀 물리 기반 상태별 모션 변환 (Breathing, Swaying, Chewing)
+     * 🌀 물리 기반 상태별 모션 변환 (Breathing, Swaying, Chewing + Attack/Hit)
      */
     applyAdvancedStateMotion(ctx, type, mode, time, entity) {
+        const visual = entity.components.get('Visual');
+        if (!visual) return;
+
+        // ⚔️ [Combat Motion] 공격 연출 (150ms 동안 앞으로 런지)
+        if (visual.lastAttackTime && (time - visual.lastAttackTime) < 150) {
+            const progress = (time - visual.lastAttackTime) / 150;
+            const lunge = Math.sin(progress * Math.PI) * 10;
+            ctx.translate(lunge, 0); // 전진 덮치기
+            ctx.rotate(0.15 * Math.sin(progress * Math.PI)); // 약간의 고개 끄덕임
+        }
+
+        // 🩸 [Combat Motion] 피격 연출 (200ms 동안 붉은 점멸 및 진동)
+        if (visual.lastHitTime && (time - visual.lastHitTime) < 200) {
+            const hitProgress = (time - visual.lastHitTime) / 200;
+            const shake = (1 - hitProgress) * 2.5;
+            ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+            ctx.filter = `brightness(${100 + (1 - hitProgress) * 100}%) sepia(100%) saturate(500%) hue-rotate(-50deg)`;
+        }
+
         // 1. 공통 사망 처리
         if (mode === AnimalStates.DIE) {
             ctx.filter = 'grayscale(100%) brightness(80%)';
