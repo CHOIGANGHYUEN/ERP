@@ -28,6 +28,14 @@
         <span class="value" style="color: #ef5350">👑 {{ entity.rank }}</span>
       </div>
 
+      <!-- 🎯 AI 타겟 표시 (상시 표시하여 상태 확인 가능케 함) -->
+      <div class="status-row target-row" v-if="entity.jobType || entity.state !== 'Normal'">
+        <span class="label">Target:</span>
+        <span class="value target-text" :class="{ 'is-searching': entity.targetName === 'Searching...' }">
+          📍 {{ entity.targetName }}
+        </span>
+      </div>
+
       <!-- 🥩 동물 전용 상태 (위장/허기) -->
       <template v-if="entity.maxHunger !== undefined">
         <div class="status-row">
@@ -89,6 +97,26 @@
           <span class="value honey-text">{{ entity.inhabitants.honey }}</span>
         </div>
       </template>
+
+      <!-- 🎒 인벤토리 섹션 (새로 추가) -->
+      <template v-if="entity.inventory">
+        <div class="divider"></div>
+        <div class="inventory-section">
+          <div class="section-header">
+            <span class="label">Inventory</span>
+            <span class="value-sm">{{ entity.inventory.total }} / {{ entity.inventory.capacity }}</span>
+          </div>
+          <div class="inventory-bar">
+            <div class="fill inventory" :style="{ width: getPercentage(entity.inventory.total, entity.inventory.capacity) + '%' }"></div>
+          </div>
+          <div class="item-grid">
+            <div v-for="(amount, type) in entity.inventory.items" :key="type" class="item-tag" v-show="amount > 0">
+              <span class="item-icon">{{ getItemEmoji(type) }}</span>
+              <span class="item-count">{{ Math.floor(amount) }}</span>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -137,6 +165,18 @@ const getIcon = (type, subType) => {
 const getPercentage = (val, max) => {
   if (!max) return 0;
   return Math.min(100, Math.max(0, (val / max) * 100));
+};
+
+const getItemEmoji = (type) => {
+  const emojis = {
+    wood: '🪵',
+    food: '🍖',
+    stone: '🪨',
+    meat: '🥩',
+    berry: '🫐',
+    wheat: '🌾'
+  };
+  return emojis[type.toLowerCase()] || '📦';
 };
 </script>
 
@@ -191,9 +231,73 @@ const getPercentage = (val, max) => {
 .fill.stomach { background: #ff9800; }
 .fill.fatigue { background: #9c27b0; } /* 😴 세련된 보라색 피로도 바 */
 .fill.fertility { background: #4caf50; }
+.fill.inventory { background: #2196f3; }
+
+.inventory-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inventory-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.item-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.item-tag {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.item-icon { font-size: 0.9rem; }
+.item-count { font-weight: bold; color: #fff; }
 
 .divider { height: 1px; background: rgba(255,255,255,0.1); margin: 5px 0; }
 .mt-1 { margin-top: 5px; }
 .honey-text { color: #ffca28; font-size: 1rem; }
 .yield-text { color: #ffab91; font-size: 0.85rem; }
+
+.target-row {
+  margin-top: 4px;
+  padding: 4px 0;
+  border-top: 1px dashed rgba(255,255,255,0.1);
+}
+.target-text {
+  color: #4fc3f7;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+.target-text.is-searching {
+  color: #ffca28;
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { opacity: 0.4; }
+}
 </style>

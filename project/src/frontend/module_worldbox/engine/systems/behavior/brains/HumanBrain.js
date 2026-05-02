@@ -16,6 +16,8 @@ export default class HumanBrain {
      * 인간의 현재 상태를 기반으로 최적의 행동(State)을 결정합니다.
      */
     decide(entity, state, stats, emotion, inventory, dt) {
+        const civ = entity.components.get('Civilization');
+        
         // 0. 극단적 생존 위협: 배가 너무 고프면 하던 일 중단
         // 0. 생존 우선순위 (허기, 피로)
         if (stats.hunger < 35) {
@@ -27,8 +29,20 @@ export default class HumanBrain {
         if (state.mode === AnimalStates.FORAGE && state.targetId) return AnimalStates.FORAGE;
         if (state.mode === AnimalStates.SLEEP) return AnimalStates.SLEEP;
 
-        // 🚀 Deposit(반납) 중이라면 인벤토리가 비워지기 전까지 직업 판단에 흔들리지 않고 창고로 직진합니다.
-        if (state.mode === 'deposit' && inventory && inventory.getTotal() > 0) return 'deposit';
+        // 🚀 Deposit(반납) 중이더라도 건설 자원이 있고 건설지가 있다면 건설로 전향할 수 있게 함
+        // (단, 인벤토리가 꽉 찼다면 반납 강제)
+        const totalInInv = inventory ? inventory.getTotal() : 0;
+        const isFull = inventory && totalInInv >= inventory.capacity;
+        
+        if (state.mode === 'deposit' && !isFull) {
+            // 건축가이거나 촌장인데 나무가 있다면 건설지로 가는 것이 더 효율적 (강제 반납 해제)
+            const isWorker = civ?.jobType === 'builder' || civ?.jobType === 'mayor';
+            if (isWorker && (inventory?.items['wood'] || 0) >= 5) {
+                // 아래 직업 판단 로직을 타게 함
+            } else {
+                if (totalInInv > 0) return 'deposit';
+            }
+        }
 
         // 배회(Wander) 중이더라도 진행 중인 이동은 보장
         let baseDecision = (state.mode === AnimalStates.WANDER) ? AnimalStates.WANDER : AnimalStates.IDLE;
@@ -43,7 +57,27 @@ export default class HumanBrain {
 
         // ------------------ 생존 욕구 충족 완료 ------------------ //
 
-        const civ = entity.components.get('Civilization');
+        // 🚀 [Resource Scarcity Logic] - 최우선 순위로 격상
+        // 건축가(Builder), 촌장(Mayor), 또는 직업이 없는 경우
+        const isBuilder = state.mode === 'build' || civ?.jobType === 'builder' || civ?.jobType === 'mayor';
+        const isUnemployed = !civ?.jobType || civ?.jobType === 'unemployed' || civ?.jobType === 'none';
+
+        if (isBuilder || isUnemployed) {
+            const woodInInv = (inventory?.items && inventory.items['wood']) || 0;
+            
+            // 💡 [Persistence] 이미 나무를 캐는 중이라면, 최소 15개는 모을 때까지 계속 캡니다. (왔다갔다 방지)
+            const isAlreadyGathering = state.mode === 'gather_wood';
+            const gatherThreshold = isAlreadyGathering ? 15 : 5;
+
+            if (woodInInv < gatherThreshold) {
+                const storages = this.engine.systemManager.blackboard.storages || [];
+                const totalWoodInVillage = storages.reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
+                
+                if (storages.length === 0 || totalWoodInVillage < 5) {
+                    return 'gather_wood';
+                }
+            }
+        }
 
         // 4. [Individual Judgment] 부여받은 직업(Role) 내에서 능동적으로 할 일을 찾음
         // IDLE 상태여도 3초를 다 기다리지 않고, 직업 로직상 할 일이 있다면 즉시 작업으로 전환
@@ -55,15 +89,30 @@ export default class HumanBrain {
             }
         }
 
-        // 5. 인벤토리가 꽉 찼다면 우선적으로 창고에 보관 (무한 채집 방지)
-        if (inventory && inventory.getTotal() >= inventory.capacity) {
-            return 'deposit';
+        // 5. 인벤토리가 꽉 찼더라도 건설할 건물이 있다면 건설지로 직행 (자원 소모가 우선)
+        const blueprints = this.engine.systemManager.blackboard.blueprints || [];
+        const hasBlueprints = blueprints.length > 0;
+        const storages = this.engine.systemManager.blackboard.storages || [];
+
+        if (hasBlueprints && (inventory?.items['wood'] || 0) >= 5) {
+            return 'build';
         }
 
-        // 🚨 [직업 배정 누락 완벽 보완] 
-        // 촌장이 벌목꾼 직업을 안 주더라도(백수 상태), 또는 배정받은 직업에서 할 일이 없어 노는 상태(IDLE)라면 스스로 나무를 캐러 갑니다.
-        if (!civ?.role || entity.jobType === 'unemployed' || baseDecision === AnimalStates.IDLE) {
-            if (stats.hunger > 45) { // 배가 아주 고픈 상태가 아니라면 노동을 수행합니다.
+        // 6. 인벤토리가 꽉 찼고, 더 이상 지을 건물도 없을 때만 창고에 보관
+        if (inventory && inventory.getTotal() >= inventory.capacity) {
+            if (storages.length > 0) return 'deposit';
+            // 창고도 없고 지을 건물도 없다면 일단 대기 (WANDER/IDLE)
+        }
+
+        // 🚨 [직업 배정 누락 및 촌장 노동 완벽 보완] 
+        // 촌장이거나 직업이 없는 경우, 또는 현재 할 일이 없어 노는 상태(IDLE)라면 생산적인 일을 찾습니다.
+        if (isUnemployed || civ?.jobType === 'mayor' || baseDecision === AnimalStates.IDLE) {
+            if (stats.hunger > 45) { // 생존이 보장된 상태라면
+                if (hasBlueprints) {
+                    return 'build';
+                }
+
+                // 2순위: 벌목
                 return 'gather_wood';
             }
         }

@@ -78,7 +78,7 @@ export default class Engine {
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
-        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true, showNames: false, village: false };
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true, showNames: false, village: false, zone: false };
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
         this._onWorldSpawnDust = (e) => {
@@ -178,6 +178,16 @@ export default class Engine {
         this.monitor.setInitialFertility(total, potential);
         this.refreshWaterPixels();
         this.preRenderTerrain();
+
+        // 🏗️ PoC: 테스트용 글로벌 구역 생성 (마을이 없을 때도 보이도록)
+        setTimeout(() => {
+            const zm = this.systemManager?.zoneManager;
+            if (zm && zm.zones.size === 0) {
+                zm.createZone(100, 100, 150, 150, 'residential');
+                zm.createZone(300, 100, 200, 150, 'lumber');
+                console.log("🗺️ PoC Test Zones created at init");
+            }
+        }, 1000);
     }
 
 
@@ -279,6 +289,7 @@ export default class Engine {
         if (id === 'view_debug_ai') this.viewFlags.debugAI = !this.viewFlags.debugAI;
         if (id === 'view_showNames') this.viewFlags.showNames = !this.viewFlags.showNames;
         if (id === 'view_village') this.viewFlags.village = !this.viewFlags.village;
+        if (id === 'view_zone') this.viewFlags.zone = !this.viewFlags.zone;
     }
 
 

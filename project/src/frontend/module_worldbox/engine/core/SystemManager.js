@@ -22,7 +22,11 @@ import LivestockSystem from '../systems/lifecycle/LivestockSystem.js';
 import EmotionSystem from '../systems/lifecycle/EmotionSystem.js';
 import VillageSystem from '../systems/civilization/VillageSystem.js';
 import ConstructionSystem from '../systems/civilization/ConstructionSystem.js';
+import ZoneManager from '../systems/civilization/ZoneManager.js';
 import CullingSystem from '../systems/render/CullingSystem.js';
+import Blackboard from '../systems/behavior/Blackboard.js';
+import TargetManager from '../systems/behavior/TargetManager.js';
+import EconomyManager from '../systems/economy/EconomyManager.js';
 
 export default class SystemManager {
     constructor(engine) {
@@ -58,6 +62,12 @@ export default class SystemManager {
         this.emotion = new EmotionSystem(em, eb);
         this.villageSystem = new VillageSystem(em, eb, engine);
         this.construction = new ConstructionSystem(em, eb, engine);
+        this.zoneManager = new ZoneManager(engine);
+
+        // 🧠 Central Dispatch & Economy
+        this.blackboard = new Blackboard();
+        this.targetManager = new TargetManager(em, eb, this.blackboard);
+        this.economyManager = new EconomyManager(em, eb, this.blackboard);
 
         // Phase 3: Physics
         this.kinematics = new KinematicSystem(engine);
@@ -92,6 +102,10 @@ export default class SystemManager {
         this.emotion.update(dt, time);
         this.villageSystem.update(dt, time);
         this.construction.update(dt, time);
+
+        // [Phase 2.5] 중앙 관제 및 경제 업데이트 (Low Frequency)
+        this.targetManager.update(dt);
+        this.economyManager.update(dt);
 
         // [Phase 3] 이동 및 물리 연산 반영 (Kinematics)
         this.kinematics.update(dt);

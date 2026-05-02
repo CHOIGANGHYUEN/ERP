@@ -81,6 +81,21 @@ export default class VillageSystem extends System {
         }
 
         console.log(`🏘️ Village founded by entity ${founderId} at (${x}, ${y})`);
+        
+        // 🏗️ PoC: 기본 활동 구역(Zone) 생성
+        const zm = this.engine.systemManager?.zoneManager;
+        if (zm) {
+            // 1. 주거 구역 (마을 중심부)
+            const resZoneId = zm.createZone(x - 100, y - 100, 200, 200, 'residential');
+            village.residentialZoneId = resZoneId;
+            
+            // 2. 벌목 구역 (중심부에서 약간 떨어진 곳)
+            const lumberZoneId = zm.createZone(x + 120, y - 100, 200, 200, 'lumber');
+            village.lumberZoneId = lumberZoneId;
+            
+            console.log(`🗺️ Default zones created for Village ${id}: Residential(${resZoneId}), Lumber(${lumberZoneId})`);
+        }
+
         this.eventBus.emit('VILLAGE_FOUNDED', { villageId: id, x, y });
 
         return id;

@@ -104,6 +104,10 @@ export default class RenderCoordinator extends System {
         if (engine.viewFlags.village) {
             this.renderVillageView(offCtx);
         }
+        
+        if (engine.viewFlags.zone) {
+            this.renderZoneView(offCtx);
+        }
 
         // 4. 🚀 [대미의 장식] 완성된 가상 도화지를 메인 화면에 한 번에 복사!
         // 🛡️ [Scaling Fix] 캡핑된 해상도를 메인 캔버스 크기에 맞춰 확대/축소하여 출력
@@ -396,6 +400,73 @@ export default class RenderCoordinator extends System {
                 ctx.restore();
             }
         }
+        ctx.restore();
+    }
+
+    /** 🗺️ [Zone View] 활동 구역 시각화 */
+    renderZoneView(ctx) {
+        const engine = this.engine;
+        const zoneManager = engine.systemManager?.civilization?.zoneManager || 
+                            engine.systemManager?.zoneManager ||
+                            engine.systemManager?.systems?.find?.(s => s.constructor.name === 'ZoneManager');
+        
+        // 만약 못 찾으면 시스템 목록에서 직접 탐색
+        const zm = zoneManager || (Array.isArray(engine.systems) ? engine.systems.find(s => s.constructor.name === 'ZoneManager') : null);
+        
+        if (!zm || !zm.zones || zm.zones.size === 0) return;
+
+        ctx.save();
+        
+        for (const [id, zone] of zm.zones) {
+            // 카메라 좌표계 적용
+            const screenX = (zone.bounds.minX - engine.camera.x) * engine.camera.zoom;
+            const screenY = (zone.bounds.minY - engine.camera.y) * engine.camera.zoom;
+            const screenW = zone.bounds.width * engine.camera.zoom;
+            const screenH = zone.bounds.height * engine.camera.zoom;
+
+            // 화면 밖에 있으면 스킵
+            if (screenX + screenW < 0 || screenX > this.offscreenCanvas.width ||
+                screenY + screenH < 0 || screenY > this.offscreenCanvas.height) {
+                continue;
+            }
+
+            // 구역 타입별 색상 지정 (가독성을 위해 채도 상향)
+            let color = 'rgba(255, 255, 255, 0.25)';
+            if (zone.type === 'residential') color = 'rgba(65, 105, 225, 0.35)'; // Royal Blue
+            else if (zone.type === 'lumber' || zone.type === 'logger') color = 'rgba(160, 82, 45, 0.4)'; // Sienna
+            else if (zone.type === 'farm') color = 'rgba(34, 139, 34, 0.35)'; // Forest Green
+            else if (zone.type === 'industrial') color = 'rgba(105, 105, 105, 0.4)'; // Dim Gray
+
+            // 1. 구역 배경 사각형
+            ctx.fillStyle = color;
+            ctx.fillRect(screenX, screenY, screenW, screenH);
+            
+            // 2. 구역 테두리 (가독성 강화)
+            ctx.setLineDash([15, 5]);
+            ctx.strokeStyle = color.replace('0.3', '0.9').replace('0.4', '0.9');
+            ctx.lineWidth = 3;
+            ctx.strokeRect(screenX, screenY, screenW, screenH);
+            ctx.setLineDash([]); 
+
+            // 3. 구역 라벨 (배경 상자 추가)
+            ctx.font = 'bold 11px "Courier New", monospace';
+            const label = ` 🗺️ ${zone.type.toUpperCase()} (${zone.id}) `;
+            const metrics = ctx.measureText(label);
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+            ctx.fillRect(screenX, screenY - 20, metrics.width + 4, 20);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(label, screenX + 2, screenY - 6);
+            
+            // 4. 할당된 작업자 수 표시
+            if (zone.assignedWorkers && zone.assignedWorkers.size > 0) {
+                const workerText = `👷 ${zone.assignedWorkers.size} Workers`;
+                ctx.fillStyle = '#ffeb3b';
+                ctx.fillText(workerText, screenX + 5, screenY + 15);
+            }
+        }
+        
         ctx.restore();
     }
 }

@@ -211,6 +211,7 @@ export const DefaultTools = [
     new ToggleTool({ id: 'view_debug_ai', name: 'AI Paths', icon: '🛣️', category: 'View', flagName: 'debugAI' }),
     new ToggleTool({ id: 'view_showNames', name: 'Show Names', icon: '🏷️', category: 'View', flagName: 'showNames' }),
     new ToggleTool({ id: 'view_village', name: 'Village Info', icon: '🏘️', category: 'View', flagName: 'village' }),
+    new ToggleTool({ id: 'view_zone', name: 'Zone View', icon: '🗺️', category: 'View', flagName: 'zone' }),
     new InspectTool()
 
 

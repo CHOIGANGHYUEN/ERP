@@ -21,10 +21,40 @@ export default class GatherPlantState extends State {
             return 'deposit';
         }
 
+        // 2. 타겟 유효성 체크 및 탐색 요청
+        if (!state.targetId) {
+            if (state.targetRequestFailed) {
+                state.retryTimer = (state.retryTimer || 0) + dt;
+                if (state.retryTimer >= 2.0) {
+                    state.targetRequestFailed = false;
+                    state.isTargetRequested = false;
+                    state.retryTimer = 0;
+                }
+                if (transform) {
+                    transform.vx *= 0.5;
+                    transform.vy *= 0.5;
+                }
+                return null;
+            }
+
+            if (!state.isTargetRequested) {
+                const targetManager = this.system.engine.systemManager.targetManager;
+                if (targetManager) {
+                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: 'food' }, 'gather_plant');
+                    state.isTargetRequested = true;
+                }
+            }
+            
+            // ⏳ 내부 대기 연출
+            if (transform) {
+                transform.vx *= 0.5;
+                transform.vy *= 0.5;
+            }
+            return null; // gather_plant 상태 유지
+        }
+
         const em = this.system.entityManager;
         const target = em.entities.get(state.targetId);
-
-        // 2. 타겟 유효성 체크
         if (!target) {
             state.targetId = null;
             return AnimalStates.IDLE;
@@ -33,7 +63,7 @@ export default class GatherPlantState extends State {
         const tPos = target.components.get('Transform');
         const res = target.components.get('Resource');
 
-        if (!tPos || !res || !res.edible || res.value <= 0) {
+        if (!tPos || !res || res.value <= 0) {
             state.targetId = null;
             return AnimalStates.IDLE;
         }

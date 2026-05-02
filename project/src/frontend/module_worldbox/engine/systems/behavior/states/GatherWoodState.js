@@ -61,58 +61,39 @@ export default class GatherWoodState extends GatherState {
             return 'idle';
         }
 
-        // 1. 타겟 탐색 (공통 메서드 위임)
+        // 1. 타겟 탐색 (중앙 관제에 요청)
         if (!state.targetId) {
-            // 나무이면서 이미 쓰러지는 중이 아니고 자원이 남아있는 대상을 찾음
-            const condition = (ent) => {
-                const res = ent.components.get('Resource');
-                const vis = ent.components.get('Visual');
-                // 🌲 자원 인식률 강화: isTree 외에도 type 속성에 'tree'가 포함되어 있으면 나무로 인식
-                if (!res || !(res.isTree || (res.type && res.type.includes('tree'))) || res.isFalling || res.value <= 0) return false;
-
-                // 🌱 묘목 보호: 자원량이 적거나 덜 자란 새싹은 채집 대상에서 제외 (성목이 될 때까지 대기)
-                if (res.value < 20 || (vis && vis.size < 10)) return false;
-
-                // 🚫 도달 불가(블랙리스트) 타겟 필터링
-                if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
-
-                // 🔒 타겟 독점 확인 (누군가 이미 캐려고 찜했는지)
-                if (res.claimedBy && res.claimedBy !== entityId) {
-                    const claimer = em.entities.get(res.claimedBy);
-                    if (claimer) {
-                        const claimerState = claimer.components.get('AIState');
-                        if (claimerState && claimerState.targetId === ent.id) {
-                            return false; // 누군가 이미 캐러 가고 있음
-                        }
-                    }
-                    res.claimedBy = null; // 찜한 개체가 죽었거나 타겟을 바꿨으면 클레임 해제
+            // 타겟 요청 실패 시 처리 (2초 후 재시도)
+            if (state.targetRequestFailed) {
+                state.retryTimer = (state.retryTimer || 0) + dt;
+                if (state.retryTimer >= 2.0) {
+                    state.targetRequestFailed = false;
+                    state.isTargetRequested = false;
+                    state.retryTimer = 0;
                 }
-
-                return true;
-            };
-
-            const nearestId = em.findNearestEntityWithComponent(
-                transform.x,
-                transform.y,
-                3000, // 🚀 탐색 반경 대폭 상향 (근처 숲이 초토화되어도 멀리 있는 나무를 찾아감)
-                condition,
-                this.system.engine.spatialHash
-            );
-
-            if (nearestId !== null) {
-                state.targetId = nearestId;
-
-                // 🔒 타겟 독점권 설정
-                const targetEnt = em.entities.get(nearestId);
-                const targetRes = targetEnt?.components.get('Resource');
-                if (targetRes) targetRes.claimedBy = entityId;
-
-                state.chopTimer = 0;
-                state.isChopping = false;
-                state.chopInterval = 0.4; // 0.4초마다 타격
-            } else {
-                return 'idle'; // 주변에 나무가 없으면 대기
+                
+                // 대기 중 두리번거리는 연출 (속도 감속)
+                if (transform) {
+                    transform.vx *= 0.5;
+                    transform.vy *= 0.5;
+                }
+                return null; 
             }
+
+            if (!state.isTargetRequested) {
+                const targetManager = this.system.engine.systemManager.targetManager;
+                if (targetManager) {
+                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: 'wood' }, 'gather_wood');
+                    state.isTargetRequested = true;
+                }
+            }
+            
+            // ⏳ 내부 대기 연출
+            if (transform) {
+                transform.vx *= 0.5;
+                transform.vy *= 0.5;
+            }
+            return null;
         }
 
         // 2. 이동 및 채집 (부모 클래스 위임)

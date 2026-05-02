@@ -112,6 +112,41 @@ export default class UISystem extends System {
         // 📏 UI용 데이터 정규화 (동물의 경우 배설 임계치 15.0 기준)
         const normalizedFertility = a ? Math.min(1.0, fertility / 15.0) : fertility;
 
+        const jobCtrl = target.components.get('JobController');
+        let targetId = stateComp?.targetId || stateComp?.storageTargetId || jobCtrl?.targetId || null;
+        let targetName = "None";
+
+        if (targetId) {
+            if (stateComp?.targetName) {
+                targetName = stateComp.targetName;
+            } else {
+                const tEnt = this.entityManager.entities.get(targetId);
+                if (tEnt) {
+                    const tVis = tEnt.components.get('Visual');
+                    const tAnim = tEnt.components.get('Animal');
+                    const tRes = tEnt.components.get('Resource');
+                    const tStruc = tEnt.components.get('Structure');
+                    targetName = (tStruc?.type || tRes?.type || tAnim?.type || tVis?.type || 'Entity').toUpperCase();
+                    const subType = tVis?.subType || tVis?.treeType || tVis?.role || tAnim?.role;
+                    if (subType) targetName += ` (${subType})`;
+                } else {
+                    targetName = "LOST TARGET";
+                }
+            }
+        } else if (stateComp?.isTargetRequested || jobCtrl?.isTargetRequested) {
+            targetName = "SEARCHING...";
+        }
+
+        const inv = target.components.get('Inventory');
+        let inventoryData = null;
+        if (inv) {
+            inventoryData = {
+                items: { ...inv.items },
+                total: inv.getTotal(),
+                capacity: inv.capacity
+            };
+        }
+
         return {
             id: target.id, type: type, subType: subType, name: name, state: state,
             hunger: s ? s.hunger : m?.stomach, 
@@ -123,7 +158,10 @@ export default class UISystem extends System {
             quality: v?.quality, inhabitants: inhabitants, resourceValue: r?.value || r?.amount || 0,
             animalYield: animalYield,
             rank: a?.rank,
-            jobType: civ?.jobType || null
+            jobType: civ?.jobType || null,
+            targetId: targetId,
+            targetName: targetName,
+            inventory: inventoryData
         };
     }
 

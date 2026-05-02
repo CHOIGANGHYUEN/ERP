@@ -167,6 +167,103 @@ export default class Pathfinder {
         return [];
     }
 
+    /**
+     * 🧠 A* 기반 구역(Zone) 목적지 경로 탐색
+     * 특정 지점이 아닌 zoneBounds 내부의 임의의 도달 가능한 타일을 목적지로 합니다.
+     */
+    static findPathToZone(sx, sy, zoneBounds, engine, gridSize = 10) {
+        if (!engine) return [];
+        const terrainGen = engine.terrainGen;
+        
+        // 이미 구역 내부라면
+        if (sx >= zoneBounds.minX && sx <= zoneBounds.maxX && sy >= zoneBounds.minY && sy <= zoneBounds.maxY) {
+            return [{ x: sx, y: sy }];
+        }
+
+        // 구역의 중심점 계산
+        const cx = zoneBounds.minX + zoneBounds.width / 2;
+        const cy = zoneBounds.minY + zoneBounds.height / 2;
+        
+        const startX = Math.floor(sx / gridSize);
+        const startY = Math.floor(sy / gridSize);
+
+        const getKey = (x, y) => (x << 16) | y;
+        let startKey = getKey(startX, startY);
+
+        const gScore = new Map();
+        gScore.set(startKey, 0);
+        const fScore = new Map();
+        
+        // 휴리스틱: 구역 중심점까지의 거리
+        const h = (ax, ay) => Math.abs(ax - Math.floor(cx / gridSize)) + Math.abs(ay - Math.floor(cy / gridSize));
+        fScore.set(startKey, h(startX, startY));
+
+        const openSet = new MinHeap((a, b) => (fScore.get(a) || Infinity) - (fScore.get(b) || Infinity));
+        openSet.push(startKey);
+        const openSetTracker = new Set([startKey]);
+        const closedSet = new Set();
+        const cameFrom = new Map();
+
+        let attempts = 0;
+        const MAX_ATTEMPTS = 5000;
+
+        while (openSet.size() > 0 && attempts < MAX_ATTEMPTS) {
+            attempts++;
+            const currentKey = openSet.pop();
+            const currentX = (currentKey >> 16) & 0xFFFF;
+            const currentY = currentKey & 0xFFFF;
+
+            const realX = currentX * gridSize + gridSize / 2;
+            const realY = currentY * gridSize + gridSize / 2;
+
+            // 목적지 도달 조건: 현재 타일이 zoneBounds 내부에 포함되는지 확인
+            if (realX >= zoneBounds.minX && realX <= zoneBounds.maxX && realY >= zoneBounds.minY && realY <= zoneBounds.maxY) {
+                // 병목을 막기 위해 목적지 타일에 Random Offset 부여
+                const offsetX = (Math.random() - 0.5) * gridSize;
+                const offsetY = (Math.random() - 0.5) * gridSize;
+                return this._reconstructPath(cameFrom, currentKey, gridSize, realX + offsetX, realY + offsetY);
+            }
+
+            openSetTracker.delete(currentKey);
+            closedSet.add(currentKey);
+
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = currentX + dx;
+                    const ny = currentY + dy;
+                    const neighborKey = getKey(nx, ny);
+
+                    if (closedSet.has(neighborKey)) continue;
+
+                    const nRealX = nx * gridSize + gridSize / 2;
+                    const nRealY = ny * gridSize + gridSize / 2;
+                    
+                    if (terrainGen && !terrainGen.isNavigable(nRealX, nRealY)) continue;
+                    
+                    if (terrainGen && typeof terrainGen.getBiomeAt === 'function') {
+                        const biomeId = terrainGen.getBiomeAt(Math.floor(nRealX), Math.floor(nRealY));
+                        if (biomeId !== undefined && biomeId < 4) continue;
+                    }
+
+                    const baseWeight = (dx !== 0 && dy !== 0) ? 1.414 : 1.0;
+                    const tentativeG = (gScore.get(currentKey) || 0) + baseWeight;
+
+                    if (tentativeG < (gScore.get(neighborKey) || Infinity)) {
+                        cameFrom.set(neighborKey, currentKey);
+                        gScore.set(neighborKey, tentativeG);
+                        fScore.set(neighborKey, tentativeG + h(nx, ny));
+                        if (!openSetTracker.has(neighborKey)) {
+                            openSet.push(neighborKey);
+                            openSetTracker.add(neighborKey);
+                        }
+                    }
+                }
+            }
+        }
+        return [];
+    }
+
     static _reconstructPath(cameFrom, currentKey, gridSize, ex, ey) {
         const path = [];
         let curr = currentKey;
@@ -180,7 +277,7 @@ export default class Pathfinder {
         return path;
     }
 
-    static followPath(transform, state, targetPos, speed, engine) {
+    static followPath(transform, state, targetPos, speed, engine, targetRadius = 8) {
         const now = Date.now();
         const needsRecalc = !state.path || state.pathTargetId !== state.targetId || (now - (state.lastPathCalcTime || 0) > 2000);
 
@@ -199,13 +296,26 @@ export default class Pathfinder {
                 return -1; // 도달 불가 상태 반환
             }
 
+            // 최종 목적지 거리 확인 (도착 판정)
+            const dxEnd = targetPos.x - transform.x;
+            const dyEnd = targetPos.y - transform.y;
+            const distSqEnd = dxEnd * dxEnd + dyEnd * dyEnd;
+            const radiusSq = targetRadius * targetRadius;
+
+            if (distSqEnd <= radiusSq) {
+                transform.vx = 0;
+                transform.vy = 0;
+                state.path = null;
+                return true;
+            }
+
             if (state.pathIndex < state.path.length) {
                 const wp = state.path[state.pathIndex];
                 const dx = wp.x - transform.x;
                 const dy = wp.y - transform.y;
                 const distSq = dx * dx + dy * dy;
 
-                // 🚀 [Precision Fix] 도달 판정 반경을 8px (64 sq)로 좁힘
+                // 웨이포인트 통과 판정 (기본 8px)
                 if (distSq < 64) {
                     state.pathIndex++;
                 }
@@ -224,10 +334,7 @@ export default class Pathfinder {
             }
         }
 
-        // 목적지 도착
-        transform.vx = 0;
-        transform.vy = 0;
-        return true;
+        return false;
     }
 
     static isLineBlocked(x1, y1, x2, y2, engine) {

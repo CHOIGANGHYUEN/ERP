@@ -20,40 +20,29 @@ export default class DepositState extends State {
 
         const em = this.system.entityManager;
 
-        // 1. 타겟 유효성 검사 및 목적지 검색 (마을 창고)
-        let targetEntity = state.depositTargetId ? em.entities.get(state.depositTargetId) : null;
+        // 1. 타겟 유효성 검사 및 목적지 검색 (중앙 관제 요청)
+        if (!state.targetId) {
+            if (state.targetRequestFailed) {
+                state.targetRequestFailed = false;
+                // 창고를 못 찾아도 자원을 파기하지 않고 일단 IDLE로 돌아가 다른 판단(건설 등)을 기다림
+                return AnimalStates.IDLE;
+            }
 
-        if (!targetEntity && civ && civ.villageId !== -1) {
-            // 현재 마을 소속 창고 건물 찾기 (가장 가까운 곳 기준)
-            let closestStorageId = null;
-            let minDist = Infinity;
-
-            for (const bId of em.buildingIds) {
-                const b = em.entities.get(bId);
-                if (b && b.components.has('Storage')) {
-                    const t = b.components.get('Transform');
-                    const dSq = (t.x - transform.x) ** 2 + (t.y - transform.y) ** 2;
-                    if (dSq < minDist) {
-                        minDist = dSq;
-                        closestStorageId = bId;
-                    }
+            if (!state.isTargetRequested) {
+                const targetManager = this.system.engine.systemManager.targetManager;
+                if (targetManager) {
+                    targetManager.requestTarget(entityId, 'STORAGE_DEPOSIT', {}, 'deposit');
+                    state.isTargetRequested = true;
                 }
             }
-            if (closestStorageId) {
-                state.depositTargetId = closestStorageId;
-                targetEntity = em.entities.get(closestStorageId);
-            }
+            return null; // 타겟 할당될 때까지 대기
         }
 
+        let targetEntity = em.entities.get(state.targetId);
+
         if (!targetEntity) {
-            // 반납할 곳을 찾지 못하면 보관 중인 자원을 포기하거나 파기함
-            if (typeof inventory.clear === 'function') {
-                inventory.clear();
-            } else if (inventory.items instanceof Map) {
-                inventory.items.clear();
-            } else if (inventory.items) {
-                Object.keys(inventory.items).forEach(k => delete inventory.items[k]);
-            }
+            // 반납할 곳이 사라졌더라도 자원은 보존하고 IDLE로 복귀
+            state.targetId = null;
             return AnimalStates.IDLE;
         }
 
@@ -122,7 +111,7 @@ export default class DepositState extends State {
             } else if (inventory.items) {
                 Object.keys(inventory.items).forEach(k => delete inventory.items[k]);
             }
-            state.depositTargetId = null;
+            state.targetId = null;
             return AnimalStates.IDLE;
         } else {
             // 🚀 [2단계 대응] Pathfinder.followPath를 통해 이동 로직 처리
@@ -134,8 +123,7 @@ export default class DepositState extends State {
 
             if (pathFound === -1) {
                 // 🚧 도달할 수 없는 창고라면 이번 목표만 포기 (자원 증발 방지)
-                // HumanBrain 로직에 의해 인벤토리가 차있으므로 다음 틱에 다른 경로를 찾게 됨
-                state.depositTargetId = null;
+                state.targetId = null;
                 if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '❓', duration: 1500 });
                 return AnimalStates.IDLE;
             }

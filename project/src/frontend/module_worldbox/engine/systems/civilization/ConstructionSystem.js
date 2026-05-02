@@ -12,11 +12,10 @@ export default class ConstructionSystem extends System {
         
         // 🏗️ 건설 로직 최적화: 건축가 역할을 수행 중인 인간들만 필터링
         for (const [id, entity] of em.entities) {
-            const builder = entity.components.get('Builder');
             const transform = entity.components.get('Transform');
             const state = entity.components.get('AIState');
 
-            if (builder && transform && state && state.mode === 'build') {
+            if (transform && state && state.mode === 'build') {
                 const targetId = state.targetId;
                 if (!targetId) {
                     state.mode = 'idle';
@@ -44,31 +43,38 @@ export default class ConstructionSystem extends System {
                 const dy = targetPos.y - transform.y;
                 const distSq = dx * dx + dy * dy;
 
-                if (distSq <= 625) { // 반경 25px (사거리 소폭 증가로 안정성 확보)
-                    // 멈춰서 건설 전념
-                    transform.vx *= 0.8;
-                    transform.vy *= 0.8;
+                if (distSq <= 625) { 
+                    transform.vx *= 0.5;
+                    transform.vy *= 0.5;
                     
-                    // 🪵 자원 체크 (마을 자원 연동 전까지는 무제한 혹은 소량 소모 시뮬레이션)
-                    // 향후 Village.resources와 연동 예정
-                    
-                    const builderComp = entity.components.get('Builder');
-                    const buildSpeed = builderComp ? (builderComp.buildSpeed || 10) : 10;
-                    const progressAmount = buildSpeed * dt;
-                    
-                    if (!isNaN(progressAmount)) {
-                        structure.progress += progressAmount;
-                        
-                        // 🔨 건설 애니메이션 효과 (먼지 파티클)
-                        if (Math.random() < 0.1) {
-                            this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
-                                x: transform.x, y: transform.y, count: 2, type: 'DUST', color: '#d7ccc8', speed: 1
-                            });
-                        }
-                    }
+                    const inventory = entity.components.get('Inventory');
+                    const woodInInv = (inventory?.items && inventory.items['wood']) || 0;
 
-                    if (structure.progress >= structure.maxProgress) {
-                        this.finalizeBuilding(target, targetId, structure);
+                    if (woodInInv > 0) {
+                        const builderComp = entity.components.get('Builder');
+                        const buildSpeed = builderComp ? (builderComp.buildSpeed || 10) : 10;
+                        const progressAmount = buildSpeed * dt;
+                        
+                        if (!isNaN(progressAmount)) {
+                            structure.progress += progressAmount;
+                            inventory.items['wood'] = Math.max(0, inventory.items['wood'] - progressAmount/10);
+                            
+                            // 🔨 건설 애니메이션 효과 (먼지 파티클)
+                            if (Math.random() < 0.1) {
+                                this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
+                                    x: transform.x, y: transform.y, count: 2, type: 'DUST', color: '#d7ccc8', speed: 1
+                                });
+                            }
+
+                            if (structure.progress >= structure.maxProgress) {
+                                this.finalizeBuilding(target, targetId, structure);
+                            }
+                        }
+                    } else {
+                        // 자원이 없으면 대기 (시각적 알림)
+                        if (Math.random() < 0.005) {
+                            this.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: id, text: '🪵?', duration: 1000 });
+                        }
                     }
                 }
             }
