@@ -24,19 +24,25 @@ export default class BuildState extends State {
         // 🚀 좌표가 없거나 잘못된 경우 IDLE로 복귀하여 재탐색 유도
         if (!tPos || isNaN(tPos.x) || isNaN(tPos.y)) {
             state.targetId = null;
+            if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '❓', duration: 1500 });
             return AnimalStates.IDLE;
         }
 
         // 🏗️ 청사진(목표)으로 이동
         const speed = 80; // 건설 현장으로 달려가는 속도 상향
-        
+
         // Pathfinder를 통해 실제 이동 수행
         const isReached = Pathfinder.followPath(transform, state, tPos, speed, this.system.engine);
-        
+
         // 도착했으면 멈춰서 건설 (실제 건설 노동은 ConstructionSystem에서 처리)
         if (isReached) {
             transform.vx = 0;
             transform.vy = 0;
+        } else if (isReached === -1) {
+            // 경로가 완전히 막혔을 때 포기
+            state.targetId = null;
+            if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '❓', duration: 1500 });
+            return AnimalStates.IDLE;
         }
 
         // 경로를 찾지 못하거나 이동이 불가능한 경우를 대비해 null 반환 (상태 유지)

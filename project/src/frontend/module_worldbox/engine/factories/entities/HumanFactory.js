@@ -6,6 +6,7 @@ import State from '../../components/behavior/State.js';
 import Age from '../../components/stats/Age.js';
 import Builder from '../../components/civilization/Builder.js';
 import Inventory from '../../components/resource/Inventory.js';
+import GathererComponent from '../../components/resource/GathererComponent.js';
 
 /**
  * 👨‍👩‍👧‍👦 HumanFactory
@@ -88,7 +89,8 @@ export default class HumanFactory extends IEntityFactory {
                 maxAge: config.maxLifespan || (60 + Math.random() * 20)
             }))
             .addComponent('Builder', new Builder())
-            .addComponent('Inventory', new Inventory(20));
+            .addComponent('Inventory', new Inventory(20))
+            .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }));
 
         // 문명 소속 설정 (기본값 -1)
         builder.addComponent('Civilization', { villageId: options.villageId || -1 });

@@ -20,21 +20,34 @@ export default class HunterRole extends BaseRole {
 
         // 사냥 가능한 동물 탐색 (양, 소)
         const PREY_TYPES = new Set(['sheep', 'cow']);
-        let nearestId = null;
-        let minDSq = Infinity;
-        for (const id of this.em.animalIds) {
-            const e = this.em.entities.get(id);
-            if (!e || e === entity) continue;
-            const a = e.components.get('Animal');
-            if (!a || !PREY_TYPES.has(a.type)) continue;
-            const t = e.components.get('Transform');
-            if (!t) continue;
-            const dSq = (t.x - transform.x) ** 2 + (t.y - transform.y) ** 2;
-            if (dSq < minDSq && dSq < 400 * 400) { minDSq = dSq; nearestId = id; }
-        }
+        const condition = (ent) => {
+            if (ent === entity) return false;
+            const a = ent.components.get('Animal');
+            if (!a || !PREY_TYPES.has(a.type)) return false;
 
-        if (nearestId) {
+            // 🔒 사냥감 독점 확인 (다른 사냥꾼이 쫓고 있는지)
+            if (a.claimedBy && a.claimedBy !== entity.id) {
+                const claimer = this.em.entities.get(a.claimedBy);
+                if (claimer) {
+                    const claimerState = claimer.components.get('AIState');
+                    if (claimerState && claimerState.targetId === ent.id) return false;
+                }
+                a.claimedBy = null;
+            }
+            return true;
+        };
+
+        const nearestId = this.em.findNearestEntityWithComponent(
+            transform.x, transform.y, 400, condition, this.engine.spatialHash
+        );
+
+        if (nearestId !== null) {
             state.targetId = nearestId;
+            // 🔒 사냥감 독점권 설정
+            const targetEnt = this.em.entities.get(nearestId);
+            const targetAnimal = targetEnt?.components.get('Animal');
+            if (targetAnimal) targetAnimal.claimedBy = entity.id;
+
             return AnimalStates.HUNT;
         }
         return null;

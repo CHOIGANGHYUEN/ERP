@@ -21,11 +21,11 @@ export default class VillageSystem extends System {
         // 마을 발전 상태 체크 및 건설 계획 수립, 인구/자원 관리
         for (const village of this.villages.values()) {
             this._cleanupDeadMembers(village);
-            
+
             if (village.lastPopulation !== village.members.size) {
                 this._recalculateNeeds(village);
             }
-            
+
             this._syncVillageResources(village);
             this._updateVillagePlanning(village);
         }
@@ -155,35 +155,39 @@ export default class VillageSystem extends System {
     _recalculateNeeds(village) {
         const pop = village.members.size;
         village.lastPopulation = pop;
-        
+
         // 인구 1명당 나무 10, 식량 15 필요
         village.resourceNeeds.wood = pop * 10;
         village.resourceNeeds.food = pop * 15;
         // 최대치도 인구에 비례해서 늘어남 (기본 150 + 1인당 추가 여유 공간)
         village.resourceMax.wood = 150 + pop * 20;
         village.resourceMax.food = 150 + pop * 30;
-        
+
         console.log(`🏘️ Village ${village.id} population changed to ${pop}. Needs recalculated.`);
     }
 
     _syncVillageResources(village) {
         // 모든 건물의 Storage를 합산하여 마을 전체 자원 갱신
         const total = { wood: 0, food: 0, stone: 0 };
-        
+
         for (const buildingId of village.buildings) {
             const building = this.entityManager.entities.get(buildingId);
             if (!building) continue;
-            
+
             const storage = building.components.get('Storage');
-            if (storage) {
+            if (storage && storage.items) {
                 for (const type in storage.items) {
-                    if (total[type] !== undefined) {
-                        total[type] += storage.items[type];
+                    const amt = storage.items[type];
+                    // 고기, 베리류 등을 포괄적인 'food' 자원으로 합산
+                    if (['meat', 'berry', 'wheat', 'food'].includes(type)) {
+                        total.food += amt;
+                    } else {
+                        total[type] = (total[type] || 0) + amt; // 기타 자원은 각각의 이름으로 합산
                     }
                 }
             }
         }
-        
+
         village.resources.wood = total.wood;
         village.resources.food = total.food;
         village.resources.stone = total.stone;
@@ -245,7 +249,7 @@ export default class VillageSystem extends System {
         while (!foundSpot && attempts < maxAttempts) {
             // 마을 중심에서 점진적으로 멀어지며 탐색
             const angle = Math.random() * Math.PI * 2;
-            const radius = 40 + (attempts / maxAttempts) * 150; 
+            const radius = 40 + (attempts / maxAttempts) * 150;
             spawnX = village.centerX + Math.cos(angle) * radius;
             spawnY = village.centerY + Math.sin(angle) * radius;
 

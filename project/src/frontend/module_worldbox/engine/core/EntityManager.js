@@ -1,4 +1,4 @@
-import Resource from '../components/resource/Resource.js';
+import ResourceNode from '../components/resource/ResourceNode.js';
 import Transform from '../components/motion/Transform.js';
 import Visual from '../components/render/Visual.js';
 import resourceConfig from '../config/resource_balance.json'; // resource_balance.json 임포트
@@ -75,7 +75,7 @@ export default class EntityManager {
     createResourceNode(x, y, type, amount) {
         const id = this.createEntity();
         this.addComponent(id, new Transform(x, y));
-        this.addComponent(id, new Resource(type, amount));
+        this.addComponent(id, new ResourceNode(type, amount), 'Resource');
 
         // Visual based on resource type
         // resource_balance.json에서 해당 자원의 색상 정보를 가져옵니다.
@@ -106,5 +106,32 @@ export default class EntityManager {
 
     getEntitiesByComponent(componentName) {
         return Array.from(this.entities.values()).filter(e => e.components.has(componentName));
+    }
+
+    findNearestEntityWithComponent(x, y, radius, condition, spatialHash = null) {
+        let nearestId = null;
+        let minDistSq = radius * radius;
+
+        const nearbyIds = spatialHash
+            ? spatialHash.query(x, y, radius)
+            : Array.from(this.entities.keys());
+
+        for (const id of nearbyIds) {
+            const entity = this.entities.get(id);
+            if (!entity) continue;
+            
+            if (condition && !condition(entity)) continue;
+
+            const transform = entity.components.get('Transform');
+            if (!transform) continue;
+
+            const distSq = (transform.x - x) ** 2 + (transform.y - y) ** 2;
+            if (distSq < minDistSq) {
+                minDistSq = distSq;
+                nearestId = id;
+            }
+        }
+
+        return nearestId;
     }
 }

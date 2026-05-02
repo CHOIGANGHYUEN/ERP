@@ -1,5 +1,6 @@
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
+import ResourceNode from '../../components/resource/ResourceNode.js';
 
 /**
  * 💎 ResourceFactory
@@ -17,16 +18,16 @@ export default class ResourceFactory extends IEntityFactory {
         switch (type) {
             case 'meat':
                 builder.withVisual({ type: 'meat', size: 10 })
-                       .addComponent('Resource', { type: 'food', value: 50, edible: true });
+                       .addComponent('Resource', new ResourceNode('meat', 50));
                 break;
             case 'rock':
             case 'ore':
                 builder.withVisual({ type: 'rock', color: '#757575', size: 12 })
-                       .addComponent('Resource', { type: 'material', value: 100, isRock: true });
+                       .addComponent('Resource', new ResourceNode('stone', 100));
                 break;
             case 'poop':
                 builder.withVisual({ type: 'poop', size: 6 })
-                       .addComponent('Resource', { isFertilizer: true, amount: 100 });
+                       .addComponent('Resource', new ResourceNode('poop', 100));
                 break;
             default:
                 builder.withVisual({ type: type, size: 8 });

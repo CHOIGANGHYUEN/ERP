@@ -22,16 +22,33 @@ export default class GathererRole extends BaseRole {
             state.targetId = null;
         }
 
-        // 3. 주변 식물 탐색 (FoodSensor 재사용하되, 상태는 gather_plant 로)
-        const sensor = this.engine.systemManager?.humanBehavior?.foodSensor;
-        const animal = entity.components.get('Animal');
-        if (sensor && animal) {
-            // 채집가는 더 넓은 반경(500px)에서 식물을 찾습니다.
-            const plantId = sensor.findFood(animal, transform.x, transform.y, 500);
-            if (plantId) {
-                state.targetId = plantId;
-                return 'gather_plant';
+        // 3. 주변 식물 탐색 (FoodSensor 대신 Claim을 완벽히 존중하는 수동 탐색 로직 적용)
+        const condition = (ent) => {
+            const res = ent.components.get('Resource');
+            if (!res || !res.edible || res.value <= 0) return false;
+
+            // 🚫 도달 불가(블랙리스트) 필터링
+            if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
+
+            // 🔒 찜(Claim) 필터링: 이미 다른 개체가 캐고 있다면 무시
+            if (res.claimedBy && res.claimedBy !== entity.id) {
+                const claimer = this.em.entities.get(res.claimedBy);
+                if (claimer && claimer.components.get('AIState')?.targetId === ent.id) return false;
+                res.claimedBy = null; // 독점권 해제
             }
+            return true;
+        };
+
+        const nearestId = this.em.findNearestEntityWithComponent(
+            transform.x, transform.y, 500, condition, this.engine.spatialHash
+        );
+
+        if (nearestId !== null) {
+            state.targetId = nearestId;
+            const targetEnt = this.em.entities.get(nearestId);
+            const targetRes = targetEnt.components.get('Resource');
+            if (targetRes) targetRes.claimedBy = entity.id; // 내가 찜함
+            return 'gather_plant';
         }
 
         return null;

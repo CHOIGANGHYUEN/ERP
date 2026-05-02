@@ -1,5 +1,10 @@
 import System from '../../core/System.js';
 
+/**
+ * 🧺 GatheringSystem
+ * 본능 행동 (포식, 채집)에 대한 시스템
+ * 장황한 거리 계산과 차감 로직은 GathererComponent로 위임되었습니다.
+ */
 export default class GatheringSystem extends System {
     constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
@@ -14,129 +19,63 @@ export default class GatheringSystem extends System {
             const state = entity.components.get('AIState');
             if (!state) continue;
 
-            // 1. 일반 동물들의 먹기 (초식/육식 동물이 자원을 섭취하여 포만감 증가)
-            if (state.mode === 'eat') {
-                const transform = entity.components.get('Transform');
-                const animal = entity.components.get('Animal');
-                const metabolism = entity.components.get('Metabolism');
+            const gatherer = entity.components.get('GathererComponent');
+            if (!gatherer) continue;
 
-                if (animal && metabolism && transform) {
-                    const target = em.entities.get(state.targetId);
-                    if (target) {
-                        const targetPos = target.components.get('Transform');
-                        const distSq = (targetPos.x - transform.x) ** 2 + (targetPos.y - transform.y) ** 2;
+            const targetId = state.targetId;
+            const target = targetId ? em.entities.get(targetId) : null;
+            if (!target) continue;
 
-                        if (distSq <= 25) { // 반경 5px
-                            this.gatherToStomach(id, state.targetId, animal, metabolism, dt);
-                        }
-                    }
-                }
-            }
-            // 2. 벌의 꿀 채집 (일벌이 꽃에서 꿀을 채집하여 인벤토리(nectar)에 저장)
-            else if (state.mode === 'bee_gather') {
-                const transform = entity.components.get('Transform');
-                const animal = entity.components.get('Animal');
-
-                if (animal && transform) {
-                    const target = em.entities.get(state.targetId);
-                    if (target) {
-                        const targetPos = target.components.get('Transform');
-                        const distSq = (targetPos.x - transform.x) ** 2 + (targetPos.y - transform.y) ** 2;
-
-                        if (distSq <= 25) { // 반경 5px
-                            this.gatherNectar(id, state.targetId, animal, dt);
-                        }
-                    }
-                }
-            }
-            // 3. 인간의 자원 채집 (나무, 광석 등)
-            else if (state.mode === 'gather') {
-                const transform = entity.components.get('Transform');
-                const inventory = entity.components.get('Inventory');
-
-                if (inventory && transform) {
-                    const target = em.entities.get(state.targetId);
-                    if (target) {
-                        const targetPos = target.components.get('Transform');
-                        const distSq = (targetPos.x - transform.x) ** 2 + (targetPos.y - transform.y) ** 2;
-
-                        if (distSq <= 100) { // 반경 10px (인간은 도구 사용으로 사거리 김)
-                            this.gatherToInventory(id, state.targetId, inventory, dt);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    gatherToStomach(myId, targetId, animal, metabolism, dt) {
-        const entity = this.entityManager.entities.get(myId);
-        const stats = entity.components.get('BaseStats');
-        const food = this.entityManager.entities.get(targetId);
-        if (!food || !stats) return;
-
-        const resource = food.components.get('Resource');
-        const visual = food.components.get('Visual');
-        const preyAnimal = food.components.get('Animal');
-
-        let biteSize = 10.0 * dt; // 1초에 10씩 섭취
-        let nutrition = 0;
-
-        if (resource && resource.storedFertility !== undefined) {
-            let taken = Math.min(resource.storedFertility * 100, biteSize);
-            nutrition = taken;
-            resource.storedFertility -= taken / 100;
-            if (visual) visual.quality = resource.storedFertility;
-
-            if (resource.storedFertility <= 0.05) this.entityManager.removeEntity(targetId);
-        } else if (resource && resource.amount) {
-            let taken = Math.min(resource.amount, biteSize);
-            nutrition = taken;
-            resource.amount -= taken;
-            if (resource.amount <= 0) this.entityManager.removeEntity(targetId);
-        } else if (preyAnimal) {
-            nutrition = 50; // 사냥 성공 시 고정 영양분
-            this.entityManager.removeEntity(targetId);
-        }
-
-        stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + nutrition);
-    }
-
-    gatherToInventory(myId, targetId, inventory, dt) {
-        const target = this.entityManager.entities.get(targetId);
-        if (!target) return;
-        const resource = target.components.get('Resource');
-        const wealth = this.entityManager.entities.get(myId).components.get('Wealth');
-
-        if (resource) {
-            const gatherAmount = Math.min(resource.value || 0, 5 * dt);
-            const type = resource.type || 'wood';
+            const transform = entity.components.get('Transform');
+            const targetPos = target.components.get('Transform');
             
-            // 인벤토리에 추가
-            inventory.items[type] = (inventory.items[type] || 0) + gatherAmount;
-            resource.value -= gatherAmount;
+            if (!transform || !targetPos) continue;
 
-            // 소량의 골드 획득 (경제 활동 보너스)
-            if (wealth) wealth.addGold(gatherAmount * 0.1);
+            const distSq = (targetPos.x - transform.x) ** 2 + (targetPos.y - transform.y) ** 2;
 
-            if (resource.value <= 0) this.entityManager.removeEntity(targetId);
-        }
-    }
-
-    gatherNectar(myId, targetId, animal, dt) {
-        const flower = this.entityManager.entities.get(targetId);
-        if (!flower) return;
-        const state = this.entityManager.entities.get(myId).components.get('AIState');
-
-        // 벌은 한 번에 10의 꿀을 채집
-        animal.nectar += 10;
-        state.mode = 'bee_return'; // 채집 완료 후 집으로 귀환 모드 전환
-
-        const fRes = flower.components.get('Resource');
-        const fVis = flower.components.get('Visual');
-        if (fRes && fVis) {
-            fRes.storedFertility = Math.max(0, fRes.storedFertility - 0.2);
-            fVis.quality = fRes.storedFertility;
+            if (state.mode === 'eat') {
+                if (distSq <= 25) { // 반경 5px
+                    gatherer.gatherSpeed = 10.0;
+                    const extracted = gatherer.performGathering(dt, target, targetId, em, this.eventBus, transform);
+                    
+                    const preyAnimal = target.components.get('Animal');
+                    if (preyAnimal && extracted === 0) {
+                        // 사냥감 처리
+                        const stats = entity.components.get('BaseStats');
+                        if (stats) stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + 50);
+                        em.removeEntity(targetId);
+                    } else if (extracted > 0) {
+                        const stats = entity.components.get('BaseStats');
+                        if (stats) stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + extracted);
+                    }
+                }
+            } else if (state.mode === 'bee_gather') {
+                if (distSq <= 25) { // 반경 5px
+                    // 벌은 한 번에 20의 비옥도를 소모하여 10의 꿀을 얻음
+                    gatherer.gatherSpeed = 20.0 / dt; 
+                    const extracted = gatherer.performGathering(dt, target, targetId, em, this.eventBus, transform);
+                    
+                    const animal = entity.components.get('Animal');
+                    if (animal) animal.nectar = (animal.nectar || 0) + 10;
+                    state.mode = 'bee_return'; 
+                }
+            } else if (state.mode === 'gather') {
+                if (distSq <= 100) { // 반경 10px
+                    gatherer.gatherSpeed = 5.0;
+                    const extracted = gatherer.performGathering(dt, target, targetId, em, this.eventBus, transform);
+                    
+                    if (extracted > 0) {
+                        const inventory = entity.components.get('Inventory');
+                        const wealth = entity.components.get('Wealth');
+                        const resource = target.components.get('Resource');
+                        if (inventory && resource) {
+                            const type = resource.type || 'wood';
+                            inventory.items[type] = (inventory.items[type] || 0) + extracted;
+                        }
+                        if (wealth) wealth.addGold(extracted * 0.1);
+                    }
+                }
+            }
         }
     }
 }

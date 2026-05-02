@@ -3,6 +3,7 @@ import EntityBuilder from '../core/EntityBuilder.js';
 import BaseStats from '../../components/stats/BaseStats.js';
 import State from '../../components/behavior/State.js';
 import Age from '../../components/stats/Age.js';
+import GathererComponent from '../../components/resource/GathererComponent.js';
 
 /**
  * 🐄 AnimalFactory
@@ -74,7 +75,8 @@ export default class AnimalFactory extends IEntityFactory {
             .addComponent('Age', new Age({
                 currentAge: options.isBaby ? 0 : 5 + Math.random() * 10,
                 maxAge: config.maxLifespan || (20 + Math.random() * 10)
-            }));
+            }))
+            .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: type === 'bee' ? 20.0 : 10.0 }));
 
         // 공간 해시 등록
         if (this.engine.spatialHash) {

@@ -1,6 +1,6 @@
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
-import Resource from '../../components/resource/Resource.js';
+import ResourceNode from '../../components/resource/ResourceNode.js';
 
 /**
  * 🌲 NatureFactory
@@ -22,7 +22,7 @@ export default class NatureFactory extends IEntityFactory {
         } else {
             builder.withVisual({ type: type, color: '#2e7d32' });
             // 일반 환경 요소도 최소한의 자원 컴포넌트는 가짐 (오류 방지)
-            builder.addComponent('Resource', new Resource(type, 10));
+            builder.addComponent('Resource', new ResourceNode(type, 10));
         }
 
         if (this.engine.spatialHash) {
@@ -33,13 +33,46 @@ export default class NatureFactory extends IEntityFactory {
     }
 
     _setupTree(builder, type, quality, options) {
-        const amount = Math.floor(quality * 100) + 50;
-        builder.withVisual({
+        // 🌱 [생태계 복원] 명시적으로 성목 스폰을 요청하지 않은 이상 모든 나무는 묘목(작은 크기)부터 시작합니다.
+        const isGrown = options.isGrown === true;
+        const targetSize = 15 + (quality * 10);
+        const targetAmount = Math.floor(quality * 100) + 50;
+
+        const initialSize = isGrown ? targetSize : 5;
+        const initialAmount = isGrown ? targetAmount : 5;
+
+        const visual = {
             type: 'tree',
-            size: 15 + (quality * 10),
+            size: initialSize,
             quality: quality,
             subtype: options.subtype || 'normal'
-        }).addComponent('Resource', new Resource(type.includes('tree') ? type : 'tree', amount));
+        };
+
+        const resource = new ResourceNode(type.includes('tree') ? type : 'tree', initialAmount);
+
+        builder.withVisual(visual).addComponent('Resource', resource);
+
+        if (!isGrown) {
+            // 묘목이 성목으로 자라나는 점진적 생장 로직
+            const growthInterval = setInterval(() => {
+                const em = this.engine.entityManager;
+                // 엔티티가 파괴(벌목)되면 생장 중지
+                if (!em.entities.has(builder.id)) {
+                    clearInterval(growthInterval);
+                    return;
+                }
+
+                visual.size += 1.0;
+                resource.value += 10;
+
+                // 목표치에 도달하면 완전한 성목으로 판정 후 타이머 종료
+                if (visual.size >= targetSize) {
+                    visual.size = targetSize;
+                    resource.value = targetAmount;
+                    clearInterval(growthInterval);
+                }
+            }, 6000); // 6초마다 생장
+        }
     }
 
     _setupPlant(builder, type, quality) {
@@ -48,6 +81,6 @@ export default class NatureFactory extends IEntityFactory {
             type: type.includes('grass') ? 'grass' : (type === 'berry' ? 'berry' : 'flower'),
             quality: quality,
             color: type.includes('grass') ? '#4caf50' : (type === 'berry' ? '#e91e63' : '#ff4081')
-        }).addComponent('Resource', new Resource(type, amount));
+        }).addComponent('Resource', new ResourceNode(type, amount));
     }
 }

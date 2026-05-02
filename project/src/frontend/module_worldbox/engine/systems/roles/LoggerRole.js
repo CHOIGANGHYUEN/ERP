@@ -24,26 +24,41 @@ export default class LoggerRole extends BaseRole {
         }
 
         // 가장 가까운 나무 탐색
-        let nearestId = null;
-        let minDistSq = Infinity;
-        for (const id of this.em.resourceIds) {
-            const res = this.em.entities.get(id);
-            if (!res) continue;
-            const visual = res.components.get('Visual');
-            if (visual?.type !== 'tree') continue;
-            const resource = res.components.get('Resource');
-            if (!resource || resource.value <= 0) continue;
+        const condition = (ent) => {
+            const visual = ent.components.get('Visual');
+            if (visual?.type !== 'tree') return false;
+            const resource = ent.components.get('Resource');
+            if (!resource || resource.value <= 0) return false;
 
-            const t = res.components.get('Transform');
-            if (!t) continue;
-            const dx = t.x - transform.x;
-            const dy = t.y - transform.y;
-            const dSq = dx * dx + dy * dy;
-            if (dSq < minDistSq) { minDistSq = dSq; nearestId = id; }
-        }
+            // 🌱 묘목 보호: 자원량이 적거나 덜 자란 새싹은 채집 대상에서 제외
+            if (resource.value < 20 || (visual && visual.size < 10)) return false;
 
-        if (nearestId) {
+            // 🚫 도달 불가(블랙리스트) 타겟 필터링
+            if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
+
+            // 🔒 타겟 독점 확인 (누군가 이미 캐려고 찜했는지)
+            if (resource.claimedBy && resource.claimedBy !== entity.id) {
+                const claimer = this.em.entities.get(resource.claimedBy);
+                if (claimer) {
+                    const claimerState = claimer.components.get('AIState');
+                    if (claimerState && claimerState.targetId === ent.id) return false;
+                }
+                resource.claimedBy = null; // 타겟 포기 시 클레임 자동 해제
+            }
+            return true;
+        };
+
+        const nearestId = this.em.findNearestEntityWithComponent(
+            transform.x, transform.y, 3000, condition, this.engine.spatialHash
+        );
+
+        if (nearestId !== null) {
             state.targetId = nearestId;
+            // 🔒 타겟 독점권 설정
+            const targetEnt = this.em.entities.get(nearestId);
+            const targetRes = targetEnt?.components.get('Resource');
+            if (targetRes) targetRes.claimedBy = entity.id;
+
             return 'gather_wood';
         }
 

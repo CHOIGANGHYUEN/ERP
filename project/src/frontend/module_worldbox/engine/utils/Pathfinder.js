@@ -71,7 +71,7 @@ export default class Pathfinder {
         const endKey = getKey(endX, endY);
 
         const obstacles = new Set();
-        const nearbyIds = spatialHash ? spatialHash.queryRect(Math.min(sx, ex)-50, Math.min(sy, ey)-50, Math.abs(ex-sx)+100, Math.abs(ey-sy)+100) : em.buildingIds;
+        const nearbyIds = spatialHash ? spatialHash.queryRect(Math.min(sx, ex) - 50, Math.min(sy, ey) - 50, Math.abs(ex - sx) + 100, Math.abs(ey - sy) + 100) : em.buildingIds;
 
         for (const bId of nearbyIds) {
             const b = em.entities.get(bId);
@@ -87,6 +87,10 @@ export default class Pathfinder {
                 const maxX = Math.floor((t.x + r) / gridSize);
                 const minY = Math.floor((t.y - r) / gridSize);
                 const maxY = Math.floor((t.y + r) / gridSize);
+
+                // 💡 [4단계 대응] 목적지(endX, endY)가 이 건물 영역에 포함된다면, 해당 건물은 장애물로 등록하지 않음 (Deposit 반납 접근 허용)
+                if (endX >= minX && endX <= maxX && endY >= minY && endY <= maxY) continue;
+
                 for (let x = minX; x <= maxX; x++) {
                     for (let y = minY; y <= maxY; y++) {
                         obstacles.add(getKey(x, y));
@@ -138,6 +142,13 @@ export default class Pathfinder {
                     const realY = ny * gridSize + gridSize / 2;
                     if (terrainGen && !terrainGen.isNavigable(realX, realY) && neighborKey !== endKey) continue;
 
+                    // 🌊 [바다 건너기 방지] isLand 대신 엄격하게 물(Biome 0~3)만 차단합니다.
+                    // 모래사장(4) 등은 정상 통과하도록 허용하여 해안가 탐색 마비(프리징)를 방지합니다.
+                    if (terrainGen && typeof terrainGen.getBiomeAt === 'function') {
+                        const biomeId = terrainGen.getBiomeAt(Math.floor(realX), Math.floor(realY));
+                        if (biomeId !== undefined && biomeId < 4 && neighborKey !== endKey) continue;
+                    }
+
                     const baseWeight = (dx !== 0 && dy !== 0) ? 1.414 : 1.0;
                     const tentativeG = (gScore.get(currentKey) || 0) + baseWeight;
 
@@ -180,14 +191,12 @@ export default class Pathfinder {
             state.lastPathCalcTime = now;
         }
 
-        if (state.path && state.path.length > 0) {
-            // 🛑 [UNREACHABLE] 길 없음
+        if (state.path) {
+            // 🛑 탐색 실패 (길이 없거나 바다 건너편)
             if (state.path.length === 0) {
-                if (!state.lastPathRetryTime || now - state.lastPathRetryTime > 3000) {
-                    state.lastPathCalcTime = 0;
-                    state.lastPathRetryTime = now;
-                }
-                return false;
+                transform.vx = 0;
+                transform.vy = 0;
+                return -1; // 도달 불가 상태 반환
             }
 
             if (state.pathIndex < state.path.length) {
@@ -231,6 +240,12 @@ export default class Pathfinder {
             const tx = x1 + (dx * i / steps);
             const ty = y1 + (dy * i / steps);
             if (!engine.terrainGen.isNavigable(tx, ty)) return true;
+
+            // 직선 경로상에 바다가 포함되어 있는지도 엄격하게 물(Biome 0~3)만 체크
+            if (typeof engine.terrainGen.getBiomeAt === 'function') {
+                const biomeId = engine.terrainGen.getBiomeAt(Math.floor(tx), Math.floor(ty));
+                if (biomeId !== undefined && biomeId < 4) return true;
+            }
         }
         return false;
     }

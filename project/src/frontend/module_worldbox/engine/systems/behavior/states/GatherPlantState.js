@@ -38,6 +38,19 @@ export default class GatherPlantState extends State {
             return AnimalStates.IDLE;
         }
 
+        // 🔒 식물 독점 (Claim) 체크: 이미 다른 사람이 찜해서 오고 있는지 확인
+        if (res.claimedBy && res.claimedBy !== entityId) {
+            const claimer = em.entities.get(res.claimedBy);
+            const claimerState = claimer?.components.get('AIState');
+            if (claimerState && claimerState.targetId === state.targetId) {
+                state.targetId = null; // 다른 개체가 캐러 오고 있으므로 양보
+                if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '❓', duration: 1500 });
+                return AnimalStates.IDLE;
+            }
+            res.claimedBy = null;
+        }
+        res.claimedBy = entityId; // 내가 찜함
+
         // 3. 거리 체크 및 이동
         const dx = tPos.x - transform.x;
         const dy = tPos.y - transform.y;
@@ -74,7 +87,12 @@ export default class GatherPlantState extends State {
             }
         } else {
             // 이동
-            Pathfinder.followPath(transform, state, tPos, 60, this.system.engine);
+            if (Pathfinder.followPath(transform, state, tPos, 60, this.system.engine) === -1) {
+                // 도달할 수 없는 식물일 경우 즉시 채집 포기
+                state.targetId = null;
+                if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '❓', duration: 1500 });
+                return AnimalStates.IDLE;
+            }
         }
 
         return null;
