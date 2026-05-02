@@ -53,7 +53,7 @@ export default class GatherPlantState extends State {
                 // 자원 수확 및 엔티티 제거
                 const amount = res.value || 5;
                 inventory.add('food', amount);
-                
+
                 // 파티클 효과 (잎사귀 비산)
                 this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: tPos.x, y: tPos.y,
