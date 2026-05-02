@@ -32,7 +32,7 @@ export default class LoggerRole extends BaseRole {
             const visual = res.components.get('Visual');
             if (visual?.type !== 'tree') continue;
             const resource = res.components.get('Resource');
-            if (!resource || resource.amount <= 0) continue;
+            if (!resource || resource.value <= 0) continue;
 
             const t = res.components.get('Transform');
             if (!t) continue;

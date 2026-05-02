@@ -7,6 +7,12 @@ export default class IdleState extends State {
         
         if (!state || !transform) return null;
 
+        // 🚀 [Cleanup] IDLE 상태 진입 시 이전 길찾기 잔상 제거
+        state.path = null;
+        state.pathIndex = 0;
+        state.pathTargetId = null;
+        state.lastPathCalcTime = 0;
+
         // 물리 마찰력 적용 (멈추기)
         transform.vx *= 0.8;
         transform.vy *= 0.8;

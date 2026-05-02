@@ -6,6 +6,7 @@ import EatState from './EatState.js';
 import SleepState from './SleepState.js';
 import FleeState from './FleeState.js';
 import GatherWoodState from './GatherWoodState.js';
+import GatherPlantState from './GatherPlantState.js';
 import BuildState from './BuildState.js';
 import DepositState from './DepositState.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
@@ -26,6 +27,7 @@ export default class StateFactory {
         this.states.set(AnimalStates.FLEE, new FleeState(system));
         this.states.set(AnimalStates.EVADE, this.states.get(AnimalStates.FLEE));
         this.states.set('gather_wood', new GatherWoodState(system));
+        this.states.set('gather_plant', new GatherPlantState(system));
         this.states.set('build', new BuildState(system));
         this.states.set('deposit', new DepositState(system));
     }

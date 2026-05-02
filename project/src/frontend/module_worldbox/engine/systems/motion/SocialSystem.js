@@ -27,6 +27,10 @@ export default class SocialSystem {
             
             const animal = entity.components.get('Animal');
             const transform = entity.components.get('Transform');
+            
+            // 👤 인간은 사회적 무리(flocking) 로직에서 제외하여 독립성 보장
+            if (animal && animal.type === 'human') continue;
+
             if (animal && transform) {
                 this.maintainHerd(id, animal);
                 this.applyFlocking(id, animal, transform, dt);
@@ -72,20 +76,30 @@ export default class SocialSystem {
         const members = this.herds.get(animal.herdId);
         if (!members || members.length <= 1) return;
 
+        const em = this.engine.entityManager;
+        const myState = em.entities.get(myId)?.components.get('AIState');
+
+        // 🛑 [Expert Update] IDLE 상태인 개체는 무리 이동 로직을 적용하지 않음 (완전 정지 보장)
+        if (myState && myState.mode === AnimalStates.IDLE) {
+            return;
+        }
+
         // 무리의 첫 번째 멤버를 리더로 지정 (죽으면 다음 멤버가 자동으로 리더가 됨)
         const leaderId = members[0];
+
+        // 인간(human)은 무리 추종 로직에서 제외 (각자 독립적 행동)
+        const animalComp = em.entities.get(myId)?.components.get('Animal');
+        if (animalComp && animalComp.type === 'human') return;
 
         // 자신이 리더라면 누군가를 따라갈 필요 없이 자유롭게 배회함
         if (myId === leaderId) return;
 
-        const em = this.engine.entityManager;
         const leaderEntity = em.entities.get(leaderId);
         const leaderTransform = leaderEntity?.components.get('Transform');
         if (!leaderTransform) return;
 
         // 리더의 AI 상태를 확인하여 위급 상황(flee) 전파
         const leaderState = leaderEntity.components.get('AIState');
-        const myState = em.entities.get(myId)?.components.get('AIState');
 
         if (leaderState && myState) {
             if (leaderState.mode === 'flee' && myState.mode !== 'flee') {
@@ -97,8 +111,9 @@ export default class SocialSystem {
             }
         }
 
-        // 🥗 [Survival Priority] 식사 중이거나, 먹이를 찾는 중이거나, 허기가 임계치(60) 이하인 경우 무리 로직 차단
         const stats = em.entities.get(myId)?.components.get('BaseStats');
+
+        // 🥗 [Survival Priority] 식사 중이거나, 먹이를 찾는 중이거나, 허기가 임계치(60) 이하인 경우 무리 로직 차단
         const isSearchingFood = myState && (myState.mode === AnimalStates.EAT || myState.mode === AnimalStates.FORAGE || myState.mode === AnimalStates.HUNT);
         const isHungry = stats && stats.hunger < 60;
 

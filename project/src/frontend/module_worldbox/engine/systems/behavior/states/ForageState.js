@@ -27,7 +27,7 @@ export default class ForageState extends State {
         const distSq = dx * dx + dy * dy;
 
         // 초근접 사거리 도달 시 식사 상태로 전환
-        if (distSq <= 100) {
+        if (distSq <= 144) {
             transform.vx *= 0.5;
             transform.vy *= 0.5;
             return AnimalStates.EAT;

@@ -1,4 +1,4 @@
-import ResourceNode from '../components/resource/ResourceNode.js';
+import Resource from '../components/resource/Resource.js';
 import Transform from '../components/motion/Transform.js';
 import Visual from '../components/render/Visual.js';
 import resourceConfig from '../config/resource_balance.json'; // resource_balance.json 임포트
@@ -55,10 +55,17 @@ export default class EntityManager {
     addComponent(entityId, component, overrideName = null) {
         const entity = this.entities.get(entityId);
         if (entity) {
-            const name = overrideName || component.constructor.name;
+            let name = overrideName || component.constructor.name;
+            
+            // 🚀 [FIX] 일반 객체({})로 전달된 경우 클래스 이름이 'Object'가 되는 문제 방지
+            if (name === 'Object') {
+                if (component.type === 'wood' || component.isTree) name = 'Resource';
+                else if (component.edible || component.type === 'food') name = 'Resource';
+                else if (component.isBlueprint || component.progress !== undefined) name = 'Structure';
+            }
+
             entity.components.set(name, component);
             
-            // 🚀 [Expert Tracking] 동물, 자원, 건물을 전용 세트에서 관리하여 루프 오버헤드 최소화
             if (name === 'Animal') this.animalIds.add(entityId);
             if (name === 'Resource') this.resourceIds.add(entityId);
             if (name === 'Building') this.buildingIds.add(entityId);
@@ -68,7 +75,7 @@ export default class EntityManager {
     createResourceNode(x, y, type, amount) {
         const id = this.createEntity();
         this.addComponent(id, new Transform(x, y));
-        this.addComponent(id, new ResourceNode(type, amount));
+        this.addComponent(id, new Resource(type, amount));
 
         // Visual based on resource type
         // resource_balance.json에서 해당 자원의 색상 정보를 가져옵니다.

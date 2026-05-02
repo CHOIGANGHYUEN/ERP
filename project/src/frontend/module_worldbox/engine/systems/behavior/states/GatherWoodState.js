@@ -80,7 +80,7 @@ export default class GatherWoodState extends State {
         const dy = tPos.y - transform.y;
         const distSq = dx * dx + dy * dy;
 
-        if (distSq <= 144) { // 반경 12px — 나무 앞에 도달
+        if (distSq <= 144) { // 12px 반경
             // 멈추고 도끼질 시작
             transform.vx *= 0.5;
             transform.vy *= 0.5;
@@ -135,7 +135,7 @@ export default class GatherWoodState extends State {
 
                     state.targetId = null;
                     state.isChopping = false;
-                    return null;
+                    return 'idle'; // 나무 한 그루를 다 팼으면 잠시 대기 상태로 전환
                 }
             }
 

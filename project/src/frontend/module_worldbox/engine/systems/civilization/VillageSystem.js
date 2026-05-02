@@ -38,7 +38,7 @@ export default class VillageSystem extends System {
             this._recruitTimer -= dt;
             if (this._recruitTimer <= 0) {
                 this._recruitVillagers();
-                this._recruitTimer = 3.0;
+                this._recruitTimer = 0.5; // 0.5초마다 무소속 채용 (반응성 대폭 상향)
             }
         }
     }
