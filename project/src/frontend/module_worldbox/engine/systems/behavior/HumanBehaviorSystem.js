@@ -3,6 +3,8 @@ import { AnimalStates } from '../../components/behavior/State.js';
 import HumanBrain from './brains/HumanBrain.js';
 import StateFactory from './states/StateFactory.js';
 import FoodSensor from './sensors/FoodSensor.js';
+import RoleFactory from '../roles/RoleFactory.js';
+import { JobTypes } from '../../config/JobTypes.js';
 
 /**
  * 👤 HumanBehaviorSystem
@@ -16,6 +18,7 @@ export default class HumanBehaviorSystem extends System {
         this.humanBrain = new HumanBrain(this.entityManager, this.eventBus, this.engine);
         this.stateFactory = new StateFactory(this);
         this.foodSensor = new FoodSensor(this.entityManager, this.spatialHash);
+        this.roleFactory = new RoleFactory(this);
     }
 
     update(dt, time) {
@@ -36,12 +39,27 @@ export default class HumanBehaviorSystem extends System {
             const inventory = entity.components.get('Inventory');
 
             if (state && transform && stats) {
+                // 🏷️ jobType 초기화 (처음 한 번만)
+                const civ = entity.components.get('Civilization');
+                if (civ && civ.jobType === undefined) {
+                    civ.jobType = JobTypes.UNEMPLOYED;
+                    civ.role = null;
+                }
+
                 // AI 틱 최적화
                 if ((id + frameCount) % 2 === 0) {
-                    // 🧠 인간 전용 두뇌 결정
-                    const nextMode = this.humanBrain.decide(entity, state, stats, emotion, inventory);
-                    if (nextMode && nextMode !== state.mode) {
-                        state.mode = nextMode;
+                    // 🎭 [직업 시스템] Role이 있으면 Role의 판단을 먼저 실행
+                    if (civ?.role) {
+                        const roleDecision = civ.role.decide(entity, dt * 2);
+                        if (roleDecision && roleDecision !== state.mode) {
+                            state.mode = roleDecision;
+                        }
+                    } else {
+                        // 🧠 Role이 없으면 HumanBrain이 판단
+                        const nextMode = this.humanBrain.decide(entity, state, stats, emotion, inventory);
+                        if (nextMode && nextMode !== state.mode) {
+                            state.mode = nextMode;
+                        }
                     }
 
                     this.updateHumanAI(id, entity, state, transform, animal, stats, dt * 2, emotion, inventory);

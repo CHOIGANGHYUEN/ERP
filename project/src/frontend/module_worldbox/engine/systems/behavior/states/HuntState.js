@@ -1,11 +1,11 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
+import Pathfinder from '../../../utils/Pathfinder.js';
 
 export default class HuntState extends State {
     update(entityId, entity, dt) {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
-        const mass = transform.mass || 50;
         
         const target = this.system.entityManager.entities.get(state.targetId);
         if (!target) {
@@ -19,23 +19,22 @@ export default class HuntState extends State {
             return AnimalStates.IDLE;
         }
 
+        // 2. 이동 (경로 탐색 적용)
         const dx = tPos.x - transform.x;
         const dy = tPos.y - transform.y;
         const distSq = dx * dx + dy * dy;
 
         // 초근접 사거리 도달 시 식사 상태로 전환
-        if (distSq <= 25) {
-            transform.vx = 0;
-            transform.vy = 0;
+        if (distSq <= 100) { // 10px 반경
+            transform.vx *= 0.5;
+            transform.vy *= 0.5;
             return AnimalStates.EAT;
         } else {
-            const dist = Math.sqrt(distSq);
-            const force = 25000; 
-            transform.vx += (dx / dist) * force * dt / mass;
-            transform.vy += (dy / dist) * force * dt / mass;
+            // 🚀 [Troubleshooting 3] 동물도 장애물을 피해 타겟을 추적하도록 A* 적용
+            const speed = (entity.components.get('BaseStats')?.speed || 1.0) * 60; // 초당 60px 내외
+            Pathfinder.followPath(transform, state, tPos, speed, this.system.engine);
         }
 
         return null;
     }
 }
-

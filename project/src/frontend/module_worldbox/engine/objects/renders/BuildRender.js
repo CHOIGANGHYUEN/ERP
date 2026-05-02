@@ -4,30 +4,38 @@
  * 마을 건물의 도트 그래픽 렌더링을 담당합니다.
  */
 export const BuildRender = {
-    render(ctx, type, t, v, structure) {
+    render(ctx, type, t, v, structure, time) {
         ctx.save();
         
         // 완성된 건물은 기본적으로 불투명하게 처리 (청사진 투명도 해제)
         if (structure && structure.isComplete) {
             ctx.globalAlpha = 1.0;
         }
-        
+        // 🧪 [Rendering Trace] 건물 렌더링 요청 추적
+        if (v && v.type === 'building') {
+            // console.debug(`[BuildRender] Rendering: ${type}, subtype: ${v.subtype}, complete: ${structure?.isComplete}`);
+        }
+
         switch (type) {
             case 'bonfire':
-                this.drawBonfire(ctx, t, v);
+            case 'camp': // 🏕️ 캠프는 모닥불 디자인을 공유
+                this.drawBonfire(ctx, t, v, time);
                 break;
             case 'storage':
             case 'warehouse':
-                this.drawStorage(ctx, t, v);
+                this.drawStorage(ctx, t, v, time);
                 break;
             case 'house':
             case 'tent':
-                this.drawHouse(ctx, t, v);
+                this.drawHouse(ctx, t, v, time);
                 break;
             case 'farm':
-                this.drawFarm(ctx, t, v);
+                this.drawFarm(ctx, t, v, time);
                 break;
             default:
+                if (type !== 'default') {
+                    console.warn(`[BuildRender] Unknown building type: ${type}`);
+                }
                 this.drawDefaultBuilding(ctx, t, v);
         }
 
@@ -39,23 +47,37 @@ export const BuildRender = {
         ctx.restore();
     },
 
-    /** 🔥 모닥불 렌더링 */
-    drawBonfire(ctx, t, v) {
+    /** 🔥 모닥불 렌더링 (일렁이는 효과 강화) */
+    drawBonfire(ctx, t, v, time = 0) {
         const s = v.size || 25;
+        // 🚀 [Timing Fix] performance.now() 대응을 위해 0.001 곱하기
+        const animTime = time * 0.006;
         
+        // 0. 바닥 빛무리 (Glow Effect)
+        const glowSize = s * (1.2 + Math.sin(animTime * 1.5) * 0.1);
+        const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
+        glowGrad.addColorStop(0, 'rgba(255, 152, 0, 0.3)');
+        glowGrad.addColorStop(1, 'rgba(255, 152, 0, 0)');
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, glowSize, glowSize * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
         // 1. 바닥 돌 (Base Rocks)
-        ctx.fillStyle = '#616161';
-        ctx.strokeStyle = '#424242';
+        ctx.fillStyle = '#424242';
+        ctx.strokeStyle = '#212121';
         ctx.lineWidth = 1;
         for (let i = 0; i < 8; i++) {
             const angle = (i / 8) * Math.PI * 2;
             const rx = Math.cos(angle) * (s * 0.45);
             const ry = Math.sin(angle) * (s * 0.25);
-            ctx.fillRect(rx - 3, ry - 3, 6, 6);
-            ctx.strokeRect(rx - 3, ry - 3, 6, 6);
+            ctx.beginPath();
+            ctx.rect(rx - 3, ry - 3, 6, 6);
+            ctx.fill();
+            ctx.stroke();
         }
         
-        // 2. 장작 (Premium Logs)
+        // 2. 장작 (Crossed Logs)
         ctx.fillStyle = '#5d4037';
         ctx.strokeStyle = '#3e2723';
         ctx.fillRect(-s * 0.35, -2, s * 0.7, 5);
@@ -63,145 +85,153 @@ export const BuildRender = {
         ctx.fillRect(-2, -s * 0.35, 5, s * 0.7);
         ctx.strokeRect(-2, -s * 0.35, 5, s * 0.7);
         
-        // 3. 불꽃 (Dynamic & Layered Flames)
-        const time = Date.now() * 0.006;
-        const flameH = s * (0.6 + Math.sin(time) * 0.15);
+        // 3. 불꽃 (Multi-layered Dynamic Flames)
+        const flameBaseH = s * 0.8;
+        const flicker = Math.sin(animTime * 2) * 0.1 + Math.sin(animTime * 0.7) * 0.05;
+        const flameH = flameBaseH * (1.0 + flicker);
         
         // Outer Flame
-        const grad = ctx.createLinearGradient(0, 0, 0, -flameH);
-        grad.addColorStop(0, '#ff9800');
-        grad.addColorStop(0.5, '#f44336');
-        grad.addColorStop(1, 'transparent');
-        
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.25, 0);
-        ctx.quadraticCurveTo(0, -flameH * 1.3, s * 0.25, 0);
-        ctx.fill();
-
+        ctx.fillStyle = '#ff5722';
+        this._drawFlameShape(ctx, s * 0.3, flameH);
+        // Middle Flame
+        ctx.fillStyle = '#ff9800';
+        this._drawFlameShape(ctx, s * 0.2, flameH * 0.7);
         // Inner Core
         ctx.fillStyle = '#ffeb3b';
+        this._drawFlameShape(ctx, s * 0.1, flameH * 0.4);
+
+        // 4. 불꽃 튀는 효과 (Embers)
+        ctx.fillStyle = '#fff176';
+        for(let i=0; i<3; i++) {
+            const pTime = (animTime * 0.5 + i) % 3;
+            const px = Math.sin(pTime * 4) * (s * 0.3);
+            const py = - (pTime * 20);
+            const pSize = Math.max(0, 2 - pTime);
+            ctx.fillRect(px, py, pSize, pSize);
+        }
+    },
+
+    _drawFlameShape(ctx, width, height) {
         ctx.beginPath();
-        ctx.moveTo(-s * 0.12, 0);
-        ctx.quadraticCurveTo(0, -flameH * 0.8, s * 0.12, 0);
+        ctx.moveTo(-width, 0);
+        ctx.bezierCurveTo(-width, -height * 0.5, 0, -height * 1.2, 0, -height);
+        ctx.bezierCurveTo(0, -height * 1.2, width, -height * 0.5, width, 0);
         ctx.fill();
     },
 
-    /** 📦 창고 렌더링 */
-    drawStorage(ctx, t, v) {
+    /** 📦 창고 렌더링 (디자인 개선) */
+    drawStorage(ctx, t, v, time = 0) {
         const s = v.size || 40;
         
-        // 1. 기초 (Foundation)
-        ctx.fillStyle = '#4e342e';
-        ctx.fillRect(-s * 0.55, -s * 0.1, s * 1.1, s * 0.1);
+        // 1. 기초 (Stone Foundation)
+        ctx.fillStyle = '#757575';
+        ctx.fillRect(-s * 0.55, -s * 0.15, s * 1.1, s * 0.15);
 
-        // 2. 몸체 (Detailed Planks)
+        // 2. 몸체 (Timber Frame & Planks)
         ctx.fillStyle = '#8d6e63';
-        ctx.strokeStyle = '#5d4037';
-        ctx.lineWidth = 1;
-        ctx.fillRect(-s * 0.5, -s * 0.65, s, s * 0.6);
-        ctx.strokeRect(-s * 0.5, -s * 0.65, s, s * 0.6);
+        ctx.strokeStyle = '#4e342e';
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(-s * 0.5, -s * 0.7, s, s * 0.6);
+        ctx.strokeRect(-s * 0.5, -s * 0.7, s, s * 0.6);
         
-        // Plank lines
-        ctx.beginPath();
-        for(let i=-1; i<=1; i++) {
-            const px = i * (s * 0.25);
-            ctx.moveTo(px, -s * 0.65);
-            ctx.lineTo(px, -s * 0.05);
-        }
-        ctx.stroke();
+        // 기둥 (Support Beams)
+        ctx.fillStyle = '#4e342e';
+        ctx.fillRect(-s * 0.55, -s * 0.75, s * 0.1, s * 0.7);
+        ctx.fillRect(s * 0.45, -s * 0.75, s * 0.1, s * 0.7);
 
-        // 3. 지붕 (Heavy Timber Roof)
+        // 3. 지붕 (Thatched/Wooden Roof)
         ctx.fillStyle = '#3e2723';
-        ctx.fillRect(-s * 0.6, -s * 0.75, s * 1.2, s * 0.15);
-        ctx.strokeRect(-s * 0.6, -s * 0.75, s * 1.2, s * 0.15);
-        
-        // 4. 문 (Dark Entrance)
-        ctx.fillStyle = '#212121';
-        ctx.fillRect(-s * 0.15, -s * 0.4, s * 0.3, s * 0.4);
-        // Door Handle
-        ctx.fillStyle = '#ffeb3b';
-        ctx.fillRect(s * 0.05, -s * 0.22, 2, 2);
-    },
-
-    /** 🏠 집/텐트 렌더링 */
-    drawHouse(ctx, t, v) {
-        const s = v.size || 42;
-        
-        // 1. 몸체 (Plastered Walls)
-        ctx.fillStyle = '#f5f5f5';
-        ctx.strokeStyle = '#bdbdbd';
-        ctx.lineWidth = 1;
-        ctx.fillRect(-s * 0.45, -s * 0.55, s * 0.9, s * 0.55);
-        ctx.strokeRect(-s * 0.45, -s * 0.55, s * 0.9, s * 0.55);
-        
-        // 2. 지붕 (Tiled Roof)
-        ctx.fillStyle = '#c62828';
-        ctx.strokeStyle = '#8e24aa'; // Subtle decorative trim
         ctx.beginPath();
-        ctx.moveTo(-s * 0.6, -s * 0.55);
-        ctx.lineTo(0, -s * 1.0);
-        ctx.lineTo(s * 0.6, -s * 0.55);
+        ctx.moveTo(-s * 0.6, -s * 0.7);
+        ctx.lineTo(0, -s * 0.95);
+        ctx.lineTo(s * 0.6, -s * 0.7);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
         
-        // 3. 창문 (Glass with Reflection)
-        ctx.fillStyle = '#81d4fa';
-        ctx.strokeStyle = '#4fc3f7';
-        const winS = s * 0.18;
-        ctx.fillRect(-s * 0.32, -s * 0.4, winS, winS);
-        ctx.strokeRect(-s * 0.32, -s * 0.4, winS, winS);
-        ctx.fillRect(s * 0.14, -s * 0.4, winS, winS);
-        ctx.strokeRect(s * 0.14, -s * 0.4, winS, winS);
-        
-        // Window Cross
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 0.5;
+        // 4. 화물 (Cargo Details)
+        ctx.fillStyle = '#a1887f';
+        ctx.fillRect(s * 0.2, -s * 0.2, 8, 8); // 상자
+        ctx.fillStyle = '#d7ccc8';
         ctx.beginPath();
-        ctx.moveTo(-s * 0.32 + winS/2, -s * 0.4); ctx.lineTo(-s * 0.32 + winS/2, -s * 0.4 + winS);
-        ctx.moveTo(s * 0.14 + winS/2, -s * 0.4); ctx.lineTo(s * 0.14 + winS/2, -s * 0.4 + winS);
+        ctx.arc(-s * 0.3, -s * 0.15, 5, 0, Math.PI * 2); // 가마니
+        ctx.fill();
+    },
+
+    /** 🏠 집 렌더링 (연기 효과 추가) */
+    drawHouse(ctx, t, v, time = 0) {
+        const s = v.size || 42;
+        const animTime = time * 0.006;
+        
+        // 1. 벽면
+        ctx.fillStyle = '#efebe9';
+        ctx.strokeStyle = '#d7ccc8';
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
+        ctx.strokeRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
+        
+        // 2. 굴뚝 및 연기
+        const cx = s * 0.25, cy = -s * 0.8;
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(cx - 3, cy, 6, s * 0.3);
+        
+        // 연기 파티클
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.4)';
+        for(let i=0; i<3; i++) {
+            const pTime = (animTime * 0.3 + i * 0.5) % 2;
+            const px = cx + Math.sin(pTime * 3) * 5;
+            const py = cy - (pTime * 15);
+            const pSize = 4 + pTime * 4;
+            ctx.beginPath();
+            ctx.arc(px, py, pSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 3. 지붕
+        ctx.fillStyle = '#b71c1c';
+        ctx.strokeStyle = '#7f0000';
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.5, -s * 0.5);
+        ctx.lineTo(0, -s * 0.9);
+        ctx.lineTo(s * 0.5, -s * 0.5);
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
 
-        // 4. 문 (Wooden Door)
-        ctx.fillStyle = '#5d4037';
-        ctx.fillRect(-s * 0.12, -s * 0.32, s * 0.24, s * 0.32);
+        // 4. 문 & 창문
+        ctx.fillStyle = '#3e2723';
+        ctx.fillRect(-s * 0.1, -s * 0.3, s * 0.2, s * 0.3);
+        ctx.fillStyle = '#81d4fa';
+        ctx.fillRect(-s * 0.3, -s * 0.35, 6, 6);
+        ctx.fillRect(s * 0.2, -s * 0.35, 6, 6);
     },
 
     /** 🌾 농장 렌더링 */
-    drawFarm(ctx, t, v) {
+    drawFarm(ctx, t, v, time = 0) {
         const s = v.size || 50;
+        const animTime = time * 0.006;
         
-        // 1. 밭 구획 (Fenced Soil)
-        ctx.fillStyle = '#4e342e';
-        ctx.strokeStyle = '#3e2723';
-        ctx.lineWidth = 1.5;
+        // 1. 흙 바닥
+        ctx.fillStyle = '#5d4037';
         ctx.fillRect(-s * 0.5, -s * 0.4, s, s * 0.8);
-        ctx.strokeRect(-s * 0.5, -s * 0.4, s, s * 0.8);
         
-        // 2. 밭 고랑 (Furrows)
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-        ctx.lineWidth = 3;
-        for (let i = -2; i <= 2; i++) {
-            const py = i * (s * 0.15);
-            ctx.beginPath();
-            ctx.moveTo(-s * 0.45, py);
-            ctx.lineTo(s * 0.45, py);
-            ctx.stroke();
-        }
+        // 2. 울타리
+        ctx.strokeStyle = '#3e2723';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-s * 0.52, -s * 0.42, s * 1.04, s * 0.84);
         
-        // 3. 작물 (Lush Crops)
-        ctx.fillStyle = '#66bb6a';
-        for (let ix = -2; ix <= 2; ix++) {
-            for (let iy = -2; iy <= 2; iy++) {
-                const ox = ix * (s * 0.18);
-                const oy = iy * (s * 0.15);
-                ctx.fillRect(ox - 2, oy - 4, 4, 6);
-                // Crop head
-                ctx.fillStyle = '#ffeb3b';
-                ctx.fillRect(ox - 1, oy - 5, 2, 2);
-                ctx.fillStyle = '#66bb6a';
-            }
+        // 3. 작물 (일렁이는 효과)
+        for(let i=0; i<16; i++) {
+            const row = Math.floor(i / 4);
+            const col = i % 4;
+            const px = -s * 0.35 + col * (s * 0.23);
+            const py = -s * 0.3 + row * (s * 0.2);
+            
+            const sway = Math.sin(animTime + i) * 2;
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(px + sway * 0.1, py - 4, 2, 5);
+            ctx.fillStyle = '#cddc39';
+            ctx.fillRect(px + sway * 0.2, py - 6, 3, 3);
         }
     },
 

@@ -1,4 +1,5 @@
 import System from '../../core/System.js';
+import { JobTypes } from '../../config/JobTypes.js';
 
 /**
  * 🏘️ VillageSystem
@@ -46,7 +47,7 @@ export default class VillageSystem extends System {
             members: new Set([founderId]),
             buildings: new Set(),
             resources: { wood: 0, food: 0, stone: 0 },
-            plan: ['bonfire', 'storage'], // 🏗️ 건설 우선순위
+            plan: [], // 🏗️ 이제 촌장이 직접 계획을 수립합니다.
             currentTask: null,
             _planningCooldown: 0 // 계획 수립 쿨다운
         };
@@ -57,7 +58,16 @@ export default class VillageSystem extends System {
         const founder = this.entityManager.entities.get(founderId);
         if (founder) {
             const civ = founder.components.get('Civilization');
-            if (civ) civ.villageId = id;
+            if (civ) {
+                civ.villageId = id;
+                // 👑 창립자를 촌장으로 임명
+                civ.jobType = JobTypes.CHIEF;
+                const roleFactory = this.engine.systemManager?.humanBehavior?.roleFactory;
+                if (roleFactory) {
+                    civ.role = roleFactory.createRole(JobTypes.CHIEF);
+                    console.log(`👑 Entity ${founderId} appointed as CHIEF of Village ${id}`);
+                }
+            }
         }
 
         console.log(`🏘️ Village founded by entity ${founderId} at (${x}, ${y})`);
@@ -168,19 +178,35 @@ export default class VillageSystem extends System {
             return;
         }
 
-        // 🌍 지형 검사 후 청사진 생성
-        let spawnX, spawnY;
+        // 🌍 지형 검사 후 청사진 생성 (토양 지형 우선)
+        let spawnX = 0;
+        let spawnY = 0;
         let foundSpot = false;
         let attempts = 0;
+        const maxAttempts = 15; // 🚀 성능 유지를 위해 다시 원래 수준으로 환원
 
-        while (!foundSpot && attempts < 15) {
+        while (!foundSpot && attempts < maxAttempts) {
+            // 마을 중심에서 점진적으로 멀어지며 탐색
             const angle = Math.random() * Math.PI * 2;
-            const radius = 50 + Math.random() * 80;
+            const radius = 40 + (attempts / maxAttempts) * 150; 
             spawnX = village.centerX + Math.cos(angle) * radius;
             spawnY = village.centerY + Math.sin(angle) * radius;
 
-            if (this.engine.terrainGen && this.engine.terrainGen.isLandAt(spawnX, spawnY)) {
-                foundSpot = true;
+            // 1. 토양 지형인지 확인 (개선된 isSoilAt 사용)
+            if (this.engine.terrainGen && this.engine.terrainGen.isSoilAt(spawnX, spawnY)) {
+                // 2. 근처에 이미 건물이 있는지 확인 (너무 촘촘하게 짓지 않도록)
+                const isTooClose = Array.from(village.buildings).some(bId => {
+                    const b = this.entityManager.entities.get(bId);
+                    const bPos = b?.components.get('Transform');
+                    if (!bPos) return false;
+                    const dx = bPos.x - spawnX;
+                    const dy = bPos.y - spawnY;
+                    return (dx * dx + dy * dy) < (50 * 50); // 최소 50px 간격 유지
+                });
+
+                if (!isTooClose) {
+                    foundSpot = true;
+                }
             }
             attempts++;
         }

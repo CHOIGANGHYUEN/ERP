@@ -107,18 +107,23 @@ export default class UISystem extends System {
             }
         }
 
+        const civ = target.components.get('Civilization');
+
         // 📏 UI용 데이터 정규화 (동물의 경우 배설 임계치 15.0 기준)
         const normalizedFertility = a ? Math.min(1.0, fertility / 15.0) : fertility;
 
         return {
             id: target.id, type: type, subType: subType, name: name, state: state,
-            stomach: s ? s.hunger : m?.stomach, 
-            maxStomach: s ? 100 : m?.maxStomach, 
-            fatigue: s?.fatigue || 0, // 😴 추가된 피로도 수치
+            hunger: s ? s.hunger : m?.stomach, 
+            maxHunger: s ? (s.maxHunger || 100) : m?.maxStomach, 
+            health: s?.health || 0,
+            maxHealth: s?.maxHealth || 100,
+            fatigue: s?.fatigue || 0,
             fertility: normalizedFertility,
             quality: v?.quality, inhabitants: inhabitants, resourceValue: r?.value || r?.amount || 0,
             animalYield: animalYield,
-            rank: a?.rank
+            rank: a?.rank,
+            jobType: civ?.jobType || null
         };
     }
 

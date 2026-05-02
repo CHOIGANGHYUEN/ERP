@@ -23,8 +23,36 @@ export default class HumanFactory extends IEntityFactory {
         // 🧬 성별 결정 (남성: male, 여성: female)
         const gender = options.gender || (Math.random() > 0.5 ? 'male' : 'female');
 
+        // 🚀 [Troubleshooting 2] 소환 위치가 장애물 내부인지 체크 및 보정
+        let spawnX = x;
+        let spawnY = y;
+        
+        if (this.engine.spatialHash) {
+            const nearbyBuildings = this.engine.spatialHash.query(x, y, 50).filter(id => {
+                const ent = em.entities.get(id);
+                return ent && ent.components.has('Building');
+            });
+
+            if (nearbyBuildings.length > 0) {
+                // 장애물이 있다면 근처 빈 공간으로 보정 (간단한 랜덤 노이즈 기반 재시도)
+                for (let i = 0; i < 5; i++) {
+                    const testX = x + (Math.random() - 0.5) * 60;
+                    const testY = y + (Math.random() - 0.5) * 60;
+                    const collisions = this.engine.spatialHash.query(testX, testY, 15).filter(id => {
+                        const ent = em.entities.get(id);
+                        return ent && ent.components.has('Building');
+                    });
+                    if (collisions.length === 0) {
+                        spawnX = testX;
+                        spawnY = testY;
+                        break;
+                    }
+                }
+            }
+        }
+
         builder
-            .withTransform(x, y)
+            .withTransform(spawnX, spawnY)
             .withVisual({
                 type: 'human',
                 gender: gender,

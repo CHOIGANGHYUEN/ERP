@@ -377,28 +377,6 @@ export default class Engine {
                         this.camera.clamp();
                     }
                 }
-
-                // 📡 [Real-time UI Sync] 선택된 개체의 최신 스탯을 UI로 전송 (매 5프레임)
-                if (this.frameCount % 5 === 0) {
-                    const stats = e.components.get('BaseStats');
-                    const state = e.components.get('AIState');
-                    const animal = e.components.get('Animal');
-                    
-                    if (stats && state && animal) {
-                        this.eventBus.emit('SYNC_SELECTED_ENTITY', {
-                            id: this.selectedId,
-                            type: animal.type,
-                            name: animal.type.charAt(0).toUpperCase() + animal.type.slice(1),
-                            state: state.mode,
-                            hunger: stats.hunger,
-                            maxHunger: stats.maxHunger || 100,
-                            health: stats.health,
-                            maxHealth: stats.maxHealth,
-                            fatigue: stats.fatigue,
-                            fertility: stats.storedFertility / 100 // UI의 Nutrients에 표시
-                        });
-                    }
-                }
             } else {
                 // 개체가 삭제되었다면(죽음 등) 선택 해제
                 this.selectedId = null;

@@ -1,5 +1,5 @@
 import State from './State.js';
-import Pathfinder from '../../utils/Pathfinder.js';
+import Pathfinder from '../../../utils/Pathfinder.js';
 
 export default class DepositState extends State {
     update(entityId, entity, dt) {
@@ -96,7 +96,7 @@ export default class DepositState extends State {
             return 'idle';
         } else {
             // 창고로 이동 (경로 탐색 적용)
-            Pathfinder.followPath(transform, state, tPos, 55, em);
+            Pathfinder.followPath(transform, state, tPos, 55, this.system.engine);
         }
 
         return null;

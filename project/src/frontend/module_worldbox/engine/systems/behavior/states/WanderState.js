@@ -90,13 +90,43 @@ export default class WanderState extends State {
         transform.vx += (Math.cos(state.wanderAngle) * force * dt) / mass;
         transform.vy += (Math.sin(state.wanderAngle) * force * dt) / mass;
 
-        // 🛡️ [Stuck Prevention] 이동 불가 지역으로 들어갔다면 즉시 방향 전환 유도
+        // 🛡️ [Stuck Prevention] 이동 불가 지역 또는 건물 내부로 들어갔다면 즉시 방향 전환 유도
         const terrain = this.system.engine.terrainGen;
+        const sh = this.system.engine.spatialHash;
+        
+        let isStuck = false;
         if (terrain && !terrain.isNavigable(transform.x, transform.y)) {
+            isStuck = true;
+        } else if (sh) {
+            // 주변 건물 체크
+            const nearby = sh.queryRect(transform.x - 10, transform.y - 10, 20, 20);
+            for (const bId of nearby) {
+                const b = this.system.entityManager.entities.get(bId);
+                if (b && b.components.has('Building')) {
+                    const bt = b.components.get('Transform');
+                    const bv = b.components.get('Visual');
+                    if (bt && bv) {
+                        const r = (bv.size || 40) * 0.4; // 충돌 반경
+                        if (Math.abs(transform.x - bt.x) < r && Math.abs(transform.y - bt.y) < r) {
+                            isStuck = true;
+                            // 건물 중심에서 밀어내기
+                            const dx = transform.x - bt.x;
+                            const dy = transform.y - bt.y;
+                            const d = Math.hypot(dx, dy) || 1;
+                            transform.x += (dx / d) * 10;
+                            transform.y += (dy / d) * 10;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isStuck) {
             state.navTimer = 0; // 다음 프레임에 즉시 새로운 각도 계산
             // 반대 방향으로 살짝 튕겨나가게 하여 탈출 도움
-            transform.vx *= -0.5;
-            transform.vy *= -0.5;
+            transform.vx *= -0.8;
+            transform.vy *= -0.8;
         }
 
         return null;

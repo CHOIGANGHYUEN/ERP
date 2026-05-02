@@ -1,5 +1,5 @@
 import State from './State.js';
-import Pathfinder from '../../utils/Pathfinder.js';
+import Pathfinder from '../../../utils/Pathfinder.js';
 
 /**
  * 🪓 GatherWoodState
@@ -142,7 +142,7 @@ export default class GatherWoodState extends State {
         } else {
             // 이동 (경로 탐색 적용)
             state.isChopping = false;
-            Pathfinder.followPath(transform, state, tPos, 55, em);
+            Pathfinder.followPath(transform, state, tPos, 55, this.system.engine);
         }
 
         return null;

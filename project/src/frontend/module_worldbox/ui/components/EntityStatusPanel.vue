@@ -15,6 +15,14 @@
           {{ entity.state }}
         </span>
       </div>
+
+      <!-- 🏷️ 직업 뱃지 (인간 전용) -->
+      <div class="status-row" v-if="entity.jobType">
+        <span class="label">Job:</span>
+        <span class="job-badge" :style="{ background: jobMeta.bg, color: jobMeta.color }">
+          {{ jobMeta.emoji }} {{ jobMeta.label }}
+        </span>
+      </div>
       <div class="status-row" v-if="entity.rank !== undefined">
         <span class="label">Hierarchy Rank:</span>
         <span class="value" style="color: #ef5350">👑 {{ entity.rank }}</span>
@@ -88,6 +96,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useWorldboxStore } from '../store/worldboxStore';
+import { JobMeta, JobTypes } from '../../engine/config/JobTypes.js';
 
 const store = useWorldboxStore();
 const entity = computed(() => store.selectedEntity);
@@ -95,6 +104,18 @@ const entity = computed(() => store.selectedEntity);
 const closePanel = () => {
   store.clearSelection();
 };
+
+// 직업 메타데이터 (이모지, 한글명, 색상)
+const jobMeta = computed(() => {
+  const jt = entity.value?.jobType || JobTypes.UNEMPLOYED;
+  const meta = JobMeta[jt] || JobMeta[JobTypes.UNEMPLOYED];
+  return {
+    emoji: meta.emoji,
+    label: meta.label,
+    color: meta.color,
+    bg:    meta.color + '22', // 색상 + 투명도
+  };
+});
 
 const getIcon = (type, subType) => {
   if (subType === 'beehive') return '🍯';
@@ -153,6 +174,17 @@ const getPercentage = (val, max) => {
 .state-badge { padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); text-transform: capitalize; }
 .state-badge.withered { background: rgba(139, 69, 19, 0.3); color: #ff8a65; }
 .state-badge.healthy, .state-badge.blooming { background: rgba(76, 175, 80, 0.3); color: #81c784; }
+
+/* 🏷️ 직업 뱃지 */
+.job-badge {
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: 1px solid currentColor;
+  opacity: 0.95;
+}
 
 .progress-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; margin: 0 10px; overflow: hidden; }
 .fill { height: 100%; transition: width 0.2s ease; }

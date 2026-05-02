@@ -1,184 +1,249 @@
+/**
+ * 🚀 MinHeap for A* Open List
+ */
+class MinHeap {
+    constructor(compare) {
+        this.nodes = [];
+        this.compare = compare;
+    }
+    push(node) {
+        this.nodes.push(node);
+        this.bubbleUp(this.nodes.length - 1);
+    }
+    pop() {
+        if (this.size() === 0) return null;
+        if (this.size() === 1) return this.nodes.pop();
+        const top = this.nodes[0];
+        this.nodes[0] = this.nodes.pop();
+        this.bubbleDown(0);
+        return top;
+    }
+    size() { return this.nodes.length; }
+    bubbleUp(index) {
+        while (index > 0) {
+            const parent = (index - 1) >> 1;
+            if (this.compare(this.nodes[index], this.nodes[parent]) < 0) {
+                [this.nodes[index], this.nodes[parent]] = [this.nodes[parent], this.nodes[index]];
+                index = parent;
+            } else break;
+        }
+    }
+    bubbleDown(index) {
+        const last = this.nodes.length - 1;
+        while (true) {
+            let left = (index << 1) + 1;
+            let right = (index << 1) + 2;
+            let smallest = index;
+            if (left <= last && this.compare(this.nodes[left], this.nodes[smallest]) < 0) smallest = left;
+            if (right <= last && this.compare(this.nodes[right], this.nodes[smallest]) < 0) smallest = right;
+            if (smallest !== index) {
+                [this.nodes[index], this.nodes[smallest]] = [this.nodes[smallest], this.nodes[index]];
+                index = smallest;
+            } else break;
+        }
+    }
+}
+
 export default class Pathfinder {
     /**
-     * A* 기반의 간단한 그리드 경로 탐색 (장애물 우회용)
-     * @param {number} sx 시작 X
-     * @param {number} sy 시작 Y
-     * @param {number} ex 목표 X
-     * @param {number} ey 목표 Y
-     * @param {EntityManager} em 엔티티 매니저 (건물 정보 등)
-     * @param {number} gridSize 그리드 크기 (기본 20)
-     * @returns {Array<{x,y}>} 경로 웨이포인트 배열 (시작점 제외, 도착점 포함)
+     * A* 기반의 최적화된 그리드 경로 탐색
      */
-    static findPath(sx, sy, ex, ey, em, gridSize = 20) {
-        // 너무 가까우면 직접 이동
+    static findPath(sx, sy, ex, ey, engine, gridSize = 20) {
+        if (!engine) return [];
+        const em = engine.entityManager;
+        const spatialHash = engine.spatialHash;
+
         const dx = ex - sx;
         const dy = ey - sy;
+        // 매우 가까우면 바로 직선 반환
         if (dx * dx + dy * dy < gridSize * gridSize * 4) {
             return [{ x: ex, y: ey }];
         }
 
-        // 휴리스틱 함수
-        const heuristic = (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2);
+        const startX = Math.floor(sx / gridSize);
+        const startY = Math.floor(sy / gridSize);
+        const endX = Math.floor(ex / gridSize);
+        const endY = Math.floor(ey / gridSize);
 
-        const startNode = { x: Math.floor(sx / gridSize), y: Math.floor(sy / gridSize) };
-        const endNode = { x: Math.floor(ex / gridSize), y: Math.floor(ey / gridSize) };
+        const startKey = `${startX},${startY}`;
+        const endKey = `${endX},${endY}`;
 
-        // 장애물(건물) 그리드 매핑
+        // 1. 장애물 정보 캐싱
         const obstacles = new Set();
-        for (const bId of em.buildingIds) {
-            const building = em.entities.get(bId);
-            if (!building) continue;
-            const t = building.components.get('Transform');
-            const v = building.components.get('Visual');
+        const qMinX = Math.min(sx, ex) - 100;
+        const qMaxX = Math.max(sx, ex) + 100;
+        const qMinY = Math.min(sy, ey) - 100;
+        const qMaxY = Math.max(sy, ey) + 100;
+        
+        // 🚀 [Troubleshooting] em.engine 대신 인자로 받은 engine 사용
+        const nearbyIds = spatialHash ? spatialHash.queryRect(qMinX, qMinY, qMaxX - qMinX, qMaxY - qMinY) : em.buildingIds;
+
+        for (const bId of nearbyIds) {
+            const b = em.entities.get(bId);
+            if (!b || !b.components.has('Building')) continue;
+            const t = b.components.get('Transform');
+            const v = b.components.get('Visual');
             if (t && v) {
-                const bRadius = (v.size || 40) * 0.45; // KinematicSystem과 동일한 반경
-                const minGridX = Math.floor((t.x - bRadius) / gridSize);
-                const maxGridX = Math.floor((t.x + bRadius) / gridSize);
-                const minGridY = Math.floor((t.y - bRadius) / gridSize);
-                const maxGridY = Math.floor((t.y + bRadius) / gridSize);
-                
-                for (let x = minGridX; x <= maxGridX; x++) {
-                    for (let y = minGridY; y <= maxGridY; y++) {
+                const r = (v.size || 40) * 0.45;
+                const minX = Math.floor((t.x - r) / gridSize);
+                const maxX = Math.floor((t.x + r) / gridSize);
+                const minY = Math.floor((t.y - r) / gridSize);
+                const maxY = Math.floor((t.y + r) / gridSize);
+                for (let x = minX; x <= maxX; x++) {
+                    for (let y = minY; y <= maxY; y++) {
                         obstacles.add(`${x},${y}`);
                     }
                 }
             }
         }
+        // 시작/종료 지점은 무조건 통과 허용
+        obstacles.delete(endKey);
 
-        // 목표 지점이 장애물 내부라면, 가장 가까운 빈 공간을 진짜 목표로 수정 (또는 허용)
-        if (obstacles.has(`${endNode.x},${endNode.y}`)) {
-            // 장애물 내부라도 일단 길찾기 목적지는 허용해야 함 (건물 근처까지 가야 하므로)
-            obstacles.delete(`${endNode.x},${endNode.y}`); 
+        // 🚀 [Troubleshooting 2] 시작점이 장애물 내부라면 가장 가까운 빈 공간 찾기
+        let startNode = { x: startX, y: startY, key: startKey };
+        if (obstacles.has(startKey)) {
+            const nearest = this.findNearestWalkable(startX, startY, obstacles);
+            if (nearest) {
+                startNode = nearest;
+            } else {
+                obstacles.delete(startKey);
+            }
+        } else {
+            obstacles.delete(startKey);
         }
 
-        const openSet = [startNode];
-        const cameFrom = new Map();
-        
+        // 2. A* 자료구조 준비
         const gScore = new Map();
-        gScore.set(`${startNode.x},${startNode.y}`, 0);
+        gScore.set(startNode.key, 0);
         
         const fScore = new Map();
-        fScore.set(`${startNode.x},${startNode.y}`, heuristic(startNode.x, startNode.y, endNode.x, endNode.y));
+        const h = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        fScore.set(startNode.key, h(startNode, { x: endX, y: endY }));
+
+        const openSet = new MinHeap((a, b) => (fScore.get(a.key) || Infinity) - (fScore.get(b.key) || Infinity));
+        openSet.push(startNode);
+        
+        const openSetTracker = new Set([startNode.key]);
+        const closedSet = new Set();
+        const cameFrom = new Map();
 
         let attempts = 0;
-        const MAX_ATTEMPTS = 500; // 성능을 위해 탐색 제한
+        const MAX_ATTEMPTS = 500;
 
-        while (openSet.length > 0 && attempts < MAX_ATTEMPTS) {
+        while (openSet.size() > 0 && attempts < MAX_ATTEMPTS) {
             attempts++;
-            
-            // 가장 fScore가 낮은 노드 찾기
-            let currentIdx = 0;
-            for (let i = 1; i < openSet.length; i++) {
-                const id1 = `${openSet[i].x},${openSet[i].y}`;
-                const id2 = `${openSet[currentIdx].x},${openSet[currentIdx].y}`;
-                if ((fScore.get(id1) || Infinity) < (fScore.get(id2) || Infinity)) {
-                    currentIdx = i;
-                }
-            }
-            
-            const current = openSet[currentIdx];
-            const currentId = `${current.x},${current.y}`;
+            const current = openSet.pop();
+            const currentKey = current.key;
 
-            if (current.x === endNode.x && current.y === endNode.y) {
-                // 경로 재구성
-                const path = [];
-                let currId = currentId;
-                while (cameFrom.has(currId)) {
-                    const node = cameFrom.get(currId);
-                    path.unshift({ 
-                        x: node.x * gridSize + gridSize/2, 
-                        y: node.y * gridSize + gridSize/2 
-                    });
-                    currId = `${node.px},${node.py}`;
-                }
-                // 마지막은 실제 정확한 목표 지점으로 덮어씌움
-                if (path.length > 0) {
-                    path[path.length - 1] = { x: ex, y: ey };
-                } else {
-                    path.push({ x: ex, y: ey });
-                }
-                return path;
+            if (current.x === endX && current.y === endY) {
+                return this._reconstructPath(cameFrom, currentKey, gridSize, ex, ey);
             }
 
-            openSet.splice(currentIdx, 1);
+            openSetTracker.delete(currentKey);
+            closedSet.add(currentKey);
 
-            const neighbors = [
-                { x: current.x + 1, y: current.y },
-                { x: current.x - 1, y: current.y },
-                { x: current.x, y: current.y + 1 },
-                { x: current.x, y: current.y - 1 },
-                { x: current.x + 1, y: current.y + 1 },
-                { x: current.x - 1, y: current.y - 1 },
-                { x: current.x + 1, y: current.y - 1 },
-                { x: current.x - 1, y: current.y + 1 }
-            ];
-
-            for (const neighbor of neighbors) {
-                const neighborId = `${neighbor.x},${neighbor.y}`;
-                
-                if (obstacles.has(neighborId)) continue; // 건물 충돌 영역
-
-                const tentativeGScore = gScore.get(currentId) + (neighbor.x !== current.x && neighbor.y !== current.y ? 1.414 : 1);
-
-                if (tentativeGScore < (gScore.get(neighborId) || Infinity)) {
-                    cameFrom.set(neighborId, { x: neighbor.x, y: neighbor.y, px: current.x, py: current.y });
-                    gScore.set(neighborId, tentativeGScore);
-                    fScore.set(neighborId, tentativeGScore + heuristic(neighbor.x, neighbor.y, endNode.x, endNode.y));
-                    
-                    if (!openSet.some(n => n.x === neighbor.x && n.y === neighbor.y)) {
-                        openSet.push(neighbor);
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = current.x + dx;
+                    const ny = current.y + dy;
+                    const neighborKey = `${nx},${ny}`;
+                    if (closedSet.has(neighborKey) || obstacles.has(neighborKey)) continue;
+                    const weight = (dx !== 0 && dy !== 0) ? 1.414 : 1.0;
+                    const tentativeG = (gScore.get(currentKey) || 0) + weight;
+                    if (tentativeG < (gScore.get(neighborKey) || Infinity)) {
+                        cameFrom.set(neighborKey, { px: current.x, py: current.y });
+                        gScore.set(neighborKey, tentativeG);
+                        fScore.set(neighborKey, tentativeG + h({x: nx, y: ny}, { x: endX, y: endY }));
+                        if (!openSetTracker.has(neighborKey)) {
+                            openSet.push({ x: nx, y: ny, key: neighborKey });
+                            openSetTracker.add(neighborKey);
+                        }
                     }
                 }
             }
         }
-
-        // 목적지 도달 실패 시, 혹은 제한 횟수 초과 시 직선 반환 (Fall back)
-        return [{ x: ex, y: ey }];
+        return [];
     }
 
-    /**
-     * 상태에 캐싱된 경로를 따라 이동하도록 속도를 설정합니다.
-     */
-    static followPath(transform, state, targetPos, speed, em) {
-        // 경로가 없거나, 타겟이 바뀌었거나, 목적지가 너무 멀어진 경우 경로 재탐색
-        if (!state.path || state.pathTargetId !== state.targetId) {
-            state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, em);
+    /** 🚀 [Troubleshooting 2] 주변 빈 공간 탐색 */
+    static findNearestWalkable(gridX, gridY, obstacles, range = 3) {
+        for (let r = 1; r <= range; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                    const nx = gridX + dx;
+                    const ny = gridY + dy;
+                    const key = `${nx},${ny}`;
+                    if (!obstacles.has(key)) return { x: nx, y: ny, key: key };
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 경로 복구 (무한 루프 방지 포함) */
+    static _reconstructPath(cameFrom, currentKey, gridSize, ex, ey) {
+        const path = [];
+        let curr = currentKey;
+        let safety = 0;
+        while (cameFrom.has(curr) && safety < 200) {
+            const parts = curr.split(',').map(Number);
+            path.unshift({ x: parts[0] * gridSize + gridSize / 2, y: parts[1] * gridSize + gridSize / 2 });
+            const parent = cameFrom.get(curr);
+            curr = `${parent.px},${parent.py}`;
+            safety++;
+        }
+        if (path.length > 0) path[path.length - 1] = { x: ex, y: ey };
+        else path.push({ x: ex, y: ey });
+        return path;
+    }
+
+    static followPath(transform, state, targetPos, speed, engine) {
+        const now = Date.now();
+        const needsRecalc = !state.path || 
+                          state.pathTargetId !== state.targetId || 
+                          (state.lastPathCalcTime && now - state.lastPathCalcTime > 2000);
+
+        if (needsRecalc) {
+            state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
             state.pathTargetId = state.targetId;
             state.pathIndex = 0;
+            state.lastPathCalcTime = now;
+        }
+
+        if (state.path && state.path.length === 0) {
+            transform.vx *= 0.5;
+            transform.vy *= 0.5;
+            return false;
         }
 
         if (state.path && state.pathIndex < state.path.length) {
-            const nextWaypoint = state.path[state.pathIndex];
-            const dx = nextWaypoint.x - transform.x;
-            const dy = nextWaypoint.y - transform.y;
+            const nextWp = state.path[state.pathIndex];
+            const dx = nextWp.x - transform.x;
+            const dy = nextWp.y - transform.y;
             const distSq = dx * dx + dy * dy;
-
-            if (distSq < 100) { // 웨이포인트 반경 도달
-                state.pathIndex++;
-            }
-            
-            // 다시 가져오기 (index가 증가했을 수 있으므로)
+            if (distSq < 400) state.pathIndex++;
             if (state.pathIndex < state.path.length) {
-                const currentWp = state.path[state.pathIndex];
-                const nx = currentWp.x - transform.x;
-                const ny = currentWp.y - transform.y;
-                const ndist = Math.sqrt(nx * nx + ny * ny);
-                if (ndist > 0.1) {
-                    transform.vx = (nx / ndist) * speed;
-                    transform.vy = (ny / ndist) * speed;
+                const wp = state.path[state.pathIndex];
+                const nx = wp.x - transform.x;
+                const ny = wp.y - transform.y;
+                const d = Math.sqrt(nx * nx + ny * ny);
+                if (d > 0.1) {
+                    transform.vx = (nx / d) * speed;
+                    transform.vy = (ny / d) * speed;
                 }
                 return false;
             }
         }
 
-        // 경로의 끝에 도달했거나 경로가 없는 경우 (직접 이동)
         const dx = targetPos.x - transform.x;
         const dy = targetPos.y - transform.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 0.1) {
-            transform.vx = (dx / dist) * speed;
-            transform.vy = (dy / dist) * speed;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.1) {
+            transform.vx = (dx / d) * speed;
+            transform.vy = (dy / d) * speed;
         }
-        return true;
+        return d < 20;
     }
 }

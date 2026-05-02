@@ -1,15 +1,14 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
+import Pathfinder from '../../../utils/Pathfinder.js';
 
 /**
  * 🌿 ForageState (초식동물 전용 수색/이동 상태)
- * 육식동물의 HUNT와 달리 차분하게 먹이(풀, 열매)를 향해 이동합니다.
  */
 export default class ForageState extends State {
     update(entityId, entity, dt) {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
-        const mass = transform.mass || 50;
         
         const target = this.system.entityManager.entities.get(state.targetId);
         if (!target) {
@@ -28,16 +27,14 @@ export default class ForageState extends State {
         const distSq = dx * dx + dy * dy;
 
         // 초근접 사거리 도달 시 식사 상태로 전환
-        if (distSq <= 25) {
-            transform.vx = 0;
-            transform.vy = 0;
+        if (distSq <= 100) {
+            transform.vx *= 0.5;
+            transform.vy *= 0.5;
             return AnimalStates.EAT;
         } else {
-            const dist = Math.sqrt(distSq);
-            // 🚀 [Expert Buff] 여유로운 이동보다는 생존을 위한 적극적 이동으로 상향 (8000 -> 18000)
-            const force = 18000; 
-            transform.vx += (dx / dist) * force * dt / mass;
-            transform.vy += (dy / dist) * force * dt / mass;
+            // 🚀 [Troubleshooting 3] 초식동물도 장애물(건물)을 피해 먹이를 찾도록 A* 적용
+            const speed = (entity.components.get('BaseStats')?.speed || 0.8) * 50; 
+            Pathfinder.followPath(transform, state, tPos, speed, this.system.engine);
         }
 
         return null;

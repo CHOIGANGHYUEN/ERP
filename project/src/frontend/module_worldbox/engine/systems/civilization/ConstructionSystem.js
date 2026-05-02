@@ -72,7 +72,7 @@ export default class ConstructionSystem extends System {
                     }
                 } else {
                     // 청사진을 향해 이동 (경로 탐색 적용)
-                    Pathfinder.followPath(transform, state, targetPos, 70, em);
+                    Pathfinder.followPath(transform, state, targetPos, 70, this.engine);
                 }
             }
         }
@@ -80,26 +80,71 @@ export default class ConstructionSystem extends System {
 
     /** 🎊 건물 완성 및 시스템 반영 */
     finalizeBuilding(target, targetId, structure) {
-        structure.progress = structure.maxProgress;
-        structure.isComplete = true;
-        structure.isBlueprint = false;
-        
-        const visual = target.components.get('Visual');
-        if (visual) {
-            visual.alpha = 1.0;
-            // 완성된 건물 색상 강화 (선택적)
-        }
+        try {
+            structure.progress = structure.maxProgress;
+            structure.isComplete = true;
+            structure.isBlueprint = false;
+            
+            const visual = target.components.get('Visual');
+            if (visual) {
+                visual.alpha = 1.0;
+            }
 
-        const targetPos = target.components.get('Transform');
-        if (targetPos && this.engine.terrainGen) {
-            this.engine.terrainGen.setOccupancy(targetPos.x, targetPos.y, 2);
-        }
+            const targetPos = target.components.get('Transform');
+            if (targetPos) {
+                // 1. 지형 및 점유 업데이트 (에러 발생 시 로그만 출력)
+                try {
+                    if (this.engine.terrainGen) {
+                        this.engine.terrainGen.setOccupancy(targetPos.x, targetPos.y, 2);
+                        // 건설 완료 시 해당 자리 비옥도 초기화 (건물 부지)
+                        if (typeof this.engine.terrainGen.setFertility === 'function') {
+                            this.engine.terrainGen.setFertility(targetPos.x, targetPos.y, 0);
+                        }
+                    }
+                } catch (terrainErr) {
+                    console.error("Terrain update failed during building completion:", terrainErr);
+                }
 
-        console.log(`✅ Construction Complete: ${structure.type} (ID: ${targetId})`);
-        
-        this.eventBus.emit('BUILDING_COMPLETE', { id: targetId, type: structure.type });
-        this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
-            x: targetPos.x, y: targetPos.y, count: 30, type: 'EFFECT', color: '#ffeb3b', speed: 8
-        });
+                // 2. 🚀 [Troubleshooting] 건설에 참여한 모든 유닛 상태 초기화 (핵심 로직)
+                // 이 부분은 지형 에러와 상관없이 실행되어야 함
+                for (const id of this.entityManager.animalIds) {
+                    const entity = this.entityManager.entities.get(id);
+                    if (!entity) continue;
+                    const state = entity.components.get('AIState');
+                    if (state && state.targetId === targetId) {
+                        state.mode = 'idle';
+                        state.targetId = null;
+                        state.path = null;
+
+                        // 건물 밖으로 밀어내기 (끼임 방지)
+                        const transform = entity.components.get('Transform');
+                        if (transform) {
+                            const dx = transform.x - targetPos.x;
+                            const dy = transform.y - targetPos.y;
+                            const d = Math.hypot(dx, dy) || 1;
+                            transform.x += (dx / d) * 45; 
+                            transform.y += (dy / d) * 45;
+                            transform.vx = 0;
+                            transform.vy = 0;
+                        }
+                    }
+                }
+
+                console.log(`✅ Construction Complete: ${structure.type} (ID: ${targetId})`);
+                
+                this.eventBus.emit('BUILDING_COMPLETE', { id: targetId, type: structure.type });
+                this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
+                    x: targetPos.x, y: targetPos.y, count: 30, type: 'EFFECT', color: '#ffeb3b', speed: 8
+                });
+            }
+        } catch (fatalErr) {
+            console.error("Fatal error in finalizeBuilding:", fatalErr);
+            // 최소한 타겟이라도 풀어주기 시도
+            const builders = Array.from(this.entityManager.entities.values()).filter(e => e.components.get('AIState')?.targetId === targetId);
+            builders.forEach(b => {
+                const s = b.components.get('AIState');
+                if (s) { s.mode = 'idle'; s.targetId = null; }
+            });
+        }
     }
 }

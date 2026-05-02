@@ -18,7 +18,14 @@ export default class HumanBrain {
         // 0. 현재 진행 중인 상태 방어 (외부에서 끼어들어 상태를 망치는 것 방지)
         if (state.mode === AnimalStates.EAT && stats.hunger < 90) return AnimalStates.EAT;
         if (state.mode === AnimalStates.FORAGE && state.targetId) return AnimalStates.FORAGE;
-        if (state.mode === 'build' && state.targetId) return 'build';
+        if (state.mode === 'build' && state.targetId) {
+            const target = this.em.entities.get(state.targetId);
+            const structure = target?.components.get('Structure');
+            if (structure && !structure.isComplete) return 'build';
+            else {
+                state.targetId = null; // 타겟이 없거나 이미 완성됨
+            }
+        }
         if (state.mode === AnimalStates.SLEEP) return AnimalStates.SLEEP;
         if (state.mode === 'deposit' && state.targetId) return 'deposit';
 

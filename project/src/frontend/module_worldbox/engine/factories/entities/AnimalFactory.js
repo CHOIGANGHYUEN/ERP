@@ -16,8 +16,35 @@ export default class AnimalFactory extends IEntityFactory {
         const builder = new EntityBuilder(em);
         const id = builder.id;
 
+        // 🚀 [Troubleshooting 2] 소환 위치 보정
+        let spawnX = x;
+        let spawnY = y;
+        
+        if (this.engine.spatialHash) {
+            const nearbyBuildings = this.engine.spatialHash.query(x, y, 30).filter(id => {
+                const ent = em.entities.get(id);
+                return ent && ent.components.has('Building');
+            });
+
+            if (nearbyBuildings.length > 0) {
+                for (let i = 0; i < 5; i++) {
+                    const testX = x + (Math.random() - 0.5) * 40;
+                    const testY = y + (Math.random() - 0.5) * 40;
+                    const collisions = this.engine.spatialHash.query(testX, testY, 10).filter(id => {
+                        const ent = em.entities.get(id);
+                        return ent && ent.components.has('Building');
+                    });
+                    if (collisions.length === 0) {
+                        spawnX = testX;
+                        spawnY = testY;
+                        break;
+                    }
+                }
+            }
+        }
+
         builder
-            .withTransform(x, y)
+            .withTransform(spawnX, spawnY)
             .withVisual({
                 color: config.color || '#ffffff',
                 type: type,

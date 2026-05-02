@@ -4,6 +4,7 @@ export default class Visual extends Component {
     constructor(options = {}) {
         super('Visual');
         this.type = options.type || 'fallback';
+        this.subtype = options.subtype || ''; // 🏠 Added subtype support for buildings/resources
         this.color = options.color || '#ffffff';
         this.alpha = options.alpha !== undefined ? options.alpha : 1.0;
         this.size = options.size || 1.0;

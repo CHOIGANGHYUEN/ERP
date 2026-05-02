@@ -41,7 +41,11 @@ export default class SpatialHash {
         if (!targetCells[key]) {
             targetCells[key] = [];
         }
-        targetCells[key].push(entityId);
+        
+        // 중복 삽입 방지 (성능 및 메모리 안정성 확보)
+        if (!targetCells[key].includes(entityId)) {
+            targetCells[key].push(entityId);
+        }
     }
 
     /**

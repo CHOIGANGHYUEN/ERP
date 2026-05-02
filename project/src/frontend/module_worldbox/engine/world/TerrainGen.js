@@ -52,6 +52,22 @@ export default class TerrainGen {
         return this.isValidIndex(idx) && this.terrain.isLand(idx);
     }
 
+    isSoilAt(x, y) {
+        const idx = this.getIndex(x, y);
+        if (!this.isValidIndex(idx)) return false;
+        
+        // 🔍 [Expert Logic] 단일 점이 아니라 주변 3x3 영역을 검사하여 확실한 토양인지 확인 (건물 크기 고려)
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const checkIdx = this.getIndex(x + dx * 2, y + dy * 2); // 약간 넓게 검사
+                if (!this.isValidIndex(checkIdx) || this.terrain.getValue(checkIdx) !== TERRAIN_TYPES.SOIL) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     // 바이옴과 지형 버퍼에 대한 직접 참조 허용 (성능 최적화용)
     get terrainBuffer() { return this.terrain.buffer; }
     get biomeBuffer() { return this.biomes.buffer; }
@@ -77,6 +93,14 @@ export default class TerrainGen {
     getOccupancy(x, y) {
         const idx = this.getIndex(x, y);
         return this.isValidIndex(idx) ? this.occupancyBuffer[idx] : 0;
+    }
+
+    /** 🧪 비옥도 설정 (외부 시스템 연동용) */
+    setFertility(x, y, value) {
+        const idx = this.getIndex(x, y);
+        if (this.isValidIndex(idx)) {
+            this.fertilityBuffer[idx] = Math.max(0, Math.min(255, value));
+        }
     }
 
     generate(mapWidth, mapHeight) {
