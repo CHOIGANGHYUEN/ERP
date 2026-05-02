@@ -59,14 +59,6 @@ export const AnimalRenders = {
 
         const mode = state.mode;
         const type = visual.type;
-        
-        // 상태별 애니메이션 속도 차등 적용
-        let speedMult = 0.008;
-        if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT || mode === 'deposit') speedMult = 0.015;
-        else if (mode === AnimalStates.SLEEP) speedMult = 0.002;
-        const frameIdx = (time * speedMult);
-        const options = { role: animal?.role, entity: entity, nectar: animal?.nectar };
-        const sprite = this.getSprite(type, mode, frameIdx, visual.color, options);
 
         ctx.save();
         ctx.imageSmoothingEnabled = false;
@@ -76,7 +68,30 @@ export const AnimalRenders = {
         // 🚀 고도화된 상태별 물리 변환 적용
         this.applyAdvancedStateMotion(ctx, type, mode, time, entity);
 
-        const displaySize = visual.size * 22; 
+        // 👤 인간: 스프라이트 캐시 우회 — 연속 time 기반 직접 렌더링
+        if (type === 'human') {
+            const displaySize = visual.size * 22;
+            const scale = displaySize / 32;
+            ctx.save();
+            // flipX 반전은 이미 위에서 ctx.scale(-1,1) 적용됨
+            // HumanRenderer 내부 기준점(16,24) 보정
+            ctx.translate(-16 * scale, -24 * scale);
+            ctx.scale(scale, scale);
+            ctx.translate(16, 24);
+            HumanRenderer.draw(ctx, time, 1, mode, entity);
+            ctx.restore();
+            ctx.restore();
+            return;
+        }
+
+        // 기타 동물: 기존 스프라이트 캐시 사용
+        let speedMult = 0.008;
+        if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT) speedMult = 0.015;
+        else if (mode === AnimalStates.SLEEP) speedMult = 0.002;
+        const frameIdx = time * speedMult;
+        const options = { role: animal?.role, entity: entity, nectar: animal?.nectar };
+        const sprite = this.getSprite(type, mode, frameIdx, visual.color, options);
+        const displaySize = visual.size * 22;
         ctx.drawImage(sprite, -16 * (displaySize / 32), -24 * (displaySize / 32), displaySize, displaySize);
         ctx.restore();
     },
@@ -120,18 +135,59 @@ export const AnimalRenders = {
                 break;
 
             case 'gather_wood': {
-                // 🪓 도끼질: 상체를 앞으로 기울이고 미세한 충격 진동
+                // 🪓 도끼질: 상체를 앞으로 기울이고 충격 진동
                 const aiState = entity?.components?.get?.('AIState');
                 if (aiState?.isChopping) {
                     const chopPhase = Math.min(1, (aiState.chopTimer || 0) / 0.4);
-                    ctx.rotate(0.1 * chopPhase); // 앞으로 기울기
-                    ctx.translate(0, chopPhase * 1.5); // 아래로 약간
+                    ctx.rotate(0.12 * chopPhase);
+                    ctx.translate(0, chopPhase * 2.0);
+                } else {
+                    ctx.rotate(0.04); // 이동 중 약간 기울임
                 }
                 break;
             }
 
+            case 'build': {
+                // 🔨 건설: 망치질 시 앞으로 숙임 + 충격 바운스
+                const buildBob = Math.abs(Math.sin(time * 0.012)) * 2.5;
+                ctx.translate(0, buildBob);
+                ctx.rotate(0.06);
+                break;
+            }
+
+            case 'deposit': {
+                // 📦 창고 이동: 무게감으로 약간 앞으로 숙임
+                ctx.rotate(0.07);
+                const depositBob = Math.sin(time * 0.01) * 1.0;
+                ctx.translate(0, depositBob);
+                break;
+            }
+
+            case 'flee': {
+                // 🏃 도주: 극단적으로 앞으로 기울임 + 빠른 진동
+                ctx.rotate(0.22);
+                ctx.translate(0, Math.sin(time * 0.025) * 2.0);
+                break;
+            }
+
+            case 'berserk': {
+                // 😡 광란: sin 기반 고주파 떨림 (random 아님 — 자연스럽게)
+                const bShakeX = Math.sin(time * 0.019) * 1.2;
+                const bShakeY = Math.sin(time * 0.023 + 1.0) * 1.0;
+                ctx.translate(bShakeX, bShakeY);
+                ctx.filter = 'brightness(125%) saturate(180%)';
+                break;
+            }
+
+            case AnimalStates.HUNT: {
+                // ⚔️ 추격: 강한 앞 기울임 + 빠른 바운스
+                ctx.rotate(0.14);
+                ctx.translate(0, Math.sin(time * 0.022) * 1.8);
+                break;
+            }
+
             default:
-                // 🧘 대기: 미세한 대기 호흡
+                // 🧘 대기: 미세한 호흡
                 const idleBreath = Math.sin(time * 0.003) * 0.015;
                 ctx.scale(1 + idleBreath, 1 - idleBreath);
                 break;

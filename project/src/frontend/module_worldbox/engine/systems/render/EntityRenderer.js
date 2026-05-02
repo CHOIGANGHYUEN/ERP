@@ -77,9 +77,7 @@ export default class EntityRenderer {
 
         this.renderParticles(ctx, particles);
 
-        if (this.engine.viewFlags.debugAI) {
-            this.renderBuildingDebugInfo(ctx, entityManager);
-        }
+
     }
 
     renderResource(entity, ctx, time, wind) {
@@ -323,7 +321,12 @@ export default class EntityRenderer {
         ctx.fillText(state.mode.toUpperCase(), t.x, t.y - 12);
 
         const target = state.targetId ? this.engine.entityManager.entities.get(state.targetId) : null;
-        const targetPos = target ? target.components.get('Transform') : state.fleePos;
+        let targetPos = target ? target.components.get('Transform') : state.fleePos;
+
+        // 대상 엔티티가 없더라도(wander_pos 등) 경로가 있다면 경로의 마지막 점을 타겟으로 삼아 렌더링
+        if (!targetPos && state.path && state.path.length > 0) {
+            targetPos = state.path[state.path.length - 1];
+        }
 
         if (targetPos) {
             ctx.beginPath();

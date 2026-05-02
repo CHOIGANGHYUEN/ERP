@@ -78,7 +78,7 @@ export default class Engine {
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
-        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true };
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true, showNames: false, village: false };
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
         this._onWorldSpawnDust = (e) => {
@@ -277,6 +277,8 @@ export default class Engine {
         }
         if (id === 'view_xray') this.viewFlags.xray = !this.viewFlags.xray;
         if (id === 'view_debug_ai') this.viewFlags.debugAI = !this.viewFlags.debugAI;
+        if (id === 'view_showNames') this.viewFlags.showNames = !this.viewFlags.showNames;
+        if (id === 'view_village') this.viewFlags.village = !this.viewFlags.village;
     }
 
 

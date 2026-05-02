@@ -18,8 +18,15 @@ export default class VillageSystem extends System {
     }
 
     update(dt, time) {
-        // 마을 발전 상태 체크 및 건설 계획 수립
+        // 마을 발전 상태 체크 및 건설 계획 수립, 인구/자원 관리
         for (const village of this.villages.values()) {
+            this._cleanupDeadMembers(village);
+            
+            if (village.lastPopulation !== village.members.size) {
+                this._recalculateNeeds(village);
+            }
+            
+            this._syncVillageResources(village);
             this._updateVillagePlanning(village);
         }
 
@@ -47,6 +54,9 @@ export default class VillageSystem extends System {
             members: new Set([founderId]),
             buildings: new Set(),
             resources: { wood: 0, food: 0, stone: 0 },
+            resourceMax: { wood: 150, food: 150, stone: 150 },
+            resourceNeeds: { wood: 10, food: 15, stone: 0 },
+            lastPopulation: 1,
             plan: [], // 🏗️ 이제 촌장이 직접 계획을 수립합니다.
             currentTask: null,
             _planningCooldown: 0 // 계획 수립 쿨다운
@@ -130,6 +140,53 @@ export default class VillageSystem extends System {
                 console.log(`👨‍🌾 Entity ${id} joined Village ${nearestVillageId}`);
             }
         }
+    }
+
+    _cleanupDeadMembers(village) {
+        for (const memberId of village.members) {
+            const member = this.entityManager.entities.get(memberId);
+            const state = member?.components.get('AIState');
+            if (!member || (state && state.mode === 'die')) {
+                village.members.delete(memberId);
+            }
+        }
+    }
+
+    _recalculateNeeds(village) {
+        const pop = village.members.size;
+        village.lastPopulation = pop;
+        
+        // 인구 1명당 나무 10, 식량 15 필요
+        village.resourceNeeds.wood = pop * 10;
+        village.resourceNeeds.food = pop * 15;
+        // 최대치도 인구에 비례해서 늘어남 (기본 150 + 1인당 추가 여유 공간)
+        village.resourceMax.wood = 150 + pop * 20;
+        village.resourceMax.food = 150 + pop * 30;
+        
+        console.log(`🏘️ Village ${village.id} population changed to ${pop}. Needs recalculated.`);
+    }
+
+    _syncVillageResources(village) {
+        // 모든 건물의 Storage를 합산하여 마을 전체 자원 갱신
+        const total = { wood: 0, food: 0, stone: 0 };
+        
+        for (const buildingId of village.buildings) {
+            const building = this.entityManager.entities.get(buildingId);
+            if (!building) continue;
+            
+            const storage = building.components.get('Storage');
+            if (storage) {
+                for (const type in storage.items) {
+                    if (total[type] !== undefined) {
+                        total[type] += storage.items[type];
+                    }
+                }
+            }
+        }
+        
+        village.resources.wood = total.wood;
+        village.resources.food = total.food;
+        village.resources.stone = total.stone;
     }
 
     _updateVillagePlanning(village) {

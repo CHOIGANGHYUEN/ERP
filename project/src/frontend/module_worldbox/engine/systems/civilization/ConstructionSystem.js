@@ -19,13 +19,13 @@ export default class ConstructionSystem extends System {
             if (builder && transform && state && state.mode === 'build') {
                 const targetId = state.targetId;
                 if (!targetId) {
-                    state.mode = 'wander';
+                    state.mode = 'idle';
                     continue;
                 }
 
                 const target = em.entities.get(targetId);
                 if (!target) {
-                    state.mode = 'wander';
+                    state.mode = 'idle';
                     state.targetId = null;
                     continue;
                 }
@@ -34,7 +34,7 @@ export default class ConstructionSystem extends System {
                 const structure = target.components.get('Structure');
                 
                 if (!structure || structure.isComplete) {
-                    state.mode = 'wander';
+                    state.mode = 'idle';
                     state.targetId = null;
                     continue;
                 }
@@ -70,9 +70,6 @@ export default class ConstructionSystem extends System {
                     if (structure.progress >= structure.maxProgress) {
                         this.finalizeBuilding(target, targetId, structure);
                     }
-                } else {
-                    // 청사진을 향해 이동 (경로 탐색 적용)
-                    Pathfinder.followPath(transform, state, targetPos, 70, this.engine);
                 }
             }
         }

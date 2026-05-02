@@ -66,14 +66,19 @@ export default class ChiefRole extends BaseRole {
             needs.needsBuilder = true;
         }
 
-        // 식량이 부족하면 사냥꾼/채집가 필요
-        if ((village.resources?.food || 0) < 50) {
+        const currentFood = village.resources?.food || 0;
+        const currentWood = village.resources?.wood || 0;
+        const needFood = village.resourceNeeds?.food || 15;
+        const needWood = village.resourceNeeds?.wood || 10;
+
+        // 식량이 요구량보다 적으면 사냥꾼/채집가 필요
+        if (currentFood < needFood) {
             needs.needsHunter = true;
             needs.needsGatherer = true;
         }
 
-        // 목재가 부족하면 벌목꾼 필요
-        if ((village.resources?.wood || 0) < 30) {
+        // 목재가 요구량보다 적으면 벌목꾼 필요
+        if (currentWood < needWood) {
             needs.needsLogger = true;
         }
 

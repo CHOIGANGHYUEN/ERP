@@ -176,7 +176,7 @@ export default class AnimalBehaviorSystem extends System {
 
 
         // 2. 이동 속도 조절 (목적지 거리 기반)
-        if (state.mode === AnimalStates.WALK || state.mode === AnimalStates.RUN || state.mode === AnimalStates.HUNT || state.mode === AnimalStates.FLEE) {
+        if (state.mode === AnimalStates.IDLE || state.mode === AnimalStates.RUN || state.mode === AnimalStates.HUNT || state.mode === AnimalStates.FLEE) {
             if (state.targetId) {
                 const target = this.entityManager.entities.get(state.targetId);
                 if (target) {

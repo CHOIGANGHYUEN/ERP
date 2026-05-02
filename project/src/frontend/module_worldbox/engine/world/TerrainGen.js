@@ -164,13 +164,20 @@ export default class TerrainGen {
     }
 
     determineInitialBiome(terrainId, humidity, temperature) {
+        // ⛰️ 산 지형 판별 (버그 수정: 산이 육지(DIRT)로 변질되는 현상 방지)
+        if (terrainId === TERRAIN_TYPES.LOW_MOUNTAIN) return BIOME_NAMES_TO_IDS.get('LOW_MOUNTAIN') || 8;
+        if (terrainId === TERRAIN_TYPES.HIGH_MOUNTAIN) return BIOME_NAMES_TO_IDS.get('HIGH_MOUNTAIN') || 9;
+
         // 🏖️ 모래 지형 판별
         if (terrainId === TERRAIN_TYPES.SAND) return BIOME_NAMES_TO_IDS.get('SAND') || 4;
         
-        // 🌊 물 지형 판별 (지형 아이디 직접 대조 또는 isWater 유틸리티 사용 가능)
-        if ([0, 1, 2, 3].includes(terrainId)) return BIOME_NAMES_TO_IDS.get('OCEAN') || 1;
+        // 🌊 물 지형 판별 (심해, 바다, 호수, 강을 정확하게 매핑)
+        if (terrainId === TERRAIN_TYPES.DEEP_OCEAN) return BIOME_NAMES_TO_IDS.get('DEEP_OCEAN') || 0;
+        if (terrainId === TERRAIN_TYPES.OCEAN) return BIOME_NAMES_TO_IDS.get('OCEAN') || 1;
+        if (terrainId === TERRAIN_TYPES.LAKE) return BIOME_NAMES_TO_IDS.get('LAKE') || 2;
+        if (terrainId === TERRAIN_TYPES.RIVER) return BIOME_NAMES_TO_IDS.get('RIVER') || 3;
         
-        // 🌳 육지: 습도/온도에 따라 초기 바이옴 할당
+        // 🌳 육지(SOIL): 습도/온도에 따라 초기 바이옴 할당
         if (humidity > 0.7 && temperature > 0.6) return BIOME_NAMES_TO_IDS.get('JUNGLE') || 7;
         if (humidity > 0.4) return BIOME_NAMES_TO_IDS.get('GRASS') || 6;
         return BIOME_NAMES_TO_IDS.get('DIRT') || 5;

@@ -2,38 +2,26 @@ import State from './State.js';
 
 export default class IdleState extends State {
     update(entityId, entity, dt) {
+        const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
-        const animal = entity.components.get('Animal');
         
-        if (transform && animal) {
-            this.wander(transform, animal, dt);
+        if (!state || !transform) return null;
+
+        // 물리 마찰력 적용 (멈추기)
+        transform.vx *= 0.8;
+        transform.vy *= 0.8;
+
+        // 대기 타이머 처리 (3초마다 한 번씩 이동 시도)
+        if (state.idleWaitTimer === undefined) {
+            state.idleWaitTimer = 3.0; 
+        }
+
+        state.idleWaitTimer -= dt;
+        if (state.idleWaitTimer <= 0) {
+            state.idleWaitTimer = undefined;
+            return 'wander'; // 정식 배회 상태로 전환 (Pathfinder 사용)
         }
         
-        return null; // Stay in idle/wander
-    }
-
-    wander(transform, animal, dt) {
-        // Apply slight random force for wandering
-        if (!transform.vx || Math.random() < 0.05) {
-            const angle = Math.random() * Math.PI * 2;
-            const config = this.engine.speciesConfig[animal.type];
-            const force = config ? (config.moveSpeed * 0.02) : 1.0;
-            transform.vx += Math.cos(angle) * force;
-            transform.vy += Math.sin(angle) * force;
-        }
-
-        // Occasional pause
-        if (Math.random() < 0.02) {
-            transform.vx *= 0.1;
-            transform.vy *= 0.1;
-        }
-
-        // Constrain max wander speed
-        const maxSpeed = 30;
-        const mag = Math.sqrt(transform.vx**2 + transform.vy**2);
-        if (mag > maxSpeed) {
-            transform.vx = (transform.vx / mag) * maxSpeed;
-            transform.vy = (transform.vy / mag) * maxSpeed;
-        }
+        return null;
     }
 }

@@ -4,14 +4,14 @@ import Component from '../../core/Component.js';
  * 🐾 Animal States
  */
 export const AnimalStates = {
-    IDLE: 'wander',  // 기존 wander 상태와 호환
+    IDLE: 'idle',    // 정지 대기 상태
+    WANDER: 'wander', // 경로 탐색 기반 배회 상태
     SLEEP: 'sleep',
-    WALK: 'walk',
     RUN: 'run',
     FLEE: 'flee',
     EVADE: 'evade',
-    HUNT: 'hunt',   // 누락된 HUNT 상태 추가
-    FORAGE: 'forage', // 초식동물 전용 수색/이동 상태
+    HUNT: 'hunt',
+    FORAGE: 'forage',
     EAT: 'eat',
     DIE: 'die'
 };

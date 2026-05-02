@@ -32,7 +32,7 @@ export default class DepositState extends State {
                 const storage = targetEntity.components.get('Storage');
 
                 // 완성된 창고이고, 같은 마을(또는 소속 없음)일 때
-                if (building && structure && storage && structure.isComplete && (villageId === -1 || building.villageId === villageId)) {
+                if (building && structure && storage && structure.isComplete && !storage.isFull && (villageId === -1 || building.villageId === villageId)) {
                     const tPos = targetEntity.components.get('Transform');
                     if (tPos) {
                         const distSq = (tPos.x - transform.x) ** 2 + (tPos.y - transform.y) ** 2;
@@ -47,8 +47,8 @@ export default class DepositState extends State {
             if (nearestStorageId) {
                 state.targetId = nearestStorageId;
             } else {
-                // 창고를 못 찾으면 일단 배회
-                return 'wander';
+                // 창고를 못 찾으면 일단 대기
+                return 'idle';
             }
         }
 

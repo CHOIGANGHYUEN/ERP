@@ -45,10 +45,10 @@ export default class BuildingFactory extends IEntityFactory {
         } else if (type === 'farm') {
             builder.addComponent('Storage', new Storage({ capacity: 500 }))
                    .addComponent('Farm', { cropType: 'wheat', growthRate: 0.1 });
-        } else if (type === 'bonfire') {
+        } else if (type === 'bonfire' || type === 'camp') {
             builder.withVisual({ 
                 type: 'building', 
-                subtype: 'bonfire', 
+                subtype: type, 
                 size: 25, 
                 color: '#ff9800',
                 alpha: options.isBlueprint ? 0.3 : 1.0

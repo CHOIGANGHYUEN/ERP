@@ -1,4 +1,5 @@
 import System from '../../core/System.js';
+import { BIOME_PROPERTIES_MAP } from '../../world/TerrainGen.js';
 
 /**
  * 🖼️ RenderCoordinator (렌더링 총괄 시스템)
@@ -96,6 +97,14 @@ export default class RenderCoordinator extends System {
             this.renderFertilityTooltip(offCtx);
         }
 
+        if ((engine.viewFlags.showNames || (engine.activeTool && engine.activeTool.id === 'inspect_entity')) && engine.inputSystem && engine.inputSystem.mouseWorld) {
+            this.renderEntityNamesTooltip(offCtx);
+        }
+
+        if (engine.viewFlags.village) {
+            this.renderVillageView(offCtx);
+        }
+
         // 4. 🚀 [대미의 장식] 완성된 가상 도화지를 메인 화면에 한 번에 복사!
         // 🛡️ [Scaling Fix] 캡핑된 해상도를 메인 캔버스 크기에 맞춰 확대/축소하여 출력
         mainCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -191,6 +200,152 @@ export default class RenderCoordinator extends System {
             ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w * fert, 4);
 
         }
+    }
+
+    renderEntityNamesTooltip(ctx) {
+        const engine = this.engine;
+        const worldPos = engine.inputSystem.mouseWorld;
+        const screenPos = engine.inputSystem.mouseScreen;
+        if (!worldPos || !screenPos) return;
+
+        let yOffset = 0;
+        ctx.font = 'bold 12px "Courier New", monospace';
+        
+        // 헬퍼 함수: 툴팁 박스 그리기
+        const drawBox = (text, icon) => {
+            const fullText = `${icon} ${text}`;
+            const metrics = ctx.measureText(fullText);
+            const padding = 6;
+            const w = metrics.width + padding * 2;
+            const h = 20;
+            
+            const boxX = screenPos.x + 15;
+            const boxY = screenPos.y + 15 + yOffset;
+            
+            ctx.fillStyle = 'rgba(10, 15, 20, 0.85)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.fillRect(boxX, boxY, w, h);
+            ctx.strokeRect(boxX, boxY, w, h);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(fullText, boxX + padding, boxY + 14);
+            yOffset += h + 4;
+        };
+
+        // 1. 지형 (Terrain) 이름 표시
+        const ix = Math.floor(worldPos.x);
+        const iy = Math.floor(worldPos.y);
+        if (ix >= 0 && ix < engine.mapWidth && iy >= 0 && iy < engine.mapHeight) {
+            const idx = iy * engine.mapWidth + ix;
+            const biomeId = engine.terrainGen.biomeBuffer[idx];
+            const biomeProps = BIOME_PROPERTIES_MAP.get(biomeId);
+            const biomeName = biomeProps ? biomeProps.name : 'Unknown';
+            drawBox(String(biomeName).toUpperCase(), '🌍');
+        }
+
+        // 2. 마우스 커서 주변 20px 반경 엔티티 탐색
+        const radius = 20;
+        let nearbyIds = [];
+        if (engine.spatialHash) {
+            nearbyIds = engine.spatialHash.queryRect(worldPos.x - radius, worldPos.y - radius, radius * 2, radius * 2);
+        } else {
+            nearbyIds = Array.from(engine.entityManager.entities.keys());
+        }
+
+        for (const id of nearbyIds) {
+            const entity = engine.entityManager.entities.get(id);
+            if (!entity) continue;
+            
+            const transform = entity.components.get('Transform');
+            if (!transform) continue;
+
+            const dx = transform.x - worldPos.x;
+            const dy = transform.y - worldPos.y;
+            
+            // 반경 내에 들어왔는지 확인
+            if (dx * dx + dy * dy <= radius * radius) {
+                let name = `Entity #${id}`;
+                if (entity.components.has('Animal')) name = entity.components.get('Animal').species;
+                else if (entity.components.has('Building')) name = entity.components.get('Building').type || 'Building';
+                else if (entity.components.has('Resource')) name = entity.components.get('Resource').type;
+                else if (entity.components.has('Tree')) name = 'Tree';
+                else if (entity.components.has('Plant')) name = 'Plant';
+
+                // 🛑 [Safety Guard] undefined 등으로 인한 toUpperCase 에러 완벽 방지
+                const safeName = String(name || 'Unknown').toUpperCase();
+                drawBox(safeName, '🏷️');
+            }
+        }
+    }
+
+    renderVillageView(ctx) {
+        const engine = this.engine;
+        const vs = engine.systemManager?.villageSystem;
+        if (!vs || vs.villages.size === 0) return;
+
+        ctx.save();
+        
+        // 카메라 스페이스 -> 스크린 스페이스 매핑 (마을 중심 좌표가 스크린 내에 있을 때 렌더링)
+        for (const [id, village] of vs.villages) {
+            const screenX = (village.centerX - engine.camera.x) * engine.camera.zoom;
+            const screenY = (village.centerY - engine.camera.y) * engine.camera.zoom;
+            const screenRadius = 200 * engine.camera.zoom;
+
+            if (screenX + screenRadius < 0 || screenX - screenRadius > this.offscreenCanvas.width ||
+                screenY + screenRadius < 0 || screenY - screenRadius > this.offscreenCanvas.height) {
+                continue;
+            }
+
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(100, 200, 255, 0.15)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            const pop = village.members.size;
+            
+            ctx.font = 'bold 12px "Courier New", monospace';
+            const lines = [
+                `🏘️ ${village.name} (Pop: ${pop})`,
+                `🪵 WOOD:  ${Math.floor(village.resources?.wood || 0)} / ${village.resourceNeeds?.wood || 0} / ${village.resourceMax?.wood || 0}`,
+                `🍖 FOOD:  ${Math.floor(village.resources?.food || 0)} / ${village.resourceNeeds?.food || 0} / ${village.resourceMax?.food || 0}`,
+                `🪨 STONE: ${Math.floor(village.resources?.stone || 0)} / ${village.resourceNeeds?.stone || 0} / ${village.resourceMax?.stone || 0}`
+            ];
+
+            let maxWidth = 0;
+            for (const line of lines) {
+                const w = ctx.measureText(line).width;
+                if (w > maxWidth) maxWidth = w;
+            }
+
+            const padding = 10;
+            const boxWidth = maxWidth + padding * 2;
+            const lineHeight = 16;
+            const boxHeight = lines.length * lineHeight + padding * 2;
+
+            const boxX = screenX - boxWidth / 2;
+            const boxY = screenY - boxHeight - 20;
+
+            // 둥근 사각형 배경
+            ctx.fillStyle = 'rgba(20, 25, 30, 0.9)';
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.6)';
+            ctx.lineWidth = 2;
+            this.drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 8);
+            ctx.fill();
+            ctx.stroke();
+
+            // 텍스트 출력
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], boxX + padding, boxY + padding + i * lineHeight);
+            }
+        }
+        ctx.restore();
     }
 
     /** 🌬️ [Wind View] 월드 전역 바람 흐름 시각화 */

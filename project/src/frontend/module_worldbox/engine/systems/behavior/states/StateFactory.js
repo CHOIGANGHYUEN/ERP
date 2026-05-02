@@ -1,4 +1,5 @@
 import WanderState from './WanderState.js';
+import IdleState from './IdleState.js';
 import HuntState from './HuntState.js';
 import ForageState from './ForageState.js';
 import EatState from './EatState.js';
@@ -15,9 +16,9 @@ export default class StateFactory {
         this.states = new Map();
 
         // 의존성 역전(DIP): 시스템은 구체적인 State 클래스를 모르고, Factory가 상태를 주입함
-        this.states.set(AnimalStates.IDLE, new WanderState(system));
-        this.states.set(AnimalStates.WALK, this.states.get(AnimalStates.IDLE)); // 기본 Wander 로직 재사용
-        this.states.set(AnimalStates.RUN, this.states.get(AnimalStates.IDLE));
+        this.states.set(AnimalStates.IDLE, new IdleState(system));
+        this.states.set(AnimalStates.WANDER, new WanderState(system));
+        this.states.set(AnimalStates.RUN, this.states.get(AnimalStates.WANDER));
         this.states.set(AnimalStates.HUNT, new HuntState(system));
         this.states.set(AnimalStates.FORAGE, new ForageState(system));
         this.states.set(AnimalStates.EAT, new EatState(system));

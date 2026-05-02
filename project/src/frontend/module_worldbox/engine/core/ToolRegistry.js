@@ -209,6 +209,8 @@ export const DefaultTools = [
     new ToggleTool({ id: 'view_mineral', name: 'Mineral Density', icon: '⛏️', category: 'View', flagName: 'mineral' }),
     new ToggleTool({ id: 'view_xray', name: 'X-Ray View', icon: '👁️', category: 'View', flagName: 'xray' }),
     new ToggleTool({ id: 'view_debug_ai', name: 'AI Paths', icon: '🛣️', category: 'View', flagName: 'debugAI' }),
+    new ToggleTool({ id: 'view_showNames', name: 'Show Names', icon: '🏷️', category: 'View', flagName: 'showNames' }),
+    new ToggleTool({ id: 'view_village', name: 'Village Info', icon: '🏘️', category: 'View', flagName: 'village' }),
     new InspectTool()
 
 

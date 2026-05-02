@@ -48,18 +48,10 @@ export default class HumanBehaviorSystem extends System {
 
                 // AI 틱 최적화
                 if ((id + frameCount) % 2 === 0) {
-                    // 🎭 [직업 시스템] Role이 있으면 Role의 판단을 먼저 실행
-                    if (civ?.role) {
-                        const roleDecision = civ.role.decide(entity, dt * 2);
-                        if (roleDecision && roleDecision !== state.mode) {
-                            state.mode = roleDecision;
-                        }
-                    } else {
-                        // 🧠 Role이 없으면 HumanBrain이 판단
-                        const nextMode = this.humanBrain.decide(entity, state, stats, emotion, inventory);
-                        if (nextMode && nextMode !== state.mode) {
-                            state.mode = nextMode;
-                        }
+                    // 🧠 HumanBrain이 개체의 생존과 직업(Role)을 총괄하여 최종 행동(State) 판단
+                    const nextMode = this.humanBrain.decide(entity, state, stats, emotion, inventory, dt * 2);
+                    if (nextMode && nextMode !== state.mode) {
+                        state.mode = nextMode;
                     }
 
                     this.updateHumanAI(id, entity, state, transform, animal, stats, dt * 2, emotion, inventory);
