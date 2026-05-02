@@ -81,6 +81,11 @@ export default class Pathfinder {
 
             const t = b.components.get('Transform');
             const v = b.components.get('Visual');
+            const door = b.components.get('Door');
+
+            // 🚪 [Dynamic Pathfinding] 열린 문은 장애물에서 제외
+            if (door && door.isOpen) continue;
+
             if (t && v) {
                 const r = (v.size || 40) * 0.45;
                 const minX = Math.floor((t.x - r) / gridSize);
@@ -381,6 +386,11 @@ export default class Pathfinder {
 
                         const bPos = ent.components.get('Transform');
                         const bVis = ent.components.get('Visual');
+                        const door = ent.components.get('Door');
+
+                        // 🚪 [Dynamic Collision] 열린 문은 통과 가능
+                        if (door && door.isOpen) continue;
+
                         if (bPos && bVis) {
                             const r = (bVis.size || 40) * 0.4; // 실제 히트박스 반경
                             const distToB = Math.hypot(tx - bPos.x, ty - bPos.y);

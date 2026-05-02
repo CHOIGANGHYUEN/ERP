@@ -13,6 +13,7 @@ import techTreeConfig from '../config/tech_tree.json';
 import RenderCoordinator from '../systems/render/RenderCoordinator.js';
 import SystemManager from './SystemManager.js';
 import TimeSystem from '../systems/core/TimeSystem.js';
+import ToolManager from './ToolManager.js';
 
 
 
@@ -120,6 +121,7 @@ export default class Engine {
         this.isFollowing = false;
 
         this.monitor = new StatsMonitor(this);
+        this.toolManager = new ToolManager(this); // 🛠️ 전략 패턴 기반 툴 매니저 도입
 
         this.init();
         this.renderCoordinator = new RenderCoordinator(this.entityManager, this.eventBus, this); // 🖼️ Render Orchestrator Init
@@ -203,6 +205,12 @@ export default class Engine {
 
     updateFertilityStat(oldVal, newVal) { this.monitor.updateFertilityStat(oldVal, newVal); }
     updatePotentialStat(oldMax, newMax) { this.monitor.updatePotentialStat(oldMax, newMax); }
+
+    setActiveTool(tool) {
+        if (this.toolManager && tool) {
+            this.toolManager.setTool(tool.id);
+        }
+    }
 
     preRenderTerrain() {
         this.chunkManager.markAllDirty();
@@ -320,7 +328,24 @@ export default class Engine {
                 this.eventBus.emit('SPAWN_PARTICLES', command.payload);
                 break;
             case 'SPAWN_ENTITY':
-                const methodToType = { spawnSheep: 'sheep', spawnHuman: 'human', spawnCow: 'cow', spawnWolf: 'wolf', spawnHyena: 'hyena', spawnWildDog: 'wild_dog' };
+                const methodToType = { 
+                    spawnSheep: 'sheep', 
+                    spawnHuman: 'human', 
+                    spawnCow: 'cow', 
+                    spawnWolf: 'wolf', 
+                    spawnHyena: 'hyena', 
+                    spawnWildDog: 'wild_dog',
+                    spawnTiger: 'tiger',
+                    spawnLion: 'lion',
+                    spawnBear: 'bear',
+                    spawnFox: 'fox',
+                    spawnCrocodile: 'crocodile',
+                    spawnDeer: 'deer',
+                    spawnRabbit: 'rabbit',
+                    spawnHorse: 'horse',
+                    spawnElephant: 'elephant',
+                    spawnGoat: 'goat'
+                };
                 const type = methodToType[command.payload.method];
                 if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
                 break;
@@ -335,6 +360,9 @@ export default class Engine {
                 break;
             case 'APPLY_FILL_TOOL':
                 this.eventBus.emit('APPLY_FILL_TOOL', command.payload);
+                break;
+            case 'PLACE_BLUEPRINT':
+                this.factoryProvider.spawn('building', command.payload.type, command.payload.x, command.payload.y, { isBlueprint: true });
                 break;
         }
         if (this.isRunning) return;

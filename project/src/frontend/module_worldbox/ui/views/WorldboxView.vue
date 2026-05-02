@@ -26,7 +26,7 @@
       </div>
 
       <!-- 🏘️ Village Management Panel -->
-      <div class="village-panel" v-if="store.villages.length > 0">
+      <div class="village-panel" v-if="store?.villages?.length > 0">
         <div class="panel-header-v">🏘️ VILLAGE STATUS</div>
         <div class="village-list">
           <div v-for="v in store.villages" :key="v.id" class="village-card">
@@ -116,7 +116,7 @@ const entityCount = ref(0);
 const totalFertility = ref(0);
 const totalMaxFertility = ref(0);
 
-let engine = null;
+const engine = ref(null);
 let resizeObserver = null;
 
 const handleMouseMove = (e) => {
@@ -137,12 +137,16 @@ const toolCategories = [
 
 const activeCategory = ref('Landscape');
 
+const allTools = computed(() => {
+  return engine.value ? DefaultTools(engine.value) : [];
+});
+
 const filteredTools = computed(() => {
-  return DefaultTools.filter(t => t.category === activeCategory.value);
+  return allTools.value.filter(t => t.category === activeCategory.value);
 });
 
 const activeToolData = computed(() => {
-  return DefaultTools.find(t => t.id === activeTool.value);
+  return allTools.value.find(t => t.id === activeTool.value);
 });
 
 const updateBrushSize = () => {
@@ -150,19 +154,19 @@ const updateBrushSize = () => {
 };
 
 const updateSimParams = () => {
-  if (engine) {
-    engine.simParams.spreadSpeed = Number(spreadSpeed.value) / 100;
-    engine.simParams.spreadAmount = Number(spreadAmount.value);
+  if (engine.value) {
+    engine.value.simParams.spreadSpeed = Number(spreadSpeed.value) / 100;
+    engine.value.simParams.spreadAmount = Number(spreadAmount.value);
   }
 };
 
 const selectTool = (tool) => {
   if (tool.isInstant && tool.id.startsWith('view_')) {
-    if (engine) engine.toggleView(tool.id);
+    if (engine.value) engine.value.toggleView(tool.id);
     return;
   }
   activeTool.value = tool.id;
-  if (engine) engine.setActiveTool(tool);
+  if (engine.value) engine.value.setActiveTool(tool);
 };
 
 
@@ -171,24 +175,27 @@ const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value;
 };
 
+const store = useWorldboxStore();
+
 onMounted(() => {
   if (gameCanvas.value && worldboxContainer.value) {
-    engine = new Engine(gameCanvas.value);
-    const store = useWorldboxStore();
+    engine.value = new Engine(gameCanvas.value);
     
     // 🌍 Global access for UI components
-    window.gameEngine = engine;
-    window.eventBus = engine.eventBus;
+    window.gameEngine = engine.value;
+    window.eventBus = engine.value.eventBus;
     
-    engine.onEntitySelect = (data) => {
+    engine.value.onEntitySelect = (data) => {
       store.selectEntity(data);
     };
     
-    engine.start();
+    engine.value.start();
     
     // Set default tool to Move
-    const initialTool = DefaultTools.find(t => t.id === 'move_hand');
-    engine.setActiveTool(initialTool);
+    const initialTool = allTools.value.find(t => t.id === 'move_hand');
+    if (initialTool) {
+        engine.value.setActiveTool(initialTool);
+    }
 
     // Set initial debug params
     updateSimParams();
@@ -240,8 +247,8 @@ onUnmounted(() => {
 
 const handleGodPower = (toolId) => {
   activeTool.value = toolId;
-  const tool = DefaultTools.find(t => t.id === toolId);
-  if (engine) engine.setActiveTool(tool);
+  const tool = allTools.value.find(t => t.id === toolId);
+  if (engine.value && tool) engine.value.setActiveTool(tool);
 };
 </script>
 

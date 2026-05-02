@@ -15,6 +15,12 @@ export default class KinematicSystem {
             const transform = entity.components.get('Transform');
             if (!transform || transform.vx === undefined) continue;
 
+            // 🛑 [Drag & Drop Fix] 잡힌 상태의 개체는 물리 연산(속도, 마찰)을 수행하지 않음
+            const aiState = entity.components.get('AIState');
+            if (aiState && aiState.mode === 'grabbed') {
+                continue; 
+            }
+
             // 2a. 속도에 따른 이동
             let nextX = transform.x + transform.vx * dt;
             let nextY = transform.y + transform.vy * dt;
@@ -44,6 +50,11 @@ export default class KinematicSystem {
             for (const bId of em.buildingIds) {
                 const buildingEntity = em.entities.get(bId);
                 if (!buildingEntity) continue;
+
+                // 🚪 [Dynamic Collision] 열린 문은 충돌을 무시함
+                const door = buildingEntity.components.get('Door');
+                if (door && door.isOpen) continue;
+
                 const bTransform = buildingEntity.components.get('Transform');
                 const bVisual = buildingEntity.components.get('Visual');
                 if (bTransform && bVisual) {

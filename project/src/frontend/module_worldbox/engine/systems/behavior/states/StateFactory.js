@@ -12,6 +12,8 @@ import DepositState from './DepositState.js';
 import LumberjackState from './jobs/LumberjackState.js';
 import WaitForTargetState from './WaitForTargetState.js';
 import TransporterState from './jobs/TransporterState.js';
+import GrazeState from './GrazeState.js';
+import GrabbedState from './GrabbedState.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 
 export default class StateFactory {
@@ -26,6 +28,7 @@ export default class StateFactory {
         this.states.set(AnimalStates.HUNT, new HuntState(system));
         this.states.set(AnimalStates.FORAGE, new ForageState(system));
         this.states.set(AnimalStates.EAT, new EatState(system));
+        this.states.set(AnimalStates.GRAZE, new GrazeState(system));
         this.states.set(AnimalStates.SLEEP, new SleepState(system));
         this.states.set(AnimalStates.FLEE, new FleeState(system));
         this.states.set(AnimalStates.EVADE, this.states.get(AnimalStates.FLEE));
@@ -37,6 +40,7 @@ export default class StateFactory {
         this.states.set('job_logger', new LumberjackState(system));
         this.states.set('job_transporter', new TransporterState(system));
         this.states.set('wait_target', new WaitForTargetState(system));
+        this.states.set(AnimalStates.GRABBED, new GrabbedState(system));
     }
 
     getState(modeName) {

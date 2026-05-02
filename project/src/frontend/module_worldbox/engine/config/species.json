@@ -61,5 +61,115 @@
         "fatigueIncreaseRate": 0.15,
         "lifespan": 1,
         "approachSlowdownRadius": 5
+    },
+    "tiger": {
+        "diet": "carnivore",
+        "moveSpeed": 55,
+        "runSpeedMultiplier": 1.8,
+        "hungerDecayRate": 0.1,
+        "fatigueIncreaseRate": 0.08,
+        "lifespan": 15,
+        "damage": 25,
+        "baseHealth": 150,
+        "approachSlowdownRadius": 30
+    },
+    "lion": {
+        "diet": "carnivore",
+        "moveSpeed": 52,
+        "runSpeedMultiplier": 1.9,
+        "hungerDecayRate": 0.1,
+        "fatigueIncreaseRate": 0.08,
+        "lifespan": 14,
+        "damage": 28,
+        "baseHealth": 160,
+        "approachSlowdownRadius": 35
+    },
+    "bear": {
+        "diet": "carnivore",
+        "moveSpeed": 35,
+        "runSpeedMultiplier": 2.2,
+        "hungerDecayRate": 0.08,
+        "fatigueIncreaseRate": 0.05,
+        "lifespan": 25,
+        "damage": 35,
+        "baseHealth": 300,
+        "approachSlowdownRadius": 40
+    },
+    "fox": {
+        "diet": "carnivore",
+        "moveSpeed": 60,
+        "runSpeedMultiplier": 1.5,
+        "hungerDecayRate": 0.15,
+        "fatigueIncreaseRate": 0.12,
+        "lifespan": 8,
+        "damage": 12,
+        "baseHealth": 60,
+        "approachSlowdownRadius": 20
+    },
+    "crocodile": {
+        "diet": "carnivore",
+        "moveSpeed": 25,
+        "runSpeedMultiplier": 2.5,
+        "hungerDecayRate": 0.05,
+        "fatigueIncreaseRate": 0.03,
+        "lifespan": 40,
+        "damage": 40,
+        "baseHealth": 250,
+        "approachSlowdownRadius": 45
+    },
+    "deer": {
+        "diet": "herbivore",
+        "moveSpeed": 48,
+        "runSpeedMultiplier": 1.8,
+        "hungerDecayRate": 0.1,
+        "fatigueIncreaseRate": 0.08,
+        "lifespan": 12,
+        "damage": 2,
+        "baseHealth": 80,
+        "approachSlowdownRadius": 25
+    },
+    "rabbit": {
+        "diet": "herbivore",
+        "moveSpeed": 40,
+        "runSpeedMultiplier": 2.0,
+        "hungerDecayRate": 0.2,
+        "fatigueIncreaseRate": 0.15,
+        "lifespan": 5,
+        "damage": 0,
+        "baseHealth": 20,
+        "approachSlowdownRadius": 10
+    },
+    "horse": {
+        "diet": "herbivore",
+        "moveSpeed": 65,
+        "runSpeedMultiplier": 1.3,
+        "hungerDecayRate": 0.12,
+        "fatigueIncreaseRate": 0.1,
+        "lifespan": 25,
+        "damage": 5,
+        "baseHealth": 180,
+        "approachSlowdownRadius": 30
+    },
+    "elephant": {
+        "diet": "herbivore",
+        "moveSpeed": 20,
+        "runSpeedMultiplier": 1.5,
+        "hungerDecayRate": 0.05,
+        "fatigueIncreaseRate": 0.05,
+        "lifespan": 60,
+        "damage": 15,
+        "baseHealth": 800,
+        "approachSlowdownRadius": 50
+    },
+    "goat": {
+        "diet": "herbivore",
+        "moveSpeed": 35,
+        "runSpeedMultiplier": 1.4,
+        "hungerDecayRate": 0.15,
+        "fatigueIncreaseRate": 0.1,
+        "lifespan": 15,
+        "damage": 4,
+        "baseHealth": 90,
+        "approachSlowdownRadius": 20
     }
 }

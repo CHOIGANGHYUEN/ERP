@@ -168,7 +168,8 @@ export default class UISystem extends System {
             // 🧠 [Ecological Lifecycle Data]
             age: ageComp?.currentAge,
             growthStage: ageComp?.growthStage,
-            modeStackCount: stateComp?.modeStack?.length || 0
+            modeStackCount: stateComp?.modeStack?.length || 0,
+            diet: a?.diet || s?.diet || null
         };
     }
 

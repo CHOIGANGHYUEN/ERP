@@ -4,21 +4,17 @@
  * 마을 건물의 도트 그래픽 렌더링을 담당합니다.
  */
 export const BuildRender = {
-    render(ctx, type, t, v, structure, time) {
+    render(ctx, type, t, v, structure, time, engine) {
         ctx.save();
         
         // 완성된 건물은 기본적으로 불투명하게 처리 (청사진 투명도 해제)
         if (structure && structure.isComplete) {
             ctx.globalAlpha = 1.0;
         }
-        // 🧪 [Rendering Trace] 건물 렌더링 요청 추적
-        if (v && v.type === 'building') {
-            // console.debug(`[BuildRender] Rendering: ${type}, subtype: ${v.subtype}, complete: ${structure?.isComplete}`);
-        }
 
         switch (type) {
             case 'bonfire':
-            case 'camp': // 🏕️ 캠프는 모닥불 디자인을 공유
+            case 'camp': 
                 this.drawBonfire(ctx, t, v, time);
                 break;
             case 'storage':
@@ -31,6 +27,12 @@ export const BuildRender = {
                 break;
             case 'farm':
                 this.drawFarm(ctx, t, v, time);
+                break;
+            case 'fence':
+                this.drawFence(ctx, t, v, time, engine);
+                break;
+            case 'fence_gate':
+                this.drawGate(ctx, t, v, time, engine);
                 break;
             default:
                 if (type !== 'default') {
@@ -245,6 +247,119 @@ export const BuildRender = {
         ctx.strokeRect(-s * 0.5, -s * 0.5, s, s * 0.5);
     },
 
+    /** 🚧 울타리 렌더링 (Auto-tiling) */
+    drawFence(ctx, t, v, time, engine) {
+        const s = v.size || 10;
+        const sh = engine?.spatialHash;
+        const em = engine?.entityManager;
+        
+        let mask = 0;
+        if (sh && em) {
+            const checkDist = 15;
+            // North
+            const n = sh.query(t.x, t.y - checkDist, 5).some(id => {
+                const ent = em.entities.get(id);
+                return ent && ent.components.get('Visual')?.subtype === 'fence';
+            });
+            // East
+            const e = sh.query(t.x + checkDist, t.y, 5).some(id => {
+                const ent = em.entities.get(id);
+                return ent && ent.components.get('Visual')?.subtype === 'fence';
+            });
+            // South
+            const sPos = sh.query(t.x, t.y + checkDist, 5).some(id => {
+                const ent = em.entities.get(id);
+                return ent && ent.components.get('Visual')?.subtype === 'fence';
+            });
+            // West
+            const w = sh.query(t.x - checkDist, t.y, 5).some(id => {
+                const ent = em.entities.get(id);
+                return ent && ent.components.get('Visual')?.subtype === 'fence';
+            });
+
+            if (n) mask |= 1;
+            if (e) mask |= 2;
+            if (sPos) mask |= 4;
+            if (w) mask |= 8;
+        }
+
+        ctx.fillStyle = '#8d6e63';
+        ctx.strokeStyle = '#4e342e';
+        ctx.lineWidth = 2;
+
+        // 중앙 기둥
+        ctx.fillRect(-2, -8, 4, 10);
+        ctx.strokeRect(-2, -8, 4, 10);
+
+        // 연결부 그리기
+        if (mask & 1) { // North
+            ctx.fillRect(-1, -12, 2, 6);
+        }
+        if (mask & 2) { // East
+            ctx.fillRect(0, -6, 8, 2);
+            ctx.fillRect(0, -3, 8, 2);
+        }
+        if (mask & 4) { // South
+            ctx.fillRect(-1, 0, 2, 6);
+        }
+        if (mask & 8) { // West
+            ctx.fillRect(-8, -6, 8, 2);
+            ctx.fillRect(-8, -3, 8, 2);
+        }
+    },
+
+    /** 🚪 울타리 문 렌더링 */
+    drawGate(ctx, t, v, time, engine) {
+        const s = v.size || 12;
+        // Entity 찾기 (UISystem 등에서 렌더링 시 id를 알 수 없으므로 근접 검색 활용 가능하나, 
+        // 보통 렌더링 시점에 이미 entity가 있으면 좋음. EntityRenderer에서 넘겨받도록 수정 필요)
+        // 일단 t(Transform) 주변의 문 엔티티를 찾습니다.
+        const em = engine?.entityManager;
+        const sh = engine?.spatialHash;
+        let doorComp = null;
+        
+        if (sh && em) {
+            const nearby = sh.query(t.x, t.y, 5);
+            for(const id of nearby) {
+                const ent = em.entities.get(id);
+                if (ent && ent.components.has('Door')) {
+                    doorComp = ent.components.get('Door');
+                    break;
+                }
+            }
+        }
+
+        const isOpen = doorComp ? doorComp.isOpen : false;
+
+        // 양쪽 기둥
+        ctx.fillStyle = '#5d4037';
+        ctx.strokeStyle = '#3e2723';
+        ctx.lineWidth = 2;
+        ctx.fillRect(-8, -10, 4, 12);
+        ctx.strokeRect(-8, -10, 4, 12);
+        ctx.fillRect(4, -10, 4, 12);
+        ctx.strokeRect(4, -10, 4, 12);
+
+        // 문짝
+        ctx.fillStyle = '#8d6e63';
+        if (isOpen) {
+            // 열린 문 (옆으로 비스듬히)
+            ctx.save();
+            ctx.transform(1, 0.5, 0, 1, 0, 0);
+            ctx.fillRect(-4, -8, 8, 6);
+            ctx.strokeRect(-4, -8, 8, 6);
+            ctx.restore();
+        } else {
+            // 닫힌 문
+            ctx.fillRect(-4, -8, 8, 6);
+            ctx.strokeRect(-4, -8, 8, 6);
+            // 가로 문양
+            ctx.beginPath();
+            ctx.moveTo(-4, -5); ctx.lineTo(4, -5);
+            ctx.stroke();
+        }
+    },
+
     /** 🏗️ 청사진 및 건설 정보 렌더링 */
     renderBlueprintInfo(ctx, t, structure) {
         const type = (structure.type || 'building').toUpperCase();
@@ -275,3 +390,4 @@ export const BuildRender = {
         ctx.strokeRect(bx, by, barW, barH);
     }
 };
+

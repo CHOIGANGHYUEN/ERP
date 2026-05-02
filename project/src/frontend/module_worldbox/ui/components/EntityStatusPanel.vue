@@ -10,6 +10,18 @@
     
     <div class="panel-body">
       <div class="status-row">
+        <span class="label">Species:</span>
+        <span class="value species-text">{{ entity.type }}</span>
+      </div>
+
+      <div class="status-row" v-if="entity.diet">
+        <span class="label">Diet:</span>
+        <span class="diet-badge" :class="entity.diet.toLowerCase()">
+          {{ entity.diet === 'carnivore' ? '🥩 Carnivore' : '🌿 Herbivore' }}
+        </span>
+      </div>
+
+      <div class="status-row">
         <span class="label">State:</span>
         <span class="value state-badge" :class="entity.state.toLowerCase()">
           {{ entity.state }}
@@ -175,15 +187,20 @@ const jobMeta = computed(() => {
 const getIcon = (type, subType) => {
   if (subType === 'beehive') return '🍯';
   if (subType === 'fruit') return '🍎';
-  if (type === 'cow') {
-    return subType === 'dairy' ? '🐄' : '🐃';
-  }
-  if (type === 'wolf') return '🐺';
-  if (type === 'hyena') return '🐾';
-  if (type === 'wild_dog') return '🐕';
+  if (type === 'tiger') return '🐅';
+  if (type === 'lion') return '🦁';
+  if (type === 'bear') return '🐻';
+  if (type === 'fox') return '🦊';
+  if (type === 'crocodile') return '🐊';
+  if (type === 'deer') return '🦌';
+  if (type === 'rabbit') return '🐇';
+  if (type === 'horse') return '🐎';
+  if (type === 'elephant') return '🐘';
+  if (type === 'goat') return '🐐';
   
   const icons = {
-    sheep: '🐑', human: '👤', bee: '🐝',
+    sheep: '🐑', cow: '🐄', human: '👤', bee: '🐝', wolf: '🐺',
+    hyena: '🐾', wild_dog: '🐕',
     tree: '🌲', flower: '🌸', grass: '🌾', unknown: '❓'
   };
   return icons[type] || '❓';
@@ -255,9 +272,23 @@ const getItemEmoji = (type) => {
 .value { font-weight: bold; }
 .value-sm { font-size: 0.75rem; color: #ccc; min-width: 45px; text-align: right; }
 
-.state-badge { padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); text-transform: capitalize; }
-.state-badge.withered { background: rgba(139, 69, 19, 0.3); color: #ff8a65; }
 .state-badge.healthy, .state-badge.blooming { background: rgba(76, 175, 80, 0.3); color: #81c784; }
+
+/* 🥩 Diet Badges */
+.diet-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+.diet-badge.carnivore { background: rgba(211, 47, 47, 0.2); color: #ff8a80; border: 1px solid rgba(211, 47, 47, 0.3); }
+.diet-badge.herbivore { background: rgba(76, 175, 80, 0.2); color: #a5d6a7; border: 1px solid rgba(76, 175, 80, 0.3); }
+
+.species-text {
+  text-transform: capitalize;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
 
 /* 🏷️ 직업 뱃지 */
 .job-badge {

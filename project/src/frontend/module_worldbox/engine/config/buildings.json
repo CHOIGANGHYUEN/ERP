@@ -22,5 +22,29 @@
         "color": "#795548",
         "techRequired": 1,
         "provides": ["shelter", "storage"]
+    },
+    "fence": {
+        "id": "fence",
+        "name": "Fence",
+        "cost": { "wood": 2 },
+        "maxProgress": 20,
+        "maxHp": 50,
+        "width": 10,
+        "height": 10,
+        "color": "#8d6e63",
+        "techRequired": 0,
+        "provides": ["barrier"]
+    },
+    "fence_gate": {
+        "id": "fence_gate",
+        "name": "Fence Gate",
+        "cost": { "wood": 10 },
+        "maxProgress": 50,
+        "maxHp": 80,
+        "width": 12,
+        "height": 12,
+        "color": "#6d4c41",
+        "techRequired": 0,
+        "provides": ["gate"]
     }
 }

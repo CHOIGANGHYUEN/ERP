@@ -1,3 +1,5 @@
+import { AnimalStates } from '../../../components/behavior/State.js';
+
 export default class BeeBrain {
     constructor(entityManager, eventBus, engine, spatialHash) {
         this.entityManager = entityManager;
@@ -7,6 +9,9 @@ export default class BeeBrain {
     }
 
     update(id, state, transform, animal, dt) {
+        // 🛑 [Drag & Drop Protection] 플레이어에게 잡힌 상태면 AI 판단 중단
+        if (state.mode === AnimalStates.GRABBED) return;
+
         const em = this.entityManager;
         const role = animal.role || 'worker';
         const hive = em.entities.get(animal.hiveId);

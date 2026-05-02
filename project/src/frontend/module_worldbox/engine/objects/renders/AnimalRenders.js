@@ -7,6 +7,18 @@ import { HyenaRenderer } from './animals/HyenaRenderer.js';
 import { HumanRenderer } from './animals/HumanRenderer.js';
 import { BeeRenderer } from './animals/BeeRenderer.js';
 
+// 🦁 New Species
+import { TigerRenderer } from './animals/TigerRenderer.js';
+import { LionRenderer } from './animals/LionRenderer.js';
+import { BearRenderer } from './animals/BearRenderer.js';
+import { FoxRenderer } from './animals/FoxRenderer.js';
+import { CrocodileRenderer } from './animals/CrocodileRenderer.js';
+import { DeerRenderer } from './animals/DeerRenderer.js';
+import { RabbitRenderer } from './animals/RabbitRenderer.js';
+import { HorseRenderer } from './animals/HorseRenderer.js';
+import { ElephantRenderer } from './animals/ElephantRenderer.js';
+import { GoatRenderer } from './animals/GoatRenderer.js';
+
 /**
  * 🎨 AnimalRenders Module (Advanced Animation Engine)
  */
@@ -37,6 +49,20 @@ export const AnimalRenders = {
             case 'hyena': HyenaRenderer.draw(ctx, frameIdx, s, mode); break;
             case 'human': HumanRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
             case 'bee': BeeRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
+            
+            // 🦁 Carnivores
+            case 'tiger': TigerRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'lion': LionRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'bear': BearRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'fox': FoxRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'crocodile': CrocodileRenderer.draw(ctx, frameIdx, s, mode); break;
+
+            // 🦌 Herbivores
+            case 'deer': DeerRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'rabbit': RabbitRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'horse': HorseRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'elephant': ElephantRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'goat': GoatRenderer.draw(ctx, frameIdx, s, mode); break;
         }
 
         this.spriteCache.set(key, canvas);

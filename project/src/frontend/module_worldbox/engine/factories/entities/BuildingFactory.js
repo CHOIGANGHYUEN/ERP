@@ -2,6 +2,7 @@ import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
 import Storage from '../../components/resource/Storage.js';
 import Housing from '../../components/civilization/Housing.js';
+import Door from '../../components/civilization/Door.js';
 
 /**
  * 🏠 BuildingFactory
@@ -13,29 +14,37 @@ export default class BuildingFactory extends IEntityFactory {
         const builder = new EntityBuilder(em);
         const id = builder.id;
 
+        const buildingConfigs = this.engine.buildingsConfig || {};
+        const config = buildingConfigs[type] || { maxHp: 500, maxProgress: 100, width: 40, height: 40 };
+
         builder
             .withTransform(x, y)
             .withVisual({
                 type: 'building',
                 subtype: type,
-                size: options.size || 40,
-                color: options.color || '#8d6e63',
+                size: options.size || (config.width || 40),
+                color: options.color || (config.color || '#8d6e63'),
                 alpha: options.isBlueprint ? 0.3 : 1.0
             })
             .addComponent('Building', {
                 type: type,
                 level: 1,
-                health: 500,
-                maxHealth: 500,
+                health: config.maxHp,
+                maxHealth: config.maxHp,
                 villageId: options.villageId || -1
             })
             .addComponent('Structure', {
                 type: type,
-                progress: options.isBlueprint ? 0 : 100,
-                maxProgress: 100,
+                progress: options.isBlueprint ? 0 : config.maxProgress,
+                maxProgress: config.maxProgress,
                 isComplete: !options.isBlueprint,
                 isBlueprint: options.isBlueprint || false
             });
+
+        // 🚪 울타리 문(fence_gate)인 경우 Door 컴포넌트 추가
+        if (type === 'fence_gate') {
+            builder.addComponent('Door', { isOpen: false });
+        }
 
         // 타입별 특수 기능 조립
         if (type === 'storage' || type === 'warehouse') {

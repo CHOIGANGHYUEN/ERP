@@ -1,5 +1,4 @@
-import Component from '../../core/Component.js';
-
+import Component from "../../core/Component";
 /**
  * 🐾 Animal States
  */
@@ -13,7 +12,9 @@ export const AnimalStates = {
     HUNT: 'hunt',
     FORAGE: 'forage',
     EAT: 'eat',
-    DIE: 'die'
+    GRAZE: 'graze',
+    DIE: 'die',
+    GRABBED: 'grabbed'
 };
 
 
@@ -50,7 +51,7 @@ export default class State extends Component {
         this.searchCooldown = 0;      // 먹이 탐색 쿨다운
 
         // 🧠 [Ecological Cycle Update] 상태 스택 (인터럽트 대응)
-        this.modeStack = []; 
+        this.modeStack = [];
     }
 
     /**
@@ -74,4 +75,4 @@ export default class State extends Component {
         }
         this.stateTimer = 0;
     }
-}
+}

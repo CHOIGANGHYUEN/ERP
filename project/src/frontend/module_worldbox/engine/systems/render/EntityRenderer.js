@@ -112,7 +112,7 @@ export default class EntityRenderer {
         } else if (v.type === 'building') {
             const structure = entity.components.get('Structure');
             // console.debug(`[EntityRenderer] Dispatching to BuildRender: ${v.subtype}, ID: ${entity.id}`);
-            BuildRender.render(ctx, v.subtype || 'default', t, v, structure, time);
+            BuildRender.render(ctx, v.subtype || 'default', t, v, structure, time, this.engine);
             
             const storage = entity.components.get('Storage');
             if (storage && structure && structure.isComplete) {

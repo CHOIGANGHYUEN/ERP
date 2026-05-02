@@ -130,9 +130,19 @@ export default class SpawnerSystem extends System {
     }
 
     spawnEntity(payload) {
+        let type = payload.type;
+        // 🔄 [Compatibility Fix] method에서 type 추출 (spawnSheep -> sheep)
+        if (!type && payload.method) {
+            type = payload.method.replace('spawn', '').toLowerCase();
+            // 특수 케이스 처리
+            if (type === 'wilddog') type = 'wild_dog';
+        }
+        
+        if (!type) return;
+
         const isBaby = payload.isBaby || false;
-        const category = payload.type === 'human' ? 'human' : 'animal';
-        this.engine.factoryProvider.spawn(category, payload.type, payload.x, payload.y, { isBaby });
+        const category = type === 'human' ? 'human' : 'animal';
+        this.engine.factoryProvider.spawn(category, type, payload.x, payload.y, { isBaby });
     }
 
     spawnPoop(x, y, fertilityAmount = 1.0) {

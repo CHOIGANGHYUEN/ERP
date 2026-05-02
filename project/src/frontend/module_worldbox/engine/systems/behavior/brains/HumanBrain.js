@@ -16,6 +16,9 @@ export default class HumanBrain {
      * 인간의 현재 상태를 기반으로 최적의 행동(State)을 결정합니다.
      */
     decide(entity, state, stats, emotion, inventory, dt) {
+        // 🛑 [Drag & Drop Protection] 플레이어에게 잡힌 상태면 어떤 판단도 하지 않음
+        if (state.mode === AnimalStates.GRABBED) return AnimalStates.GRABBED;
+
         const civ = entity.components.get('Civilization');
         
         // 0. 극단적 생존 위협: 배가 너무 고프면 하던 일 중단
