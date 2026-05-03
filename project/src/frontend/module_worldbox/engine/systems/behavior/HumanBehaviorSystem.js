@@ -26,22 +26,38 @@ export default class HumanBehaviorSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
+        const camera = this.engine.camera;
         const frameCount = this.engine.frameCount || 0;
 
-        for (const id of em.animalIds) {
+        // 🚀 [Optimization] 카메라 가시 영역 (LOD용)
+        const margin = 100;
+        const viewX = camera.x - margin;
+        const viewY = camera.y - margin;
+        const viewW = (camera.width / camera.zoom) + (margin * 2);
+        const viewH = (camera.height / camera.zoom) + (margin * 2);
+
+        // 👤 [Expert Optimization] animalIds 대신 전용 humanIds 사용하여 순회 비용 최소화
+        for (const id of em.humanIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
 
-            const animal = entity.components.get('Animal');
-            if (!animal || animal.type !== 'human') continue;
+            const transform = entity.components.get('Transform');
+            if (!transform) continue;
+
+            // 1. [AI LOD] 가시성에 따른 업데이트 빈도 조절
+            const isVisible = (transform.x > viewX && transform.x < viewX + viewW && 
+                               transform.y > viewY && transform.y < viewY + viewH);
+            
+            const updateModulo = isVisible ? 2 : 10;
+            if ((id + frameCount) % updateModulo !== 0) continue;
 
             const state = entity.components.get('AIState');
-            const transform = entity.components.get('Transform');
             const stats = entity.components.get('BaseStats');
             const emotion = entity.components.get('Emotion');
             const inventory = entity.components.get('Inventory');
+            const animal = entity.components.get('Animal');
 
-            if (state && transform && stats) {
+            if (state && stats) {
                 // 🏷️ jobType 초기화 (처음 한 번만)
                 const civ = entity.components.get('Civilization');
                 if (civ && civ.jobType === undefined) {
@@ -49,35 +65,45 @@ export default class HumanBehaviorSystem extends System {
                     civ.role = null;
                 }
 
-                // AI 틱 최적화
-                if ((id + frameCount) % 2 === 0) {
-                    // 🧠 HumanBrain이 개체의 생존과 직업(Role)을 총괄하여 최종 행동(State) 판단
-                    const nextMode = this.humanBrain.decide(entity, state, stats, emotion, inventory, dt * 2);
-                    
-                    // 🛑 [Blacklist Maintenance] 도달 불가능 타겟 주기적 초기화 (60초마다)
-                    state.blacklistClearTimer = (state.blacklistClearTimer || 0) + dt * 2;
-                    if (state.blacklistClearTimer >= 60.0) {
-                        if (state.unreachableTargets) state.unreachableTargets.clear();
-                        state.blacklistClearTimer = 0;
-                    }
+                const effectiveDt = dt * updateModulo;
 
-                    if (nextMode && nextMode !== state.mode) {
-                        // 🧹 상태 전이 시 기존 타겟 및 경로 데이터 초기화 (신규 타겟 재지정 유도)
+                // 🧠 HumanBrain이 개체의 생존과 직업(Role)을 총괄하여 최종 행동(State) 판단
+                const nextMode = this.humanBrain.decide(entity, state, stats, emotion, inventory, effectiveDt);
+                
+                // 🛑 [Blacklist Maintenance] 도달 불가능 타겟 주기적 초기화 (60초마다)
+                state.blacklistClearTimer = (state.blacklistClearTimer || 0) + effectiveDt;
+                if (state.blacklistClearTimer >= 60.0) {
+                    if (state.unreachableTargets) state.unreachableTargets.clear();
+                    state.blacklistClearTimer = 0;
+                }
+
+                if (nextMode && nextMode !== state.mode) {
+                    // 🧹 상태 전이 시 경로 데이터 초기화
+                    state.isTargetRequested = false;
+                    state.targetRequestFailed = false;
+                    state.path = null;
+                    state.pathIndex = 0;
+
+                    // [고도화] 타겟이 유지되어야 하는 상태가 아니면 타겟 초기화
+                    const preservesTarget = [
+                        AnimalStates.EAT, AnimalStates.PICKUP, AnimalStates.ATTACK, 
+                        'build', 'deposit', 'gather_wood', 'gather_stone', 
+                        AnimalStates.FORAGE, AnimalStates.HUNT
+                    ].includes(nextMode);
+
+                    if (!preservesTarget) {
                         state.targetId = null;
-                        state.isTargetRequested = false;
-                        state.targetRequestFailed = false;
-                        state.path = null;
-                        state.pathIndex = 0;
-                        state.mode = nextMode;
                     }
 
-                    this.updateHumanAI(id, entity, state, transform, animal, stats, dt * 2, emotion, inventory);
-                    
-                    const visual = entity.components.get('Visual');
-                    if (visual) {
-                        visual.isEating = (state.mode === AnimalStates.EAT);
-                        visual.isSleeping = (state.mode === AnimalStates.SLEEP);
-                    }
+                    state.mode = nextMode;
+                }
+
+                this.updateHumanAI(id, entity, state, transform, animal, stats, effectiveDt, emotion, inventory);
+                
+                const visual = entity.components.get('Visual');
+                if (visual) {
+                    visual.isEating = (state.mode === AnimalStates.EAT);
+                    visual.isSleeping = (state.mode === AnimalStates.SLEEP);
                 }
             }
         }
@@ -148,12 +174,22 @@ export default class HumanBehaviorSystem extends System {
             if (nextMode && nextMode !== state.mode) {
                 if (stateHandler.exit) stateHandler.exit(id, entity);
                 
-                // 🧹 상태 전이 시 타겟 및 경로 초기화
-                state.targetId = null;
+                // 🧹 상태 전이 시 경로 데이터 초기화
                 state.isTargetRequested = false;
                 state.targetRequestFailed = false;
                 state.path = null;
                 state.pathIndex = 0;
+                
+                // [고도화] 타겟이 유지되어야 하는 상태가 아니면 타겟 초기화
+                const preservesTarget = [
+                    AnimalStates.EAT, AnimalStates.PICKUP, AnimalStates.ATTACK, 
+                    'build', 'deposit', 'gather_wood', 'gather_stone', 
+                    AnimalStates.FORAGE, AnimalStates.HUNT
+                ].includes(nextMode);
+
+                if (!preservesTarget) {
+                    state.targetId = null;
+                }
                 
                 state.mode = nextMode;
                 const nextHandler = this.stateFactory.getState(nextMode);
@@ -185,9 +221,9 @@ export default class HumanBehaviorSystem extends System {
         // 수면 중에는 허기/피로 업데이트 속도를 줄임
         const activityMult = (state.mode === AnimalStates.SLEEP) ? 0.3 : 1.0;
 
-        // 1. 🍖 허기 업데이트
-        const hungerRate = 1.0 * timeScale * activityMult;
-        stats.hunger = Math.max(0, stats.hunger - dt * hungerRate);
+        // 1. 🍖 허기 업데이트 (이제 MetabolismSystem에서 전담 관리)
+        // const hungerRate = 1.0 * timeScale * activityMult;
+        // stats.hunger = Math.max(0, stats.hunger - dt * hungerRate);
 
         if (stats.hunger <= 0) {
             stats.health -= dt * 5; // 굶주림 데미지 (조금 완화)

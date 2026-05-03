@@ -4,7 +4,9 @@ import HumanBehaviorSystem from '../systems/behavior/HumanBehaviorSystem.js';
 import SpatialHash from '../utils/SpatialHash.js';
 import CombatSystem from '../systems/behavior/CombatSystem.js';
 import DeathProcessor from '../systems/behavior/DeathProcessor.js';
-import SocialSystem from '../systems/motion/SocialSystem.js';
+import HerdingSystem from '../systems/motion/HerdingSystem.js';
+import SocialSystem from '../systems/civilization/SocialSystem.js';
+import NationSystem from '../systems/civilization/NationSystem.js';
 import GatheringSystem from '../systems/economy/GatheringSystem.js';
 import ConsumptionSystem from '../systems/economy/ConsumptionSystem.js';
 import KinematicSystem from '../systems/motion/KinematicSystem.js';
@@ -51,10 +53,12 @@ export default class SystemManager {
         this.behavior = new AnimalBehaviorSystem(em, eb, engine, this.spatialHash);
         this.combat = new CombatSystem(em, eb, engine);
         this.deathProcessor = new DeathProcessor(em, eb, engine);
-        this.social = new SocialSystem(engine);
+        this.herding = new HerdingSystem(engine);
+        this.social = new SocialSystem(em, eb, engine);
+        this.nationSystem = new NationSystem(em, eb, engine);
         this.gathering = new GatheringSystem(em, eb, engine);
         this.consumption = new ConsumptionSystem(em, eb, engine);
-        this.metabolism = new MetabolismSystem(em, eb, tg);
+        this.metabolism = new MetabolismSystem(em, eb, engine, tg);
         this.reproduction = new ReproductionSystem(em, eb, engine);
         this.health = new HealthSystem(em, eb);
         this.spawner = new SpawnerSystem(em, eb, engine);
@@ -94,7 +98,9 @@ export default class SystemManager {
         this.deathProcessor.update(dt, time);
         this.humanBehavior.update(dt, time);
         this.behavior.update(dt, time);
-        this.social.update(dt);
+        this.herding.update(dt);
+        this.social.update(dt, time);
+        this.nationSystem.update(dt, time);
         this.gathering.update(dt, time);
         this.consumption.update(dt);
         this.metabolism.update(dt, time);
@@ -124,8 +130,13 @@ export default class SystemManager {
     }
 
     destroy() {
-        if (this.particleSystem && typeof this.particleSystem.destroy === 'function') {
-            this.particleSystem.destroy();
-        }
+        // 모든 시스템의 destroy() 호출 및 참조 제거
+        Object.keys(this).forEach(key => {
+            const system = this[key];
+            if (system && typeof system.destroy === 'function') {
+                system.destroy();
+            }
+            this[key] = null;
+        });
     }
 }

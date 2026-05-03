@@ -131,8 +131,30 @@ export default class HumanBrain {
         const woodInInv = (inventory?.items['wood'] || 0);
 
         if (hasBlueprints) {
-            if (woodInInv >= 5 || totalWoodInVillage >= 5) return 'build';
-            return 'gather_wood';
+            // 💡 [Smart Gathering] 필요한 자원이 무엇인지 판단
+            const targetBPId = nearestBP || (blueprints.length > 0 ? blueprints[0].id : null);
+            const targetBP = targetBPId ? this.em.entities.get(targetBPId) : null;
+            const struc = targetBP?.components.get('Structure');
+            
+            let neededRes = 'wood';
+            if (struc) {
+                // ConstructionSystem의 로직과 동기화
+                if (struc.type === 'house' && struc.progress > 50) neededRes = 'stone';
+                if (struc.type === 'watchtower') neededRes = 'stone';
+                if (struc.type === 'warehouse' || struc.type === 'storage') {
+                    if (struc.progress > 70) neededRes = 'iron_ore';
+                }
+            }
+
+            const resInInv = (inventory?.items && inventory.items[neededRes]) || 0;
+            const storages = blackboard.storages || [];
+            const totalResInVillage = storages.reduce((sum, s) => sum + (s.items[neededRes] || 0), 0);
+
+            if (resInInv >= 5 || totalResInVillage >= 5) return 'build';
+            
+            // 필요한 자원 채집 상태로 전환
+            state.targetResourceType = neededRes;
+            return 'gather_wood'; // GatherWoodState가 이제 동적으로 처리함
         }
 
         // 6. 인벤토리가 꽉 찼고, 더 이상 지을 건물도 없을 때만 창고에 보관
@@ -176,22 +198,60 @@ export default class HumanBrain {
 
     /**
      * 주변에 떨어진 아이템이 있는지 탐색합니다.
+     * [고도화] 직업(Job)과 현재 상황에 따라 수집 우선순위를 결정합니다.
      */
     _tryPickup(entity, state) {
         const transform = entity.components.get('Transform');
+        const civ = entity.components.get('Civilization');
+        const stats = entity.components.get('BaseStats');
+        const inventory = entity.components.get('Inventory');
+
         if (!transform) return null;
 
-        const searchRadius = 150; // 줍기는 비교적 좁은 범위에서 수행
-        return this.em.findNearestEntityWithComponent(
-            transform.x, 
-            transform.y, 
-            searchRadius,
-            (ent) => {
-                const item = ent.components.get('DroppedItem');
-                // 아직 아무도 찜하지 않았거나 내가 찜한 것만 주움
-                return item && (!item.claimedBy || item.claimedBy === entity.id);
-            },
-            this.spatialHash
-        );
+        const searchRadius = 250; // 수집 탐색 범위 확대
+        const nearbyIds = this.spatialHash.query(transform.x, transform.y, searchRadius);
+        
+        let bestTargetId = null;
+        let bestScore = -1;
+
+        for (const otherId of nearbyIds) {
+            const other = this.em.entities.get(otherId);
+            if (!other) continue;
+
+            const item = other.components.get('DroppedItem');
+            if (!item || (item.claimedBy && item.claimedBy !== entity.id)) continue;
+
+            const tPos = other.components.get('Transform');
+            if (!tPos) continue;
+
+            // 🧮 우선순위 점수 계산
+            let score = 100; // 기본 점수
+            const dist = Math.sqrt((transform.x - tPos.x)**2 + (transform.y - tPos.y)**2);
+            
+            // 거리에 따른 감점 (멀수록 낮은 점수)
+            score -= (dist / searchRadius) * 50;
+
+            // 직업 및 상황별 가중치
+            const itemType = item.itemType;
+            const job = civ?.jobType;
+
+            if (itemType === 'wood') {
+                if (job === 'logger') score += 150;
+                if (state.mode === 'build') score += 100;
+            } else if (itemType === 'stone' || itemType === 'iron_ore') {
+                if (job === 'miner') score += 150;
+                if (state.mode === 'build') score += 120; // 돌/철은 더 희귀하므로 가중치 상향
+            } else if (itemType === 'fruit' || itemType === 'meat' || itemType === 'food') {
+                if (job === 'gatherer' || job === 'hunter') score += 150;
+                if (stats && stats.hunger < 50) score += 200; // 배고프면 식량이 최우선
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestTargetId = otherId;
+            }
+        }
+
+        return bestTargetId;
     }
 }

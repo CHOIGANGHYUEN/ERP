@@ -5,33 +5,67 @@ export default class KinematicSystem {
 
     update(dt) {
         const em = this.engine.entityManager;
+        const camera = this.engine.camera;
+        const spatialHash = this.engine.spatialHash;
         const mw = this.engine.mapWidth;
         const mh = this.engine.mapHeight;
+        const frameCount = this.engine.frameCount || 0;
+
+        // 🚀 [Optimization] 매 프레임 동적 해시 초기화 (시스템 통합)
+        if (spatialHash) spatialHash.clearDynamic();
+
+        // 🚀 [Optimization] 카메라 가시 영역 계산 (LOD용)
+        const margin = 100;
+        const viewX = camera.x - margin;
+        const viewY = camera.y - margin;
+        const viewW = (camera.width / camera.zoom) + (margin * 2);
+        const viewH = (camera.height / camera.zoom) + (margin * 2);
 
         for (const id of em.animalIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
 
             const transform = entity.components.get('Transform');
-            if (!transform || transform.vx === undefined) continue;
+            if (!transform) continue;
 
-            // 🛑 [Drag & Drop Fix] 잡힌 상태의 개체는 물리 연산(속도, 마찰)을 수행하지 않음
-            const aiState = entity.components.get('AIState');
-            if (aiState && aiState.mode === 'grabbed') {
-                continue; 
+            // 1. [Physics LOD] 화면 밖 개체는 물리 연산 빈도 낮춤 (20fps 수준)
+            const isVisible = (transform.x > viewX && transform.x < viewX + viewW && 
+                               transform.y > viewY && transform.y < viewY + viewH);
+            
+            if (!isVisible) {
+                // 화면 밖 개체는 3프레임에 한 번만 물리 연산 수행 (분산 처리)
+                if ((id + frameCount) % 3 !== 0) {
+                    // 위치만 대략 업데이트 (마찰력 등은 건너뜀)
+                    transform.x += transform.vx * dt;
+                    transform.y += transform.vy * dt;
+                    continue; 
+                }
             }
 
-            // 2a. 속도에 따른 이동
+            // 🛑 [Drag & Drop Protection]
+            const aiState = entity.components.get('AIState');
+            if (aiState && aiState.mode === 'grabbed') continue;
+
+            // 2. 이동 및 마찰력 계산
             let nextX = transform.x + transform.vx * dt;
             let nextY = transform.y + transform.vy * dt;
 
-            // 2b. 마찰/저항
-            transform.vx *= 0.96;
-            transform.vy *= 0.96;
+            // 🛑 [Stability] 상호작용 중에는 급제동 (관성 제거)
+            let friction = 0.92;
+            const interactionStates = ['eat', 'sleep', 'gather_wood', 'gather_plant', 'build', 'pickup', 'deposit', 'socializing'];
+            if (aiState && interactionStates.includes(aiState.mode)) {
+                friction = 0.5; // 급격한 속도 감쇄
+            }
 
-            // 2c. 🌍 지형(Terrain) 이동 가능 여부 검사 (물, 고산 등 진입 방지)
+            transform.vx *= friction;
+            transform.vy *= friction;
+
+            // 정지 임계값 처리 (미세하게 떨리는 현상 방지)
+            if (Math.abs(transform.vx) < 0.1) transform.vx = 0;
+            if (Math.abs(transform.vy) < 0.1) transform.vy = 0;
+
+            // 3. 지형 검사 (Navigable)
             if (this.engine.terrainGen && !this.engine.terrainGen.isNavigable(nextX, nextY)) {
-                // 벽 타기(Sliding) 지원을 위해 축 분리 검사
                 if (this.engine.terrainGen.isNavigable(nextX, transform.y)) {
                     nextY = transform.y;
                     transform.vy = 0;
@@ -39,71 +73,73 @@ export default class KinematicSystem {
                     nextX = transform.x;
                     transform.vx = 0;
                 } else {
-                    nextX = transform.x;
-                    nextY = transform.y;
-                    transform.vx = 0;
-                    transform.vy = 0;
+                    nextX = transform.x; nextY = transform.y;
+                    transform.vx = 0; transform.vy = 0;
                 }
             }
 
-            // 2c. 건물 충돌
-            for (const bId of em.buildingIds) {
-                const buildingEntity = em.entities.get(bId);
-                if (!buildingEntity) continue;
+            // 4. 🚀 [Expert Optimization] 건물 충돌 (Spatial Hash 기반 쿼리)
+            // 전체 건물 루프(em.buildingIds) 대신 주변 건물만 쿼리하여 성능 폭증 방지
+            if (spatialHash) {
+                const nearbyIds = spatialHash.query(nextX, nextY, 30);
+                for (let i = 0; i < nearbyIds.length; i++) {
+                    const bId = nearbyIds[i];
+                    const bEnt = em.entities.get(bId);
+                    if (!bEnt || !bEnt.components.has('Building')) continue;
 
-                // 🚪 [Dynamic Collision] 열린 문은 충돌을 무시함
-                const door = buildingEntity.components.get('Door');
-                if (door && door.isOpen) continue;
+                    const door = bEnt.components.get('Door');
+                    if (door && door.isOpen) continue;
 
-                const bTransform = buildingEntity.components.get('Transform');
-                const bVisual = buildingEntity.components.get('Visual');
-                if (bTransform && bVisual) {
-                    const bRadius = (bVisual.size || 40) * 0.45;
-                    const dx = nextX - bTransform.x;
-                    const dy = nextY - bTransform.y;
-                    const distSq = dx * dx + dy * dy;
-                    if (distSq < bRadius * bRadius) {
-                        const currentDx = transform.x - bTransform.x;
-                        const currentDy = transform.y - bTransform.y;
-                        const currentDistSq = currentDx * currentDx + currentDy * currentDy;
-                        if (currentDistSq < bRadius * bRadius) {
-                            const dist = Math.sqrt(currentDistSq) || 1;
-                            nextX = bTransform.x + (currentDx / dist) * (bRadius + 1);
-                            nextY = bTransform.y + (currentDy / dist) * (bRadius + 1);
-                        } else {
-                            nextX = transform.x;
-                            nextY = transform.y;
+                    const bT = bEnt.components.get('Transform');
+                    const bV = bEnt.components.get('Visual');
+                    if (bT && bV) {
+                        const bRadius = (bV.size || 40) * 0.45;
+                        const dx = nextX - bT.x;
+                        const dy = nextY - bT.y;
+                        const distSq = dx * dx + dy * dy;
+                        
+                        if (distSq < bRadius * bRadius) {
+                            // 밀어내기 로직 (입사각/반사각 대신 간단한 거리 기반 밀어내기)
+                            const dist = Math.sqrt(distSq) || 1;
+                            const overlap = bRadius - dist;
+                            nextX += (dx / dist) * (overlap + 0.5);
+                            nextY += (dy / dist) * (overlap + 0.5);
+                            
+                            // 속도 상쇄
+                            transform.vx *= 0.5;
+                            transform.vy *= 0.5;
                         }
                     }
                 }
             }
 
+            // 5. 위치 최종 확정 및 경계 체크
             transform.x = nextX;
             transform.y = nextY;
 
-            // 2d. 월드 경계
             if (transform.x < 0)  { transform.x = 0;  transform.vx *= -0.5; }
-            if (transform.x > mw) { transform.x = mw; transform.vx *= -0.5; }
+            else if (transform.x > mw) { transform.x = mw; transform.vx *= -0.5; }
             if (transform.y < 0)  { transform.y = 0;  transform.vy *= -0.5; }
-            if (transform.y > mh) { transform.y = mh; transform.vy *= -0.5; }
+            else if (transform.y > mh) { transform.y = mh; transform.vy *= -0.5; }
 
-            // 2e. 🧭 방향 + 모션 상태 동기화
-            const speed = Math.sqrt(transform.vx * transform.vx + transform.vy * transform.vy);
-            const visual = entity.components.get('Visual');
-            const state  = entity.components.get('AIState');
-
-            if (visual && speed > 1.5) {
-                // 8방향 facing 계산 (라디안 → 0~7 인덱스)
-                const angle = Math.atan2(transform.vy, transform.vx); // -π ~ π
-                // 0=E 1=SE 2=S 3=SW 4=W 5=NW 6=N 7=NE  (시계방향)
-                const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
-                visual.facing = idx;
-                // 좌우 flipping: 서쪽 방향(3,4,5)이면 flipX
-                visual.flipX = (idx >= 3 && idx <= 5);
+            // 6. 🧭 방향 및 애니메이션 데이터 갱신 (보이는 개체만 정밀하게)
+            if (isVisible) {
+                const speedSq = transform.vx * transform.vx + transform.vy * transform.vy;
+                if (speedSq > 2.25) { // speed > 1.5
+                    const visual = entity.components.get('Visual');
+                    if (visual) {
+                        const angle = Math.atan2(transform.vy, transform.vx);
+                        const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+                        visual.facing = idx;
+                        visual.flipX = (idx >= 3 && idx <= 5);
+                    }
+                }
             }
 
-            // (과거에 물리 속도를 기반으로 state.mode를 강제로 'wander'로 덮어쓰던 로직 제거)
-            // 이제 상태 제어는 전적으로 FSM(BehaviorSystem)이 담당합니다.
+            // 7. 🚀 [Optimization] 공간 해시 갱신 (별도 루프 제거)
+            if (spatialHash) {
+                spatialHash.insert(id, transform.x, transform.y, false);
+            }
         }
     }
 }

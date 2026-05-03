@@ -27,7 +27,7 @@ export default class NatureFactory extends IEntityFactory {
         }
 
         // 🏥 [Health Integration] 모든 자연 개체에 체력 부여
-        const config = this.engine.resourceBalance?.[type] || {};
+        const config = this.engine.resourceConfig?.[type] || {};
         const maxHp = config.maxHp || 50;
         builder.addComponent('Health', new Health(maxHp));
 

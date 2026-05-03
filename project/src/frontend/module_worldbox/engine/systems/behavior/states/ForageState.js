@@ -47,18 +47,22 @@ export default class ForageState extends State {
             aComp.claimedBy = entityId;
         }
 
-        // 🔒 [DroppedItem Claiming] 바닥 아이템 독점 체크
+        // 🔒 [DroppedItem Claiming] 바닥 아이템 독점 체크 (작은 더미만 독점)
         const droppedItem = target.components.get('DroppedItem');
         if (droppedItem) {
-            if (droppedItem.claimedBy && droppedItem.claimedBy !== entityId) {
-                const claimer = this.system.entityManager.entities.get(droppedItem.claimedBy);
-                const claimerState = claimer?.components.get('AIState');
-                if (claimerState && claimerState.targetId === state.targetId) {
-                    state.targetId = null;
-                    return AnimalStates.IDLE;
+            // 수량이 5개 이하인 작은 아이템만 독점 체크 수행
+            if (droppedItem.amount <= 5) {
+                if (droppedItem.claimedBy && droppedItem.claimedBy !== entityId) {
+                    const claimer = this.system.entityManager.entities.get(droppedItem.claimedBy);
+                    const claimerState = claimer?.components.get('AIState');
+                    if (claimerState && claimerState.targetId === state.targetId) {
+                        state.targetId = null;
+                        return AnimalStates.IDLE;
+                    }
                 }
+                droppedItem.claimedBy = entityId;
             }
-            droppedItem.claimedBy = entityId;
+            // 5개 초과인 큰 더미는 자유롭게 공유 허용
         }
 
         const tPos = target.components.get('Transform');
@@ -71,10 +75,10 @@ export default class ForageState extends State {
         const dy = tPos.y - transform.y;
         const distSq = dx * dx + dy * dy;
 
-        // 초근접 사거리 도달 시 식사 상태로 전환
-        if (distSq <= 144) {
-            transform.vx *= 0.5;
-            transform.vy *= 0.5;
+        // 초근접 사거리 도달 시 식사 상태로 전환 (길찾기 정지 거리 12px보다 큰 14px 적용하여 안정성 확보)
+        if (distSq <= 196) { 
+            transform.vx = 0;
+            transform.vy = 0;
             return AnimalStates.EAT;
         } else {
             // 🚀 [Troubleshooting 3] 초식동물도 장애물(건물)을 피해 먹이를 찾도록 A* 적용

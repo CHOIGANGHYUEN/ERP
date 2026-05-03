@@ -45,18 +45,40 @@ export default class ConstructionSystem extends System {
                     transform.vy *= 0.5;
                     
                     const inventory = entity.components.get('Inventory');
-                    const woodInInv = (inventory?.items && inventory.items['wood']) || 0;
+                    if (!inventory) continue;
 
-                    if (woodInInv > 0) {
+                    // 🏢 건물별 요구 자원 결정 (고도화된 룰)
+                    let requiredType = 'wood';
+                    const type = structure.type;
+                    const prog = structure.progress;
+
+                    if (type === 'house') {
+                        if (prog > 50) requiredType = 'stone'; // 집 후반부는 돌
+                    } else if (type === 'well' || type === 'temple') {
+                        requiredType = 'stone'; // 우물과 사원은 전적으로 돌 필요
+                    } else if (type === 'blacksmith') {
+                        requiredType = prog > 40 ? 'iron_ore' : 'stone'; // 대장간은 돌(기초) -> 철(화로)
+                    } else if (type === 'watchtower') {
+                        requiredType = 'stone';
+                    } else if (type === 'warehouse' || type === 'storage') {
+                        if (prog > 70) requiredType = 'iron_ore';
+                    }
+
+                    const hasResource = (inventory.items && inventory.items[requiredType]) > 0;
+
+                    if (hasResource) {
                         const builderComp = entity.components.get('Builder');
                         const buildSpeed = builderComp ? (builderComp.buildSpeed || 10) : 10;
                         const progressAmount = buildSpeed * dt;
                         
                         if (!isNaN(progressAmount)) {
                             structure.progress += progressAmount;
-                            inventory.items['wood'] = Math.max(0, inventory.items['wood'] - progressAmount/10);
                             
-                            // 🔨 건설 애니메이션 효과 (먼지 파티클)
+                            // 자원 소모 (진행도에 비례)
+                            const consumption = progressAmount / 10;
+                            inventory.items[requiredType] = Math.max(0, inventory.items[requiredType] - consumption);
+                            
+                            // 🔨 건설 애니메이션 효과
                             if (Math.random() < 0.1) {
                                 this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                                     x: transform.x, y: transform.y, count: 2, type: 'DUST', color: '#d7ccc8', speed: 1
@@ -68,9 +90,14 @@ export default class ConstructionSystem extends System {
                             }
                         }
                     } else {
-                        // 자원이 없으면 대기 (시각적 알림)
+                        // 자원이 없으면 대기 (시각적 알림 - 필요한 자원 아이콘 표시)
                         if (Math.random() < 0.005) {
-                            this.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: id, text: '🪵?', duration: 1000 });
+                            const icons = { 'wood': '🪵', 'stone': '🪨', 'iron_ore': '⛓️' };
+                            this.eventBus.emit('SHOW_SPEECH_BUBBLE', { 
+                                entityId: id, 
+                                text: `${icons[requiredType] || '❓'}?`, 
+                                duration: 1500 
+                            });
                         }
                     }
                 }

@@ -14,11 +14,28 @@ export default class Age extends Component {
     }
 
     /** 나이에 따른 성장 단계 업데이트 */
-    updateStage() {
+    updateStage(entity) {
         const lifeRatio = this.currentAge / this.maxAge;
+        const oldStage = this.growthStage;
+
         if (lifeRatio < 0.1) this.growthStage = 'infant';
-        else if (lifeRatio < 0.3) this.growthStage = 'juvenile';
+        else if (lifeRatio < 0.25) this.growthStage = 'juvenile';
         else if (lifeRatio < 0.8) this.growthStage = 'adult';
         else this.growthStage = 'elder';
+
+        // 🔄 상태 변화가 있고 성인이 되었다면 플래그 갱신
+        if (oldStage !== this.growthStage && entity) {
+            const visual = entity.components.get('Visual');
+            const animal = entity.components.get('Animal');
+            const isBaby = (this.growthStage === 'infant' || this.growthStage === 'juvenile');
+            
+            if (visual) {
+                visual.isBaby = isBaby;
+                visual.size = isBaby ? 0.6 : 1.0;
+            }
+            if (animal) {
+                animal.isBaby = isBaby;
+            }
+        }
     }
 }

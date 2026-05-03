@@ -41,6 +41,8 @@ export const ItemRenderer = {
             case 'meat': this.drawMeat(ctx, s); break;
             case 'fruit': this.drawFruit(ctx, s, time); break;
             case 'stone': this.drawStone(ctx, s); break;
+            case 'iron_ore': this.drawIron(ctx, s); break;
+            case 'coal': this.drawCoal(ctx, s); break;
             case 'gold': this.drawGold(ctx, s, time); break;
             case 'grass': this.drawGrass(ctx, s); break;
             case 'flower': this.drawFlower(ctx, s); break;
@@ -50,6 +52,34 @@ export const ItemRenderer = {
             default: this.drawDefaultItem(ctx, s, itemType);
         }
 
+        ctx.restore();
+        
+        // 🏷️ [User Request] 아이템 정보 표시 (이름 및 수량)
+        this.renderInfoLabel(ctx, itemType, v, entity);
+    },
+
+    renderInfoLabel(ctx, itemType, v, entity) {
+        const drop = entity?.components?.get('DroppedItem');
+        if (!drop) return;
+
+        ctx.save();
+        const amount = drop.amount || 1;
+        const displayName = itemType.replace('_', ' ').toUpperCase();
+        
+        // 아주 작게 표시하여 아기자기함 유지
+        ctx.translate(0, -v.size * 1.5 - 2);
+        ctx.font = 'bold 7px Inter, Arial';
+        ctx.textAlign = 'center';
+        
+        // 배경 박스 (은은하게)
+        const text = `${displayName} x${amount}`;
+        const textWidth = ctx.measureText(text).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.roundRect(-textWidth/2 - 2, -6, textWidth + 4, 8, 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, 0, 0);
         ctx.restore();
     },
 
@@ -278,6 +308,51 @@ export const ItemRenderer = {
         ctx.beginPath();
         ctx.moveTo(-2, -s*0.2);
         ctx.lineTo(-2, -s*0.7);
+        ctx.stroke();
+    },
+
+    /** ⛓️ 철광석 (Iron Ore) - 금속 광택과 어두운 회색 질감 */
+    drawIron(ctx, s) {
+        const grad = ctx.createLinearGradient(-s*0.5, -s*0.5, s*0.5, s*0.5);
+        grad.addColorStop(0, '#78909c');
+        grad.addColorStop(0.5, '#455a64');
+        grad.addColorStop(1, '#263238');
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-s*0.5, s*0.2);
+        ctx.lineTo(s*0.4, s*0.4);
+        ctx.lineTo(s*0.6, -s*0.2);
+        ctx.lineTo(s*0.1, -s*0.5);
+        ctx.closePath();
+        ctx.fill();
+
+        // 금속 광택
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-s*0.2, -s*0.2);
+        ctx.lineTo(s*0.2, s*0.1);
+        ctx.stroke();
+    },
+
+    /** ⬛ 석탄 (Coal) - 거칠고 어두운 질감 */
+    drawCoal(ctx, s) {
+        ctx.fillStyle = '#212121';
+        ctx.beginPath();
+        ctx.moveTo(-s*0.4, s*0.4);
+        ctx.lineTo(s*0.5, s*0.3);
+        ctx.lineTo(s*0.4, -s*0.4);
+        ctx.lineTo(-s*0.5, -s*0.3);
+        ctx.closePath();
+        ctx.fill();
+
+        // 거친 단면 표현
+        ctx.strokeStyle = '#424242';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(-s*0.2, -s*0.1);
+        ctx.lineTo(s*0.1, s*0.2);
         ctx.stroke();
     },
 

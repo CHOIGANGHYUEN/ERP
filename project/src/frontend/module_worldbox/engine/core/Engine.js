@@ -39,9 +39,9 @@ export default class Engine {
         canvas.style.height = '100%';
 
         this.ctx = canvas.getContext('2d', { alpha: false });
-        // 🖼️ 최적화된 800x800 그리드 체제로 조정 (성능과 스케일의 균형)
-        this.mapWidth = 800;
-        this.mapHeight = 800;
+        // 🌍 [Scale Expansion] 대규모 2400x2400 그리드 체제로 확장 (기존 3배)
+        this.mapWidth = 2400;
+        this.mapHeight = 2400;
 
 
         this.terrainCanvas = document.createElement('canvas');
@@ -63,6 +63,7 @@ export default class Engine {
         this.renderer = new EntityRenderer(this);
 
         this.factoryProvider = new FactoryProvider(this); 
+        // 🚀 주입: 팩토리들이 설정을 참조할 수 있도록 엔진 참조 확인
 
         // 단일 책임 원칙(SRP) 준수를 위한 시스템 매니저 도입
         this.systemManager = new SystemManager(this);
@@ -458,4 +459,26 @@ export default class Engine {
 
 
     // renderFertilityTooltip is now handled by RenderCoordinator.js
+    /**
+     * 🧹 [Memory Management] 엔진 종료 및 자원 일괄 해제
+     */
+    destroy() {
+        this.isRunning = false;
+        if (this.animationId) cancelAnimationFrame(this.animationId);
+
+        // 1. 모든 시스템 파괴
+        if (this.systemManager) this.systemManager.destroy();
+
+        // 2. 엔티티 및 컴포넌트 강제 해제
+        if (this.entityManager) this.entityManager.clearAll();
+
+        // 3. 이벤트 구독 일괄 해제
+        if (this.eventBus) this.eventBus.clear();
+
+        // 4. 큰 버퍼 메모리 해제 지원
+        this.terrainGen = null;
+        this.chunkManager = null;
+        
+        console.warn("🛑 [Engine] Destroyed. Memory cleared.");
+    }
 }

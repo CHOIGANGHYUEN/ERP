@@ -45,5 +45,7 @@
     "snow_flower": { "id": "snow_flower", "name": "Snow Flower", "nutrition": 5, "type": "food", "edible": true, "gatherDifficulty": 2.0, "buff": "cold_resistance", "capacity": 10, "maxHp": 20, "dropItemType": "flower", "dropAmount": 1 },
     "gold_ore": { "id": "gold_ore", "name": "Gold Ore", "type": "mineral", "gatherDifficulty": 4.0, "capacity": 50, "maxHp": 300, "dropItemType": "gold", "dropAmount": 4 },
     "silver_ore": { "id": "silver_ore", "name": "Silver Ore", "type": "mineral", "gatherDifficulty": 3.5, "capacity": 80, "maxHp": 200, "dropItemType": "mineral", "dropAmount": 5 },
-    "gems": { "id": "gems", "name": "Gems", "type": "mineral", "gatherDifficulty": 5.0, "capacity": 10, "maxHp": 100, "dropItemType": "mineral", "dropAmount": 2 }
+    "gems": { "id": "gems", "name": "Gems", "type": "mineral", "gatherDifficulty": 5.0, "capacity": 10, "maxHp": 100, "dropItemType": "mineral", "dropAmount": 2 },
+    "fruit": { "id": "fruit", "name": "Fruit", "nutrition": 20, "type": "food", "edible": true, "gatherDifficulty": 0.1, "capacity": 100, "maxHp": 10 },
+    "wood": { "id": "wood", "name": "Wood", "nutrition": 0, "type": "material", "edible": false, "gatherDifficulty": 0.1, "capacity": 100, "maxHp": 20 }
 }

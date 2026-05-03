@@ -56,11 +56,6 @@ export default class DepositState extends State {
             transform.vx = 0;
             transform.vy = 0;
 
-            // 마을 정보 조회 (자원 통계 동기화용)
-            const vs = this.system.engine.systemManager?.villageSystem;
-            const village = (vs && civ && civ.villageId !== -1) ? vs.getVillage(civ.villageId) : null;
-            if (village && !village.resources) village.resources = { wood: 0, food: 0 };
-
             // 📦 창고(Storage) 컴포넌트로 아이템 인수인계
             const storage = targetEntity.components.get('Storage');
             const depositedItemsText = [];

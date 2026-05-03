@@ -55,14 +55,40 @@ export default class BuildingFactory extends IEntityFactory {
             builder.addComponent('Housing', new Housing({ capacity: options.capacity || 4 }));
         } else if (type === 'farm') {
             builder.addComponent('Storage', new Storage({ capacity: 500 }))
-                   .addComponent('Farm', { cropType: 'wheat', growthRate: 0.1 });
+                   .addComponent('Farm', { 
+                       cropType: 'wheat', 
+                       growthRate: 0.05,
+                       maxCrops: 10,
+                       currentCrops: 0,
+                       lastHarvest: 0
+                   });
+        } else if (type === 'fence' || type === 'wall') {
+            // 울타리는 별도의 기능은 없으나 충돌 레이어에서 장애물로 작동함
+            builder.addComponent('Obstacle', { blocksMovement: true });
+        } else if (type === 'fence_gate') {
+            builder.addComponent('Door', { isOpen: false });
+        } else if (type === 'pasture') {
+            // 🐄 목장: 가축을 수용하는 공간
+            builder.addComponent('Storage', new Storage({ capacity: 100 }))
+                   .addComponent('LivestockHousing', { capacity: 5, animals: [] });
+        } else if (type === 'well') {
+            builder.addComponent('Storage', new Storage({ capacity: 100 }))
+                   .addComponent('BuffSource', { type: 'happiness', radius: 150 });
+        } else if (type === 'blacksmith') {
+            builder.addComponent('Storage', new Storage({ capacity: 500 }))
+                   .addComponent('Production', { type: 'tools', efficiency: 1.0 });
+        } else if (type === 'temple') {
+            builder.addComponent('BuffSource', { type: 'authority', radius: 300 });
+        } else if (type === 'watchtower') {
+            // 🏹 망루: 방어 및 시야 확보
+            builder.addComponent('Sensor', { range: 300, targetTypes: ['predator', 'enemy'] });
         } else if (type === 'bonfire' || type === 'camp') {
             builder.withVisual({ 
                 type: 'building', 
                 subtype: type, 
                 size: 25, 
                 color: '#ff9800',
-                alpha: options.isBlueprint ? 0.3 : 1.0
+                alpha: options.isBlueprint ? 0.6 : 1.0 // 청사진 알파 상향
             }).addComponent('LightSource', { intensity: 1.0, radius: 100 });
         }
 

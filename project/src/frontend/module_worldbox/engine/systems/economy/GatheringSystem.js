@@ -9,15 +9,23 @@ export default class GatheringSystem extends System {
     constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
         this.engine = engine;
+        this.updateAccumulator = 0; // 🚀 [Optimization]
     }
 
     update(dt, time) {
+        this.updateAccumulator += dt;
+        if (this.updateAccumulator < 0.1) return; // 10Hz로 제한
+        
+        const effectiveDt = this.updateAccumulator;
+        this.updateAccumulator = 0;
+
         const em = this.entityManager;
         for (const id of em.animalIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
+            
             const state = entity.components.get('AIState');
-            if (!state) continue;
+            if (!state || !state.targetId) continue;
 
             const gatherer = entity.components.get('GathererComponent');
             if (!gatherer) continue;
@@ -36,7 +44,7 @@ export default class GatheringSystem extends System {
             if (state.mode === 'eat') {
                 if (distSq <= 25) { // 반경 5px
                     gatherer.gatherSpeed = 10.0;
-                    const extracted = gatherer.performGathering(dt, target, targetId, em, this.eventBus, transform);
+                    const extracted = gatherer.performGathering(effectiveDt, target, targetId, em, this.eventBus, transform);
                     
                     const preyAnimal = target.components.get('Animal');
                     if (preyAnimal && extracted === 0) {
@@ -52,8 +60,8 @@ export default class GatheringSystem extends System {
             } else if (state.mode === 'bee_gather') {
                 if (distSq <= 25) { // 반경 5px
                     // 벌은 한 번에 20의 비옥도를 소모하여 10의 꿀을 얻음
-                    gatherer.gatherSpeed = 20.0 / dt; 
-                    const extracted = gatherer.performGathering(dt, target, targetId, em, this.eventBus, transform);
+                    gatherer.gatherSpeed = 20.0 / effectiveDt; 
+                    const extracted = gatherer.performGathering(effectiveDt, target, targetId, em, this.eventBus, transform);
                     
                     const animal = entity.components.get('Animal');
                     if (animal) animal.nectar = (animal.nectar || 0) + 10;
@@ -62,7 +70,7 @@ export default class GatheringSystem extends System {
             } else if (state.mode === 'gather') {
                 if (distSq <= 100) { // 반경 10px
                     gatherer.gatherSpeed = 5.0;
-                    const extracted = gatherer.performGathering(dt, target, targetId, em, this.eventBus, transform);
+                    const extracted = gatherer.performGathering(effectiveDt, target, targetId, em, this.eventBus, transform);
                     
                     if (extracted > 0) {
                         const inventory = entity.components.get('Inventory');

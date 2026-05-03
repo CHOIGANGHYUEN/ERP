@@ -6,48 +6,64 @@
 export const BuildRender = {
     render(ctx, type, t, v, structure, time, engine, overlayOnly = false) {
         ctx.save();
-        
+
         // 🧱 [Construction VFX] 건설 중인 경우 먼지 파티클 효과
         if (structure && !structure.isComplete && !overlayOnly) {
             this.renderConstructionDust(ctx, t, v, time);
+            ctx.globalAlpha = 0.6; // [Fix] 청사진 시인성 확보를 위해 알파값 상향
         }
 
-        // 완성된 건물은 기본적으로 불투명하게 처리 (청사진 투명도 해제)
+        // 완성된 건물은 기본적으로 불투명하게 처리
         if (structure && structure.isComplete && !overlayOnly) {
             ctx.globalAlpha = 1.0;
         }
 
-        switch (type) {
+        // 💡 [버그 수정 1] type이 'building'으로 넘어올 경우 바닥에 회색 사각형(그림자/기초)만 그리는 문제 해결
+        const actualType = v?.subtype || type;
+
+        // 💡 [버그 수정 2] 엔진이 청사진의 Base 렌더링을 스킵할 경우를 대비해 본체를 강제 렌더링
+        const effectiveOverlay = overlayOnly && (!structure || structure.isComplete);
+
+        switch (actualType) {
             case 'bonfire':
-            case 'camp': 
-                this.drawBonfire(ctx, t, v, time, overlayOnly);
+            case 'camp':
+                this.drawBonfire(ctx, t, v, time, effectiveOverlay);
                 break;
             case 'storage':
             case 'warehouse':
-                if (!overlayOnly) this.drawStorage(ctx, t, v, time);
+                if (!effectiveOverlay) this.drawStorage(ctx, t, v, time);
                 break;
             case 'house':
             case 'tent':
-                this.drawHouse(ctx, t, v, time, overlayOnly);
+                this.drawHouse(ctx, t, v, time, effectiveOverlay);
                 break;
             case 'farm':
-                this.drawFarm(ctx, t, v, time, overlayOnly);
+                this.drawFarm(ctx, t, v, time, effectiveOverlay);
+                break;
+            case 'well':
+                this.drawWell(ctx, t, v, time, effectiveOverlay);
+                break;
+            case 'blacksmith':
+                this.drawBlacksmith(ctx, t, v, time, effectiveOverlay);
+                break;
+            case 'temple':
+                this.drawTemple(ctx, t, v, time, effectiveOverlay);
                 break;
             case 'fence':
-                if (!overlayOnly) this.drawFence(ctx, t, v, time, engine);
+                if (!effectiveOverlay) this.drawFence(ctx, t, v, time, engine);
                 break;
             case 'fence_gate':
-                if (!overlayOnly) this.drawGate(ctx, t, v, time, engine);
+                if (!effectiveOverlay) this.drawGate(ctx, t, v, time, engine);
                 break;
             default:
-                if (!overlayOnly) this.drawDefaultBuilding(ctx, t, v);
+                if (!effectiveOverlay) this.drawDefaultBuilding(ctx, t, v);
         }
 
         // 🏗️ [Blueprint Visualization] 건설 중인 경우 정보 표시
         if (structure && !structure.isComplete && !overlayOnly) {
             this.renderBlueprintInfo(ctx, t, structure);
         }
-        
+
         ctx.restore();
     },
 
@@ -71,7 +87,7 @@ export const BuildRender = {
     drawBonfire(ctx, t, v, time = 0, overlayOnly = false) {
         const s = v.size || 25;
         const animTime = time * 0.006;
-        
+
         if (!overlayOnly) {
             // 0. 바닥 빛무리 (Glow Effect)
             const glowSize = s * (1.2 + Math.sin(animTime * 1.5) * 0.1);
@@ -96,7 +112,7 @@ export const BuildRender = {
                 ctx.fill();
                 ctx.stroke();
             }
-            
+
             // 2. 장작 (Crossed Logs)
             ctx.fillStyle = '#5d4037';
             ctx.strokeStyle = '#3e2723';
@@ -105,12 +121,12 @@ export const BuildRender = {
             ctx.fillRect(-2, -s * 0.35, 5, s * 0.7);
             ctx.strokeRect(-2, -s * 0.35, 5, s * 0.7);
         }
-        
+
         // 3. 불꽃 (Multi-layered Dynamic Flames)
         const flameBaseH = s * 0.8;
         const flicker = Math.sin(animTime * 2) * 0.1 + Math.sin(animTime * 0.7) * 0.05;
         const flameH = flameBaseH * (1.0 + flicker);
-        
+
         // Outer Flame
         ctx.fillStyle = '#ff5722';
         this._drawFlameShape(ctx, s * 0.3, flameH);
@@ -123,7 +139,7 @@ export const BuildRender = {
 
         // 4. 불꽃 튀는 효과 (Embers)
         ctx.fillStyle = '#fff176';
-        for(let i=0; i<3; i++) {
+        for (let i = 0; i < 3; i++) {
             const pTime = (animTime * 0.5 + i) % 3;
             const px = Math.sin(pTime * 4) * (s * 0.3);
             const py = - (pTime * 20);
@@ -143,7 +159,7 @@ export const BuildRender = {
     /** 📦 창고 렌더링 (디자인 개선) */
     drawStorage(ctx, t, v, time = 0) {
         const s = v.size || 40;
-        
+
         // 1. 기초 (Stone Foundation)
         ctx.fillStyle = '#757575';
         ctx.fillRect(-s * 0.55, -s * 0.15, s * 1.1, s * 0.15);
@@ -154,7 +170,7 @@ export const BuildRender = {
         ctx.lineWidth = 1.5;
         ctx.fillRect(-s * 0.5, -s * 0.7, s, s * 0.6);
         ctx.strokeRect(-s * 0.5, -s * 0.7, s, s * 0.6);
-        
+
         // 기둥 (Support Beams)
         ctx.fillStyle = '#4e342e';
         ctx.fillRect(-s * 0.55, -s * 0.75, s * 0.1, s * 0.7);
@@ -169,7 +185,7 @@ export const BuildRender = {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        
+
         // 4. 화물 (Cargo Details)
         ctx.fillStyle = '#a1887f';
         ctx.fillRect(s * 0.2, -s * 0.2, 8, 8); // 상자
@@ -183,7 +199,7 @@ export const BuildRender = {
     drawHouse(ctx, t, v, time = 0, overlayOnly = false) {
         const s = v.size || 42;
         const animTime = time * 0.006;
-        
+
         if (!overlayOnly) {
             // 1. 벽면
             ctx.fillStyle = '#efebe9';
@@ -191,7 +207,7 @@ export const BuildRender = {
             ctx.lineWidth = 1.5;
             ctx.fillRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
             ctx.strokeRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
-            
+
             // 2. 굴뚝
             const cx = s * 0.25, cy = -s * 0.8;
             ctx.fillStyle = '#5d4037';
@@ -215,11 +231,11 @@ export const BuildRender = {
             ctx.fillRect(-s * 0.3, -s * 0.35, 6, 6);
             ctx.fillRect(s * 0.2, -s * 0.35, 6, 6);
         }
-        
+
         // 연기 파티클 (Dynamic Overlay)
         const cx = s * 0.25, cy = -s * 0.8;
         ctx.fillStyle = 'rgba(150, 150, 150, 0.4)';
-        for(let i=0; i<3; i++) {
+        for (let i = 0; i < 3; i++) {
             const pTime = (animTime * 0.3 + i * 0.5) % 2;
             const px = cx + Math.sin(pTime * 3) * 5;
             const py = cy - (pTime * 15);
@@ -230,34 +246,54 @@ export const BuildRender = {
         }
     },
 
-    /** 🌾 농장 렌더링 */
+    /** 🌾 농장 렌더링 (8x8 고밀도 작물 격자) */
     drawFarm(ctx, t, v, time = 0, overlayOnly = false) {
         const s = v.size || 50;
-        const animTime = time * 0.006;
-        
+        const animTime = time * 0.005;
+
         if (!overlayOnly) {
-            // 1. 흙 바닥
-            ctx.fillStyle = '#5d4037';
+            // 1. 흙 바닥 및 고랑(Furrows)
+            ctx.fillStyle = '#4e342e';
             ctx.fillRect(-s * 0.5, -s * 0.4, s, s * 0.8);
-            
+
+            // 고랑 디테일
+            ctx.strokeStyle = '#3e2723';
+            ctx.lineWidth = 1;
+            for (let i = -3; i <= 3; i++) {
+                const fy = i * (s * 0.1);
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.45, fy); ctx.lineTo(s * 0.45, fy);
+                ctx.stroke();
+            }
+
             // 2. 울타리
             ctx.strokeStyle = '#3e2723';
             ctx.lineWidth = 2;
             ctx.strokeRect(-s * 0.52, -s * 0.42, s * 1.04, s * 0.84);
         }
-        
-        // 3. 작물 (일렁이는 효과 - Dynamic Overlay)
-        for(let i=0; i<16; i++) {
-            const row = Math.floor(i / 4);
-            const col = i % 4;
-            const px = -s * 0.35 + col * (s * 0.23);
-            const py = -s * 0.3 + row * (s * 0.2);
-            
-            const sway = Math.sin(animTime + i) * 2;
-            ctx.fillStyle = '#4caf50';
-            ctx.fillRect(px + sway * 0.1, py - 4, 2, 5);
-            ctx.fillStyle = '#cddc39';
-            ctx.fillRect(px + sway * 0.2, py - 6, 3, 3);
+
+        // 3. 8x8 작물 격자 (64개)
+        const rows = 8, cols = 8;
+        const stepX = (s * 0.85) / cols;
+        const stepY = (s * 0.75) / rows;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const px = -s * 0.4 + c * stepX;
+                const py = -s * 0.35 + r * stepY;
+
+                // 개별 작물 흔들림 (랜덤 오프셋 부여)
+                const sway = Math.sin(animTime + (r * 0.5) + (c * 0.3)) * 2.0;
+
+                // 작물 색상 (녹색에서 황금색으로 약간의 변이)
+                const colorVar = (r + c) % 2 === 0 ? '#4caf50' : '#8bc34a';
+                const headColor = (r + c) % 3 === 0 ? '#cddc39' : '#fbc02d';
+
+                ctx.fillStyle = colorVar;
+                ctx.fillRect(px + sway * 0.1, py - 4, 1.5, 5);
+                ctx.fillStyle = headColor;
+                ctx.fillRect(px + sway * 0.2, py - 6, 2, 2.5);
+            }
         }
     },
 
@@ -276,7 +312,7 @@ export const BuildRender = {
         const s = v.size || 10;
         const sh = engine?.spatialHash;
         const em = engine?.entityManager;
-        
+
         let mask = 0;
         if (sh && em) {
             const checkDist = 15;
@@ -341,10 +377,10 @@ export const BuildRender = {
         const em = engine?.entityManager;
         const sh = engine?.spatialHash;
         let doorComp = null;
-        
+
         if (sh && em) {
             const nearby = sh.query(t.x, t.y, 5);
-            for(const id of nearby) {
+            for (const id of nearby) {
                 const ent = em.entities.get(id);
                 if (ent && ent.components.has('Door')) {
                     doorComp = ent.components.get('Door');
@@ -388,30 +424,99 @@ export const BuildRender = {
     renderBlueprintInfo(ctx, t, structure) {
         const type = (structure.type || 'building').toUpperCase();
         const progress = structure.progress / structure.maxProgress;
-        
+
         // 1. 라벨 표시
         ctx.fillStyle = '#ffeb3b';
         ctx.font = 'bold 9px Inter, Arial';
         ctx.textAlign = 'center';
         ctx.fillText(`[PLAN] ${type}`, 0, -25); // Translated origin 기준
-        
+
         // 2. 진행도 바 배경
         const barW = 30;
         const barH = 4;
         const bx = -barW / 2;
         const by = -20;
-        
+
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
         ctx.fillRect(bx, by, barW, barH);
-        
+
         // 3. 진행도 바 채우기
         ctx.fillStyle = '#4caf50';
         ctx.fillRect(bx, by, barW * progress, barH);
-        
-        // 4. 테두리
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(bx, by, barW, barH);
-    }
-};
 
+        // 4. 테두리
+        // 4. 테두리 (가이드라인)
+        ctx.strokeStyle = '#00e5ff'; // 사이버틱한 청사진 느낌
+        ctx.setLineDash([5, 3]); // 점선 효과
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-15, -15, 30, 30);
+        ctx.setLineDash([]); // 다시 실선으로 복구
+    },
+
+    /** 💧 우물 (Well) - 물 파동 효과 */
+    drawWell(ctx, t, v, time, overlayOnly) {
+        const s = v.size || 30;
+        if (!overlayOnly) {
+            ctx.fillStyle = '#78909c'; // 돌 재질
+            ctx.beginPath();
+            ctx.arc(0, 0, s * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#455a64';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 내부 물
+            ctx.fillStyle = '#0288d1';
+            ctx.beginPath();
+            ctx.arc(0, 0, s * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // 물 일렁임
+        const ripple = Math.sin(time * 0.005) * 2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.2 + ripple, 0, Math.PI * 2);
+        ctx.stroke();
+    },
+
+    /** ⚒️ 대장간 (Blacksmith) - 불꽃 및 연기 */
+    drawBlacksmith(ctx, t, v, time, overlayOnly) {
+        const s = v.size || 45;
+        if (!overlayOnly) {
+            ctx.fillStyle = '#4e342e'; // 벽
+            ctx.fillRect(-s * 0.4, -s * 0.6, s * 0.8, s * 0.6);
+            ctx.fillStyle = '#212121'; // 화로
+            ctx.fillRect(-s * 0.3, -s * 0.2, s * 0.2, s * 0.2);
+        }
+        // 화로 불꽃
+        const flicker = Math.sin(time * 0.02) * 2;
+        ctx.fillStyle = '#ff5722';
+        ctx.beginPath();
+        ctx.arc(-s * 0.2, -s * 0.1, 3 + flicker, 0, Math.PI * 2);
+        ctx.fill();
+    },
+
+    /** 🏛️ 사원 (Temple) - 위엄 있는 건축물 */
+    drawTemple(ctx, t, v, time, overlayOnly) {
+        const s = v.size || 55;
+        if (!overlayOnly) {
+            ctx.fillStyle = '#eceff1'; // 대리석
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.5, 0);
+            ctx.lineTo(s * 0.5, 0);
+            ctx.lineTo(s * 0.4, -s * 0.8);
+            ctx.lineTo(-s * 0.4, -s * 0.8);
+            ctx.fill();
+            ctx.strokeStyle = '#cfd8dc';
+            ctx.stroke();
+
+            // 지붕 금박 느낌
+            ctx.fillStyle = '#ffd600';
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.45, -s * 0.8);
+            ctx.lineTo(s * 0.45, -s * 0.8);
+            ctx.lineTo(0, -s * 1.1);
+            ctx.fill();
+        }
+    }
+}

@@ -7,6 +7,7 @@ export default class EntityManager {
     constructor() {
         this.entities = new Map();
         this.animalIds = new Set();
+        this.humanIds = new Set(); // 👤 인간 전용 인덱스 추가
         this.resourceIds = new Set();
         this.buildingIds = new Set();
         this.nextId = 0;
@@ -44,12 +45,29 @@ export default class EntityManager {
             }
             
             this.animalIds.delete(id);
+            this.humanIds.delete(id); // 👤 인간 인덱스 제거
             this.resourceIds.delete(id);
             this.buildingIds.delete(id);
+            
+            // 🚀 [Memory Optimization] 컴포넌트 맵을 명시적으로 비워 참조 해제
+            entity.components.clear();
             
             this.entities.delete(id); // 활성 맵에서는 제거
             this.entityPool.push(id); // 재활용 대기소로 이동
         }
+    }
+
+    /**
+     * 모든 엔티티 정보를 초기화합니다. (시뮬레이션 재시작용)
+     */
+    clearAll() {
+        this.entities.clear();
+        this.animalIds.clear();
+        this.humanIds.clear();
+        this.resourceIds.clear();
+        this.buildingIds.clear();
+        this.entityPool = [];
+        this.nextId = 0;
     }
 
     addComponent(entityId, component, overrideName = null) {
@@ -66,7 +84,10 @@ export default class EntityManager {
 
             entity.components.set(name, component);
             
-            if (name === 'Animal') this.animalIds.add(entityId);
+            if (name === 'Animal') {
+                this.animalIds.add(entityId);
+                if (component.type === 'human') this.humanIds.add(entityId);
+            }
             if (name === 'Resource' || name === 'DroppedItem') this.resourceIds.add(entityId);
             if (name === 'Building') this.buildingIds.add(entityId);
         }

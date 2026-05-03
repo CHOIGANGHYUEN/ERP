@@ -1,4 +1,5 @@
 import { AnimalStates } from '../../../components/behavior/State.js';
+import Pathfinder from '../../../utils/Pathfinder.js';
 
 /**
  * 🌿 GrazeState
@@ -16,7 +17,7 @@ export default class GrazeState {
         const animal = entity.components.get('Animal');
         const stats = entity.components.get('BaseStats');
 
-        if (!state || !transform || !animal || !stats) return;
+        if (!state || !transform || !animal || !stats) return null;
 
         // 1. 타겟 풀(자원)이 없으면 주변에서 탐색 (살아있는 풀)
         if (!state.targetId) {
@@ -31,14 +32,14 @@ export default class GrazeState {
         const target = this.bs.entityManager.entities.get(state.targetId);
         if (!target) {
             state.targetId = null;
-            return;
+            return AnimalStates.IDLE;
         }
 
         const targetTransform = target.components.get('Transform');
         const health = target.components.get('Health');
         if (!targetTransform || !health) {
             state.targetId = null;
-            return;
+            return AnimalStates.IDLE;
         }
 
         const dx = targetTransform.x - transform.x;
@@ -47,8 +48,8 @@ export default class GrazeState {
 
         // 2. 풀 근처에 도착하면 타격 루프 시작
         if (distSq < 400) { // 20px 반경
-            transform.vx *= 0.2;
-            transform.vy *= 0.2;
+            transform.vx = 0;
+            transform.vy = 0;
 
             state.attackCooldown = (state.attackCooldown || 0) - dt;
             if (state.attackCooldown <= 0) {
@@ -64,20 +65,21 @@ export default class GrazeState {
                 }
 
                 if (isDead) {
-                    // 풀이 죽으면 아이템이 드랍될 것임 -> EatState로 전이하여 아이템 섭취 유도
+                    // 풀이 죽으면 아이템이 드랍될 것임 -> ForageState로 전이하여 아이템 섭취 유도
                     state.targetId = null;
-                    return AnimalStates.FORAGE; // Forage가 드랍된 아이템을 찾을 것임
+                    return AnimalStates.FORAGE;
                 }
                 state.attackCooldown = 0.8; // 0.8초 쿨타임
             }
         } else {
-            // 풀을 향해 이동
-            const angle = Math.atan2(dy, dx);
-            const moveSpeed = (this.bs.engine.speciesConfig[animal.type]?.moveSpeed || 40) * 1.2;
-            
-            transform.vx = Math.cos(angle) * moveSpeed;
-            transform.vy = Math.sin(angle) * moveSpeed;
+            // 🚀 [User Request] 직선 이동 대신 Pathfinder 적용 (장애물 회피)
+            const speed = (this.bs.engine.speciesConfig[animal.type]?.moveSpeed || 40);
+            if (Pathfinder.followPath(transform, state, targetTransform, speed, this.bs.engine) === -1) {
+                state.targetId = null;
+                return AnimalStates.WANDER;
+            }
         }
+        return null;
     }
 
     findNearestGrass(transform, radius) {

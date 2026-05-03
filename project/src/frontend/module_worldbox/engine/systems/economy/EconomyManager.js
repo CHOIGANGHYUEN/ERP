@@ -62,8 +62,12 @@ export default class EconomyManager {
                     type = 'wood';
                 } else if (type === 'berry' || type === 'fruit' || type === 'wheat' || type === 'plant' || type === 'grass' || type === 'flower') {
                     type = 'food';
-                } else if (type.includes('stone') || type === 'rock' || type === 'ore') {
+                } else if (type.includes('stone') || type === 'rock') {
                     type = 'stone';
+                } else if (type.includes('iron') || type === 'iron_ore') {
+                    type = 'iron_ore';
+                } else if (type.includes('gold') || type === 'gold_ore') {
+                    type = 'gold_ore';
                 }
 
                 if (!resourceNodes.has(type)) resourceNodes.set(type, []);
@@ -105,8 +109,8 @@ export default class EconomyManager {
         const storages = this.blackboard.storages;
         if (storages.length < 2) return;
 
-        // 예: 나무(wood) 자원에 대한 불균형 체크
-        const resourceTypes = ['wood', 'stone', 'food'];
+        // 📦 [Balance Fix] 운반 대상 자원 종류 확대
+        const resourceTypes = ['wood', 'stone', 'food', 'iron_ore'];
 
         for (const type of resourceTypes) {
             let overstocked = storages.filter(s => (s.items[type] || 0) > 100); // 100개 이상이면 과적

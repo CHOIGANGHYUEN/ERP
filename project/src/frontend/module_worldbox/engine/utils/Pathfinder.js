@@ -45,11 +45,27 @@ class MinHeap {
 }
 
 export default class Pathfinder {
+    static pathCountThisFrame = 0;
+    static lastFrameTime = 0;
+    static MAX_PATHS_PER_FRAME = 5; // 🚀 프레임당 A* 연산 최대 5회로 제한 (스파이크 방지)
+
     /**
      * 🧠 A* 기반 그리드 경로 탐색
      */
     static findPath(sx, sy, ex, ey, engine, gridSize = 10) {
         if (!engine) return [];
+        
+        // 🚀 [Optimization] 프레임당 연산 횟수 제어
+        const now = performance.now();
+        if (now - this.lastFrameTime > 16) {
+            this.pathCountThisFrame = 0;
+            this.lastFrameTime = now;
+        }
+        
+        if (this.pathCountThisFrame >= this.MAX_PATHS_PER_FRAME) {
+            return null; // 이번 프레임은 건너뛰고 다음 프레임에 재시도 유도
+        }
+        this.pathCountThisFrame++;
         const em = engine.entityManager;
         const spatialHash = engine.spatialHash;
 
@@ -117,7 +133,7 @@ export default class Pathfinder {
         const cameFrom = new Map();
 
         let attempts = 0;
-        const MAX_ATTEMPTS = 10000;
+        const MAX_ATTEMPTS = 40000; // 🚀 2400x2400 대규모 맵 대응을 위해 탐색 한도 대폭 상향
         const terrainGen = engine.terrainGen;
 
         while (openSet.size() > 0 && attempts < MAX_ATTEMPTS) {

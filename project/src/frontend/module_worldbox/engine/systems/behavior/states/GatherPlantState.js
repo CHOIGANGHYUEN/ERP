@@ -86,7 +86,7 @@ export default class GatherPlantState extends State {
         const dy = tPos.y - transform.y;
         const distSq = dx * dx + dy * dy;
 
-        if (distSq <= 144) { // 12px 반경 (정밀 길찾기로 도달 가능)
+        if (distSq <= 225) { // 15px 반경 (길찾기 정지 거리 12px보다 여유 있게 설정)
             transform.vx = 0;
             transform.vy = 0;
 
@@ -98,7 +98,8 @@ export default class GatherPlantState extends State {
                 const amount = res.value || 5;
                 
                 if (itemFactory) {
-                    itemFactory.spawnDrop(tPos.x, tPos.y, 'fruit', amount);
+                    const dropType = res.type || 'food';
+                    itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amount);
                 }
 
                 // 파티클 효과 (잎사귀 비산)

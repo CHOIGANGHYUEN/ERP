@@ -10,6 +10,13 @@ export const BuildingRenders = {
     ctx.restore()
 
     if (!building.isConstructed) {
+      // 💡 [버그 수정] 청사진(Blueprint) 상태일 때도 건물의 외형이 반투명하게 보이도록 추가
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      if (building.type === 'FARM') BuildingRenders.renderFarmCrops(building, ctx)
+      BuildingRenders.renderFinished(building, ctx, world)
+      ctx.restore()
+
       BuildingRenders.renderConstruction(building, ctx, world)
     } else {
       if (building.type === 'FARM') BuildingRenders.renderFarmCrops(building, ctx)
@@ -30,7 +37,7 @@ export const BuildingRenders = {
       ctx.setLineDash([2, 4])
       ctx.strokeRect(x - s / 2, y - s / 2, s, s)
       ctx.setLineDash([])
-      
+
       ctx.fillStyle = '#8B4513'
       const stakeSize = 3
       ctx.fillRect(x - s / 2 - 1, y - s / 2 - 1, stakeSize, stakeSize)
@@ -41,14 +48,14 @@ export const BuildingRenders = {
 
     // 전용 진행바 렌더링
     RenderUtils.drawBar(ctx, x, y - s / 2 - 10, s, 6, progress, '#34495e', '#f1c40f')
-    
+
     if (progress <= 0) return
 
     // 💡 [건축 중] - 비계(Scaffolding) 및 진행 상황 표시
     ctx.strokeStyle = '#7f8c8d'
     ctx.lineWidth = 2
     ctx.strokeRect(x - s / 2, y - s / 2, s, s)
-    
+
     // 내부 공사 진행률 채우기
     ctx.fillStyle = 'rgba(149, 165, 166, 0.4)'
     ctx.fillRect(x - s / 2, y + s / 2 - s * progress, s, s * progress)
@@ -64,15 +71,15 @@ export const BuildingRenders = {
     const isNight = world.timeSystem?.timeOfDay < 5000 || world.timeSystem?.timeOfDay > 19000
 
     ctx.save()
-    
+
     // 1. 벽면 (Main Body with Depth)
     const darkColor = '#7f8c8d' // 입체감을 위한 어두운 면
     ctx.fillStyle = darkColor
     ctx.fillRect(x - s / 2, y - s / 2, s, s) // 옆면 베이스
-    
+
     ctx.fillStyle = color
     ctx.fillRect(x - s / 2, y - s / 2, s * 0.8, s) // 정면 밝은 면
-    
+
     // 2. 지붕 (Isometric Roof)
     const roofColor = '#2c3e50'
     ctx.fillStyle = roofColor
@@ -83,7 +90,7 @@ export const BuildingRenders = {
     ctx.lineTo(x - s / 2, y - s * 0.9)
     ctx.closePath()
     ctx.fill()
-    
+
     // 지붕 릿지 (Ridge line)
     ctx.strokeStyle = '#34495e'
     ctx.lineWidth = 1
@@ -95,7 +102,7 @@ export const BuildingRenders = {
       ctx.shadowBlur = 10
       ctx.shadowColor = '#f1c40f'
     }
-    
+
     ctx.fillStyle = windowColor
     // 창문
     ctx.fillRect(x - s * 0.3, y - s * 0.3, s * 0.2, s * 0.2)
@@ -115,19 +122,19 @@ export const BuildingRenders = {
     ctx.font = 'bold 11px Arial'
     ctx.textAlign = 'center'
     ctx.fillText(`${iconMap[building.type] || '🏗️'} Lv.${level}`, x, y - s - 10)
-    
+
     // 💡 [Visual Progress] 레벨에 따라 지붕에 장식 추가 등 디테일 추가 가능
     if (level > 1) {
       ctx.strokeStyle = '#f1c40f'
       ctx.lineWidth = 2
-      ctx.strokeRect(x - s/2 - 2, y - s/2 - 2, s + 4, s + 4)
+      ctx.strokeRect(x - s / 2 - 2, y - s / 2 - 2, s + 4, s + 4)
     }
   },
 
   renderFarmCrops: (building, ctx) => {
     if (!building.crops) return
     const x = building.x, y = building.y
-    const cellSize = 8 
+    const cellSize = 8
     const offset = -cellSize * 5
 
     ctx.save()
@@ -144,10 +151,10 @@ export const BuildingRenders = {
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.font = '6px Arial'
-        
-        let emoji = '🌱' 
-        if (crop.status === 'PLANTED') emoji = '🟤' 
-        if (crop.status === 'RIPE') emoji = '🌾' 
+
+        let emoji = '🌱'
+        if (crop.status === 'PLANTED') emoji = '🟤'
+        if (crop.status === 'RIPE') emoji = '🌾'
 
         ctx.fillText(emoji, cx + cellSize / 2, cy + cellSize / 2)
       }

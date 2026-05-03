@@ -83,7 +83,8 @@ export default class GatherWoodState extends GatherState {
             if (!state.isTargetRequested) {
                 const targetManager = this.system.engine.systemManager.targetManager;
                 if (targetManager) {
-                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: 'wood' }, 'gather_wood');
+                    const reqType = state.targetResourceType || 'wood';
+                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: reqType }, 'gather_wood');
                     state.isTargetRequested = true;
                 }
             }
@@ -96,8 +97,8 @@ export default class GatherWoodState extends GatherState {
             return null;
         }
 
-        // 2. 이동 및 채집 (부모 클래스 위임)
-        const nextState = this.executeMovementAndGathering(entityId, entity, dt, 144);
+        // 2. 이동 및 채집 (부모 클래스 위임 - 상호작용 반경 15px로 안정화)
+        const nextState = this.executeMovementAndGathering(entityId, entity, dt, 225);
 
         // 🚀 [중요 복구] 
         // 부모 클래스가 나무 체력 0을 감지하고 'idle'로 가라고 지시하더라도,
@@ -119,11 +120,12 @@ export default class GatherWoodState extends GatherState {
             const targetEnt = this.system.entityManager.entities.get(targetId);
             const tPos = targetEnt?.components.get('Transform');
 
-            // 📦 [User Request] 인벤토리에 즉시 넣지 않고 바닥에 드랍함
-            const itemFactory = this.system.engine.factoryProvider.get('item');
+            // 📦 [User Request] 자원 타입에 맞는 아이템을 드롭함 (wood, stone, iron_ore 등)
+            const itemFactory = this.system.engine.factoryProvider.getFactory('item');
             if (itemFactory && tPos) {
-                const woodGained = 5 + Math.floor(Math.random() * 3);
-                itemFactory.spawnDrop(tPos.x, tPos.y, 'wood', woodGained);
+                const dropType = resourceNode.type || 'wood';
+                const amountGained = 5 + Math.floor(Math.random() * 3);
+                itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amountGained);
             }
 
             // 🪓 나무 팰 때마다 나무 파편(파티클) 튀는 타격감 추가

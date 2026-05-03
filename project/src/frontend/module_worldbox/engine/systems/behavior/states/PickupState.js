@@ -54,13 +54,13 @@ export default class PickupState extends State {
         const dy = tPos.y - transform.y;
         const distSq = dx * dx + dy * dy;
 
-        if (distSq <= 100) { // 10px 이내 (충분히 가까움)
+        if (distSq <= 400) { // 20px 이내 (충분히 가까움 - 길찾기 정지 거리 12px보다 큼)
             transform.vx = 0;
             transform.vy = 0;
 
             // 🧺 아이템 줍기
             const added = inventory.add(item.itemType, item.amount);
-            
+
             if (added >= item.amount) {
                 // 전체 획득 완료
                 em.removeEntity(state.targetId);
@@ -73,7 +73,14 @@ export default class PickupState extends State {
 
             // 시각 효과
             if (this.system.eventBus) {
-                this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '📦', duration: 1000 });
+                const emojiMap = {
+                    'wood': '🪵', 'stone': '🪨', 'meat': '🥩',
+                    'fruit': '🍎', 'grass': '🌾', 'food': '🍖', 'gold': '🟡',
+                    'coal': '⬛', 'iron_ore': '⛓️'
+                };
+                const emoji = emojiMap[item.itemType] || '📦';
+
+                this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: `+${added} ${emoji}`, duration: 1000 });
                 this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: transform.x, y: transform.y, count: 3, type: 'DUST', color: '#fff'
                 });
@@ -84,7 +91,7 @@ export default class PickupState extends State {
             // 이동
             const stats = entity.components.get('BaseStats');
             const speed = (stats?.speed || 40);
-            
+
             if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine) === -1) {
                 state.targetId = null;
                 return AnimalStates.IDLE;

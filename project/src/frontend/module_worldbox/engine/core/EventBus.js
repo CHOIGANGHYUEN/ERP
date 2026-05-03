@@ -34,4 +34,9 @@ export default class EventBus {
         if (!this.listeners.has(event)) return;
         this.listeners.get(event).forEach(callback => callback(data));
     }
+
+    // 모든 구독 초기화 (메모리 정리용)
+    clear() {
+        this.listeners.clear();
+    }
 }

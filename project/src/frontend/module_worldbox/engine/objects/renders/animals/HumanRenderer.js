@@ -271,6 +271,20 @@ export const HumanRenderer = {
             ctx.translate(0, (-12.5 + headBob) * s);
             if (isEating || isForaging) ctx.translate(0, Math.abs(Math.sin(t*3.5))*2.5*s);
 
+            const civ = entity?.components.get('Civilization');
+            if (civ && civ.isKing) {
+                // 👑 왕관 (Crown)
+                ctx.fillStyle = '#ffd700'; // Gold
+                const cx = -2.5 * s, cy = -2.0 * s, cw = 5.0 * s, ch = 2.0 * s;
+                ctx.fillRect(cx, cy, cw, ch);
+                // 왕관 뾰족한 부분
+                ctx.beginPath();
+                ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - 2*s); ctx.lineTo(cx + 1.25*s, cy);
+                ctx.moveTo(cx + 1.8*s, cy); ctx.lineTo(cx + 2.5*s, cy - 3*s); ctx.lineTo(cx + 3.2*s, cy);
+                ctx.moveTo(cx + 3.75*s, cy); ctx.lineTo(cx + 5*s, cy - 2*s); ctx.lineTo(cx + 5*s, cy);
+                ctx.fill();
+            }
+
             let hw = 4.0, hx = -2.0;
             if (isSide) { hw = 3.2; hx = -1.6; }
 

@@ -52,12 +52,12 @@ export default class ProgressSystem extends System {
                 const tPos = entity.components.get('Transform');
 
                 if (state && state.mode === 'wander' && metabolism && metabolism.stomach > metabolism.maxStomach * 0.4 && tPos) {
-                    
+
                     // 건축 조건: 나무가 충분히 있는가?
                     if (civ.techLevel >= 0 && inventory && inventory.items.wood >= 10 && Math.random() < 0.2) {
                         // 청사진 찾기
                         let blueprintId = this.findBlueprint(tPos.x, tPos.y);
-                        
+
                         if (blueprintId) {
                             state.mode = 'build';
                             state.targetId = blueprintId;
@@ -67,12 +67,13 @@ export default class ProgressSystem extends System {
                             if (civ.techLevel >= 1 && inventory.items.wood >= 100 && Math.random() < 0.3) {
                                 buildType = 'house';
                             }
-                            
+
                             // 주변의 무작위 위치
                             const spawnX = tPos.x + (Math.random() - 0.5) * 100;
                             const spawnY = tPos.y + (Math.random() - 0.5) * 100;
-                            
-                            blueprintId = this.engine.buildingFactory.createBlueprint(buildType, spawnX, spawnY);
+
+                            // 💡 [버그 수정] 존재하지 않는 createBlueprint 대신 factoryProvider.spawn 사용
+                            blueprintId = this.engine.factoryProvider.spawn('building', buildType, spawnX, spawnY, { isBlueprint: true });
                             if (blueprintId) {
                                 state.mode = 'build';
                                 state.targetId = blueprintId;

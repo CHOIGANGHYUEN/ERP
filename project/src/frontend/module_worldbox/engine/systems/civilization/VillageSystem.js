@@ -28,6 +28,22 @@ export default class VillageSystem extends System {
 
             this._syncVillageResources(village);
             this._updateVillagePlanning(village);
+            this._assignJobs(village); // 👑 촌장의 직업 할당 로직 추가
+
+            // 🚀 개척 체크: 인구가 많고 자원이 충분하면 새로운 마을 건설 시도
+            village._expansionCooldown -= dt;
+            if (village._expansionCooldown <= 0 && village.members.size >= 10 && village.resources.wood >= 50) {
+                this._checkExpansion(village);
+                village._expansionCooldown = 120.0; // 다음 개척까지 2분 대기
+            }
+        }
+
+        // 🚩 국가 관리: 마을이 생겼는데 국가가 없다면 창설
+        const ns = this.engine.systemManager?.nationSystem;
+        if (ns && this.villages.size > 0 && ns.nations.size === 0) {
+            const firstVillageId = Array.from(this.villages.keys())[0];
+            const nationId = ns.createNation("First Empire", "#f44336");
+            ns.addVillageToNation(nationId, firstVillageId);
         }
 
         // 시조 인류 체크: 마을이 하나도 없는데 인간이 있다면 마을 생성 시도
@@ -38,8 +54,17 @@ export default class VillageSystem extends System {
             this._recruitTimer -= dt;
             if (this._recruitTimer <= 0) {
                 this._recruitVillagers();
-                this._recruitTimer = 0.5; // 0.5초마다 무소속 채용 (반응성 대폭 상향)
+                this._processNationEconomy(); // 경제망 업데이트
+                this._recruitTimer = 3.0;
             }
+        }
+    }
+
+    _assignJobs(village) {
+        const hbs = this.engine.systemManager?.humanBehavior;
+        if (!hbs) return;
+        for (const memberId of village.members) {
+            hbs.assignJob(memberId, village);
         }
     }
 
@@ -49,6 +74,7 @@ export default class VillageSystem extends System {
             id,
             name: `Village ${id}`,
             founderId,
+            chiefId: founderId, // 👑 현재 리더 ID
             centerX: x,
             centerY: y,
             members: new Set([founderId]),
@@ -57,10 +83,14 @@ export default class VillageSystem extends System {
             resourceMax: { wood: 150, food: 150, stone: 150 },
             resourceNeeds: { wood: 10, food: 15, stone: 0 },
             lastPopulation: 1,
-            plan: [], // 🏗️ 이제 촌장이 직접 계획을 수립합니다.
+            // 🏘️ 동적 계획을 위한 기본 요구사항 (상태에 따라 유동적으로 변함)
+            plan: ['bonfire', 'storage', 'house', 'farm', 'well', 'house', 'blacksmith', 'pasture', 'temple'],
             currentTask: null,
-            _planningCooldown: 0 // 계획 수립 쿨다운
+            nationId: -1,
+            _planningCooldown: 0,
+            _expansionCooldown: 60.0
         };
+
 
         this.villages.set(id, village);
 
@@ -81,18 +111,18 @@ export default class VillageSystem extends System {
         }
 
         console.log(`🏘️ Village founded by entity ${founderId} at (${x}, ${y})`);
-        
+
         // 🏗️ PoC: 기본 활동 구역(Zone) 생성
         const zm = this.engine.systemManager?.zoneManager;
         if (zm) {
             // 1. 주거 구역 (마을 중심부)
             const resZoneId = zm.createZone(x - 100, y - 100, 200, 200, 'residential');
             village.residentialZoneId = resZoneId;
-            
+
             // 2. 벌목 구역 (중심부에서 약간 떨어진 곳)
             const lumberZoneId = zm.createZone(x + 120, y - 100, 200, 200, 'lumber');
             village.lumberZoneId = lumberZoneId;
-            
+
             console.log(`🗺️ Default zones created for Village ${id}: Residential(${resZoneId}), Lumber(${lumberZoneId})`);
         }
 
@@ -158,11 +188,48 @@ export default class VillageSystem extends System {
     }
 
     _cleanupDeadMembers(village) {
+        let chiefDied = false;
         for (const memberId of village.members) {
             const member = this.entityManager.entities.get(memberId);
             const state = member?.components.get('AIState');
             if (!member || (state && state.mode === 'die')) {
                 village.members.delete(memberId);
+                if (memberId === village.chiefId) chiefDied = true;
+            }
+        }
+
+        // 👑 [Succession] 촌장 사망 시 승계 로직 가동
+        if (chiefDied || !this.entityManager.entities.has(village.chiefId)) {
+            this._handleLeadershipSuccession(village);
+        }
+    }
+
+    /** 👑 촌장 승계 로직: 마을 내 가장 적임자를 선출 */
+    _handleLeadershipSuccession(village) {
+        if (village.members.size === 0) return;
+
+        // 1. 후보군 선별 (인간 성인 우선)
+        const candidates = Array.from(village.members).map(id => ({
+            id,
+            entity: this.entityManager.entities.get(id)
+        })).filter(c => c.entity);
+
+        if (candidates.length === 0) return;
+
+        // 2. 최적의 리더 선출 (여기서는 단순히 첫 번째 후보, 추후 명성/나이 시스템 연동 가능)
+        const newChief = candidates[0];
+        village.chiefId = newChief.id;
+
+        const civ = newChief.entity.components.get('Civilization');
+        if (civ) {
+            civ.jobType = JobTypes.CHIEF;
+            const roleFactory = this.engine.systemManager?.humanBehavior?.roleFactory;
+            if (roleFactory) {
+                civ.role = roleFactory.createRole(JobTypes.CHIEF);
+                this.eventBus.emit('SHOW_SPEECH_BUBBLE', {
+                    entityId: newChief.id, text: '👑 NEW CHIEF!', duration: 3000
+                });
+                console.log(`👑 Succession: Entity ${newChief.id} is the new CHIEF of Village ${village.id}`);
             }
         }
     }
@@ -171,19 +238,21 @@ export default class VillageSystem extends System {
         const pop = village.members.size;
         village.lastPopulation = pop;
 
-        // 인구 1명당 나무 10, 식량 15 필요
-        village.resourceNeeds.wood = pop * 10;
-        village.resourceNeeds.food = pop * 15;
-        // 최대치도 인구에 비례해서 늘어남 (기본 150 + 1인당 추가 여유 공간)
-        village.resourceMax.wood = 150 + pop * 20;
-        village.resourceMax.food = 150 + pop * 30;
+        // 📈 [Balance Fix] 대규모 문명을 위한 자원 필요량 상향
+        village.resourceNeeds.wood = pop * 15; // 인당 15 목재
+        village.resourceNeeds.food = pop * 20; // 인당 20 식량 (허기진 상태 방어)
+        village.resourceNeeds.stone = Math.floor(pop * 5); // 석재 수요 도입
 
-        console.log(`🏘️ Village ${village.id} population changed to ${pop}. Needs recalculated.`);
+        // 저장 용량도 인구 증가에 맞춰 넉넉하게 확장
+        village.resourceMax.wood = 200 + pop * 30;
+        village.resourceMax.food = 200 + pop * 50;
+        village.resourceMax.stone = 200 + pop * 20;
     }
 
     _syncVillageResources(village) {
         // 모든 건물의 Storage를 합산하여 마을 전체 자원 갱신
         const total = { wood: 0, food: 0, stone: 0 };
+        village.buffs = village.buffs || { constructionSpeed: 1.0, morale: 1.0 };
 
         for (const buildingId of village.buildings) {
             const building = this.entityManager.entities.get(buildingId);
@@ -206,53 +275,92 @@ export default class VillageSystem extends System {
         village.resources.wood = total.wood;
         village.resources.food = total.food;
         village.resources.stone = total.stone;
+
+        // 👑 국가 버프 적용
+        this._applyNationBuffs(village);
     }
 
-    _updateVillagePlanning(village) {
-        if (village.plan.length === 0) return;
+    _applyNationBuffs(village) {
+        if (village.nationId === -1) return;
 
-        // ✅ 이미 진행 중인 건설 과업이 있다면, 해당 청사진이 아직 유효한지만 체크
+        const ns = this.engine.systemManager?.nationSystem;
+        const nation = ns?.nations.get(village.nationId);
+
+        if (nation && nation.kingId) {
+            // 왕이 있으면 건설 속도 20% 보너스
+            village.buffs.constructionSpeed = 1.2;
+            village.buffs.morale = 1.1;
+        } else {
+            village.buffs.constructionSpeed = 1.0;
+            village.buffs.morale = 1.0;
+        }
+    }
+
+    _processNationEconomy() {
+        const ns = this.engine.systemManager?.nationSystem;
+        if (!ns) return;
+
+        for (const nation of ns.nations.values()) {
+            if (nation.villages.size < 2) continue;
+
+            const villageList = Array.from(nation.villages).map(id => this.villages.get(id)).filter(v => v);
+
+            // 자원이 남는 마을에서 부족한 마을로 지원
+            for (const provider of villageList) {
+                for (const receiver of villageList) {
+                    if (provider.id === receiver.id) continue;
+
+                    // 식량 지원
+                    if (provider.resources.food > provider.resourceNeeds.food * 2 && receiver.resources.food < receiver.resourceNeeds.food) {
+                        const gift = 10;
+                        provider.resources.food -= gift;
+                        receiver.resources.food += gift;
+                        // 실제 건물의 저장소에서도 빼줘야 하지만, 여기서는 추상화된 자원 동기화로 처리
+                        console.log(`📦 Trade: ${provider.name} sent 10 food to ${receiver.name}`);
+                    }
+                }
+            }
+        }
+    }
+
+
+    _updateVillagePlanning(village) {
+        // 0. 쿨다운 체크
+        if (village._planningCooldown > 0) {
+            village._planningCooldown -= 0.1; // 대략적인 시간 흐름
+            return;
+        }
+
+        // 1. 현재 수행 중인 건설 과업 상태 확인
         if (village.currentTask) {
             const taskTarget = this.entityManager.entities.get(village.currentTask.targetId);
             const structure = taskTarget?.components.get('Structure');
 
             if (!taskTarget) {
-                // 청사진이 사라짐 (누군가 지웠거나 오류) → 과업 초기화 후 재계획
-                const targetId = village.currentTask?.targetId;
                 village.currentTask = null;
-                if (targetId) village.buildings.delete(targetId);
             } else if (structure && structure.isComplete) {
-                // 건물 완성 → 계획에서 제거
-                village.plan.shift();
                 village.currentTask = null;
-                console.log(`✅ Village ${village.id}: ${structure.type} construction complete!`);
+                village._planningCooldown = 5.0; // 건설 완료 후 잠시 휴식
             }
-            // 아직 건설 중이면 아무것도 안 함 (인간들이 알아서 지음)
             return;
         }
 
-        // 새 청사진 스폰이 필요한 경우
-        const nextBuildingType = village.plan[0];
+        // 2. [Natural Progression] 마을의 상태를 분석하여 필요한 건물 결정
+        let nextBuilding = this._analyzeVillageNeeds(village);
+        if (!nextBuilding) return;
 
-        // 🔍 이미 이 타입 건물이 있는지 확인 (중복 스폰 방지)
-        const hasExisting = Array.from(village.buildings).some(bId => {
-            const b = this.entityManager.entities.get(bId);
-            const buildingComp = b?.components.get('Building');
-            return b && buildingComp && buildingComp.type === nextBuildingType;
-        });
-
-        if (hasExisting) {
-            // 이미 건물이 있으면 완성 여부 확인
-            const isComplete = Array.from(village.buildings).some(bId => {
+        // 🔍 이미 이 타입 건물이 있는지 확인 (중복 스폰 방지 - 일부 건물 제외)
+        const singleInstanceBuildings = ['bonfire', 'well', 'blacksmith', 'temple'];
+        if (singleInstanceBuildings.includes(nextBuilding)) {
+            const hasExisting = Array.from(village.buildings).some(bId => {
                 const b = this.entityManager.entities.get(bId);
-                const structure = b?.components.get('Structure');
-                return b && structure && structure.type === nextBuildingType && structure.isComplete;
+                const buildingComp = b?.components.get('Building');
+                return b && buildingComp && buildingComp.type === nextBuilding;
             });
-            if (isComplete) {
-                village.plan.shift();
-            }
-            return;
+            if (hasExisting) return;
         }
+
+        const nextBuildingType = nextBuilding;
 
         // 🌍 지형 검사 후 청사진 생성 (토양 지형 우선)
         let spawnX = 0;
@@ -302,6 +410,178 @@ export default class VillageSystem extends System {
                 buildingType: nextBuildingType,
                 targetId: blueprintId
             };
+            village._planningCooldown = 10.0; // 청사진 생성 후 딜레이
+        }
+    }
+
+    /** 🧠 마을 필요도 분석 로직 (Natural Progression) */
+    _analyzeVillageNeeds(village) {
+        const buildings = Array.from(village.buildings).map(id => this.entityManager.entities.get(id)).filter(e => e);
+        const pop = village.members.size;
+
+        // 1. 기초 시설 (Bonfire, Storage)
+        const hasBonfire = buildings.some(b => b.components.get('Building')?.type === 'bonfire');
+        if (!hasBonfire) return 'bonfire';
+
+        const hasStorage = buildings.some(b => b.components.get('Building')?.type === 'storage' || b.components.get('Building')?.type === 'warehouse');
+        if (!hasStorage) return 'storage';
+
+        // 2. 주거 공간 체크 (인구 대비 수용량)
+        let totalCapacity = 0;
+        buildings.forEach(b => {
+            const housing = b.components.get('Housing');
+            const structure = b.components.get('Structure');
+            if (housing && structure?.isComplete) totalCapacity += housing.capacity;
+        });
+
+        if (totalCapacity < pop + 2) return 'house';
+
+        // 3. 식량 공급원 체크
+        const farmCount = buildings.filter(b => b.components.get('Building')?.type === 'farm').length;
+        if (farmCount < Math.ceil(pop / 4)) return 'farm';
+
+        // 4. 고급 시설 (Well, Blacksmith, Temple) - 조건부 건설
+        const hasWell = buildings.some(b => b.components.get('Building')?.type === 'well');
+        if (!hasWell && pop >= 6) return 'well';
+
+        const hasBlacksmith = buildings.some(b => b.components.get('Building')?.type === 'blacksmith');
+        if (!hasBlacksmith && pop >= 10 && village.resources.stone >= 30) return 'blacksmith';
+
+        const hasTemple = buildings.some(b => b.components.get('Building')?.type === 'temple');
+        if (!hasTemple && pop >= 15) return 'temple';
+
+        // 5. 방어 시설
+        const towerCount = buildings.filter(b => b.components.get('Building')?.type === 'watchtower').length;
+        if (towerCount < Math.ceil(pop / 8)) return 'watchtower';
+
+        return null;
+    }
+
+    /** 👑 촌장의 직무: 마을 구성원들에게 적절한 직업 할당 */
+    _assignJobs(village) {
+        if (village.members.size <= 1) return; // 촌장 혼자면 할당 불필요
+
+        const members = Array.from(village.members).map(id => this.entityManager.entities.get(id)).filter(e => e);
+        const unemployed = members.filter(m => {
+            const civ = m.components.get('Civilization');
+            return civ && (civ.jobType === JobTypes.UNEMPLOYED || !civ.jobType);
+        });
+
+        if (unemployed.length === 0) return;
+
+        // 마을의 필요도 분석
+        const needs = this._analyzeVillageNeeds(village);
+        const hasBlueprint = village.currentTask?.type === 'build';
+        const foodStock = village.resources.food;
+        const woodStock = village.resources.wood;
+        const stoneStock = village.resources.stone;
+
+        for (const person of unemployed) {
+            let selectedJob = JobTypes.UNEMPLOYED;
+
+            // 우선순위 1: 건설 (청사진이 있다면 최소 2명 이상 배치)
+            const builders = members.filter(m => m.components.get('Civilization')?.jobType === JobTypes.BUILDER).length;
+            if (hasBlueprint && builders < 2) {
+                selectedJob = JobTypes.BUILDER;
+            }
+            // 우선순위 2: 식량 확보
+            else if (foodStock < 20) {
+                selectedJob = JobTypes.FARMER;
+            }
+            // 우선순위 3: 자원 수급 (나무/돌)
+            else if (woodStock < 30) {
+                selectedJob = JobTypes.LOGGER;
+            } else if (stoneStock < 20) {
+                selectedJob = JobTypes.MINER;
+            }
+            // 우선순위 4: 운반 및 기타
+            else {
+                const transporters = members.filter(m => m.components.get('Civilization')?.jobType === JobTypes.TRANSPORTER).length;
+                selectedJob = (transporters < 1) ? JobTypes.TRANSPORTER : JobTypes.UNEMPLOYED;
+            }
+
+            if (selectedJob !== JobTypes.UNEMPLOYED) {
+                this._setJob(person, selectedJob);
+            }
+        }
+    }
+
+    _setJob(entity, jobType) {
+        const civ = entity.components.get('Civilization');
+        const jobCtrl = entity.components.get('JobController');
+        if (!civ || !jobCtrl) return;
+
+        // 1. 데이터 모델 업데이트
+        civ.jobType = jobType;
+
+        // 2. 실질적인 AI 행동 할당 (JobController)
+        jobCtrl.assignJob(jobType);
+
+        // 3. 역할(Role) 인스턴스 생성 및 주입
+        const roleFactory = this.engine.systemManager?.humanBehavior?.roleFactory;
+        if (roleFactory) {
+            civ.role = roleFactory.createRole(jobType);
+
+            // 4. 시각적 피드백 강화
+            const jobIcons = {
+                [JobTypes.LOGGER]: '🪓',
+                [JobTypes.MINER]: '⛏️',
+                [JobTypes.BUILDER]: '🔨',
+                [JobTypes.FARMER]: '🌾',
+                [JobTypes.TRANSPORTER]: '📦',
+                [JobTypes.CHIEF]: '👑'
+            };
+
+            this.eventBus.emit('SHOW_SPEECH_BUBBLE', {
+                entityId: entity.id,
+                text: `${jobIcons[jobType] || '💼'} ${jobType.toUpperCase()}`,
+                duration: 2500
+            });
+            console.log(`💼 Logic Fix: Entity ${entity.id} assigned to ${jobType}`);
+        }
+
+        // 개척자 선발 (직업이 없는 인간 중 한 명)
+        const candidates = Array.from(village.members).filter(id => {
+            const ent = this.entityManager.entities.get(id);
+            const civ = ent?.components.get('Civilization');
+            return civ && civ.jobType === JobTypes.UNEMPLOYED;
+        });
+
+        if (candidates.length > 0) {
+            const explorerId = candidates[0];
+            const explorer = this.entityManager.entities.get(explorerId);
+            const transform = explorer?.components.get('Transform');
+            if (!transform) return;
+
+            // 새로운 마을 위치 선정 (맵이 2400x2400으로 커졌으므로 개척 거리를 600~1000px로 대폭 상향)
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 600 + Math.random() * 400;
+            const newX = village.centerX + Math.cos(angle) * dist;
+            const newY = village.centerY + Math.sin(angle) * dist;
+
+            // 경계 체크 (맵 밖으로 나가지 않게)
+            const mapW = this.engine.mapWidth;
+            const mapH = this.engine.mapHeight;
+            if (newX < 50 || newX > mapW - 50 || newY < 50 || newY > mapH - 50) return;
+
+            // 자원 소모 (나무 50)
+            village.resources.wood -= 50;
+
+            // 현재 마을에서 탈퇴
+            village.members.delete(explorerId);
+            const civ = explorer.components.get('Civilization');
+            if (civ) civ.villageId = -1;
+
+            // 새로운 마을 창설!
+            const newVid = this.createVillage({ founderId: explorerId, x: newX, y: newY });
+
+            // 국가 시스템이 있다면 자동으로 같은 국가에 소속시킴
+            if (village.nationId !== -1) {
+                const ns = this.engine.systemManager?.nationSystem;
+                if (ns) ns.addVillageToNation(village.nationId, newVid);
+            }
+
+            console.log(`🚀 Expansion! Entity ${explorerId} left ${village.name} to found a new village at (${newX.toFixed(0)}, ${newY.toFixed(0)})`);
         }
     }
 

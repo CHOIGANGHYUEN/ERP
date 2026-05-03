@@ -125,10 +125,11 @@ export default class LumberjackState extends BaseJobState {
                 const extracted = res.extract(5);
                 if (extracted > 0) {
                     const tPos = target.components.get('Transform');
-                    const itemFactory = this.system.engine.factoryProvider.get('item');
+                    const itemFactory = this.system.engine.factoryProvider.getFactory('item');
 
                     if (itemFactory && tPos) {
-                        itemFactory.spawnDrop(tPos.x, tPos.y, 'wood', extracted);
+                        const dropType = res.type || 'wood';
+                        itemFactory.spawnDrop(tPos.x, tPos.y, dropType, extracted);
                     }
                     
                     // 타격 파티클

@@ -12,14 +12,32 @@ export default class CarnivoreBrain {
         // 🛑 [Drag & Drop Protection] 플레이어에게 잡힌 상태면 AI 판단 중단
         if (state.mode === AnimalStates.GRABBED) return;
 
-        // 1. 사냥 본능 (허기 기반 - 더 민감하게 반응)
-        if (stats.hunger < 85 && state.mode !== AnimalStates.HUNT) {
-            // 🥩 [Balance Fix] 주변 탐색 반경 대폭 확대 (250 -> 600)
-            const preyId = this.findPrey(id, state, transform, 600);
-            if (preyId) {
-                state.targetId = preyId;
-                state.mode = AnimalStates.HUNT;
+        // 1. 사냥 및 섭취 본능 (허기 기반)
+        if (stats.hunger < 80) { // 임계값 소폭 하향 (너무 자주 찾지 않도록)
+            // 🥩 [Scavenging] 
+            // 이미 고기를 대상으로 FORAGE 또는 EAT 중이면 중복 판단 방지
+            const isEatingMeat = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE) && state.targetId;
+            
+            if (!isEatingMeat) {
+                const meatId = this.findMeat(id, state, transform, 400);
+                if (meatId) {
+                    state.targetId = meatId;
+                    state.mode = AnimalStates.FORAGE;
+                    return;
+                }
+            } else {
+                // 이미 고기 식사 중이면 그대로 유지
                 return;
+            }
+
+            // ⚔️ [Hunting] 떨어진 고기가 없으면 사냥 시도
+            if (state.mode !== AnimalStates.HUNT) {
+                const preyId = this.findPrey(id, state, transform, 600);
+                if (preyId) {
+                    state.targetId = preyId;
+                    state.mode = AnimalStates.HUNT;
+                    return;
+                }
             }
         }
 
@@ -33,6 +51,19 @@ export default class CarnivoreBrain {
         if (state.mode === AnimalStates.IDLE || !state.mode) {
             state.mode = AnimalStates.WANDER;
         }
+    }
+
+    findMeat(id, state, transform, radius) {
+        return this.entityManager.findNearestEntityWithComponent(
+            transform.x,
+            transform.y,
+            radius,
+            (ent) => {
+                const item = ent.components.get('DroppedItem');
+                return item && item.itemType === 'meat' && (!item.claimedBy || item.claimedBy === id);
+            },
+            this.spatialHash
+        );
     }
 
     findPrey(id, state, transform, radius) {
