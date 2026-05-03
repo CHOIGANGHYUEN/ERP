@@ -36,10 +36,13 @@ export default class MetabolismSystem extends System {
             stats.hunger = Math.max(0, stats.hunger - hungerDecay);
             stats.fatigue = Math.min(stats.maxFatigue || 100, stats.fatigue + fatigueIncrease);
 
-            // 👴 2. 노화 처리 (1시간마다 1달 정도 나이를 먹는 느낌으로 밸런싱)
+            // 👴 2. 노화 처리 (기준: 실제 시간 1분마다 1개월 증가 = 초당 0.0013889세)
             if (age) {
-                // dt는 초 단위. 3600초(1시간)마다 0.08세(약 1개월) 증가
-                age.currentAge += dt * 0.00002; 
+                age.currentAge += dt * 0.0013889; 
+                
+                // 🔄 수명 단계(Stage) 업데이트 (애니메이션/크기 변화 반영)
+                if (Math.random() < 0.01) age.updateStage(); // 매 프레임은 무거우므로 확률적으로 업데이트
+
                 if (age.currentAge >= age.maxAge) {
                     stats.health = 0; // 자연사
                 }
@@ -47,7 +50,17 @@ export default class MetabolismSystem extends System {
 
             // 💀 3. 아사 처리
             if (stats.hunger <= 0) {
-                stats.health -= dt * 5; // 굶주림으로 인한 서서히 사망
+                const damage = dt * 2.0; // 🛑 [Balance Fix] 초당 5 -> 2로 아사 데미지 완화
+                stats.health -= damage; 
+                
+                if (stats.health <= 0) {
+                    console.log(`💀 [Death] Entity ${id} (${animal.type}) died of STARVATION.`);
+                }
+            }
+
+            // 👴 노화 사망 로그
+            if (age && age.currentAge >= age.maxAge && stats.health <= 0) {
+                console.log(`👵 [Death] Entity ${id} (${animal.type}) died of OLD AGE.`);
             }
 
             // 🆘 4. 생존 인터럽트 트리거 (JobController 보유 시)
@@ -65,6 +78,15 @@ export default class MetabolismSystem extends System {
                 metabolism.storedFertility = stats.storedFertility || 0;
                 this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt, stats);
                 if (stats) stats.storedFertility = metabolism.storedFertility;
+            }
+
+            // 🤕 7. 부상 회복 (속도 저하 타이머 갱신)
+            if (stats.injurySlowTimer > 0) {
+                stats.injurySlowTimer -= dt;
+                if (stats.injurySlowTimer <= 0) {
+                    stats.injurySlowTimer = 0;
+                    stats.injurySlowMultiplier = 1.0; // 정상 속도 회복
+                }
             }
         }
 

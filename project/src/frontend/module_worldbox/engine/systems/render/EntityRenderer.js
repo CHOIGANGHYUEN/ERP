@@ -73,6 +73,19 @@ export default class EntityRenderer {
             } else {
                 this.renderResource(entity, ctx, time, wind);
             }
+
+            // 🏥 [Health Integration] HP바 및 피격 효과 후처리
+            const health = entity.components.get('Health');
+            if (health) {
+                // 1. HP바 (체력이 닳았을 때만)
+                if (health.currentHp < health.maxHp && health.currentHp > 0) {
+                    this.renderHealthBar(ctx, health, t, v.size || 10);
+                }
+                // 2. 피격 흔들림 업데이트 (시간 기반)
+                if (health.hitTimer > 0) {
+                    health.update(0.016); // 대략적인 dt
+                }
+            }
         }
 
         this.renderParticles(ctx, particles);
@@ -120,6 +133,12 @@ export default class EntityRenderer {
             }
             ctx.restore();
         } else {
+            // 🤕 [Hit Shake] 리소스 피격 흔들림
+            const health = entity.components.get('Health');
+            if (health && health.hitTimer > 0) {
+                const shake = Math.sin(time * 0.05) * 2;
+                ctx.translate(shake, 0);
+            }
             NatureRenders.render(ctx, v.type, t, v, time, wind);
             ctx.restore();
         }
@@ -262,7 +281,36 @@ export default class EntityRenderer {
     }
 
     renderAnimal(entity, ctx, time, isHighDetail) {
+        const health = entity.components.get('Health');
+        const t = entity.components.get('Transform');
+        
+        ctx.save();
+        // 🤕 [Hit Shake] 피격 시 흔들림 효과
+        if (health && health.hitTimer > 0) {
+            const shake = Math.sin(time * 0.05) * 2;
+            ctx.translate(shake, 0);
+            // ⚪ [White Tint] 피격 시 번쩍임 효과 (필터 지원 브라우저용)
+            ctx.filter = 'brightness(1.8) contrast(1.2)';
+        }
+
         AnimalRenders.drawAnimalBody(ctx, entity, time);
+        ctx.restore();
+    }
+
+    renderHealthBar(ctx, health, t, size) {
+        const barW = Math.max(20, size * 1.5);
+        const barH = 3;
+        const x = t.x - barW / 2;
+        const y = t.y - size - 10;
+
+        // 배경
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(x, y, barW, barH);
+
+        // HP
+        const hpWidth = (health.currentHp / health.maxHp) * barW;
+        ctx.fillStyle = (health.currentHp / health.maxHp > 0.3) ? '#4caf50' : '#f44336';
+        ctx.fillRect(x, y, hpWidth, barH);
     }
 
     getSprite(key, drawFn, width, height) {

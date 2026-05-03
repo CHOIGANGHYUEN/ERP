@@ -4,6 +4,7 @@ import NatureFactory from '../entities/NatureFactory.js';
 import ResourceFactory from '../entities/ResourceFactory.js';
 import BuildingFactory from '../entities/BuildingFactory.js';
 import ToolFactory from '../entities/ToolFactory.js';
+import ItemFactory from '../entities/ItemFactory.js';
 
 /**
  * 🏢 FactoryProvider
@@ -26,6 +27,7 @@ export default class FactoryProvider {
         this.register('resource', new ResourceFactory(this.engine));
         this.register('building', new BuildingFactory(this.engine));
         this.register('tool', new ToolFactory(this.engine));
+        this.register('item', new ItemFactory(this.engine));
     }
 
     /** 새 팩토리를 동적으로 등록 (OCP 준수) */

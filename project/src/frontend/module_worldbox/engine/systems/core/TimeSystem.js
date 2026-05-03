@@ -29,11 +29,10 @@ export default class TimeSystem {
         this.minutes += minutesPerTick;
         this.yearTimer += minutesPerTick;
 
-        // 🗓️ 10분(게임 시간)마다 1년이 흐름
-        if (this.yearTimer >= 10) {
+        // 🗓️ 1일(게임 시간 1440분)마다 1년이 흐름
+        if (this.yearTimer >= 1440) {
             this.years++;
             this.yearTimer = 0;
-            this.incrementWorldAge(engine);
         }
 
         if (this.minutes >= 60) {
@@ -51,18 +50,6 @@ export default class TimeSystem {
         }
     }
 
-    /** 🌍 월드 전체 개체의 나이 증가 */
-    incrementWorldAge(engine) {
-        if (!engine || !engine.entityManager) return;
-        const entities = engine.entityManager.getEntitiesByComponent('Age');
-        for (const entity of entities) {
-            const age = entity.components.get('Age');
-            if (age) {
-                age.currentAge += 1;
-                age.updateStage();
-            }
-        }
-    }
 
     /**
      * 00:00 ~ 23:59 형식의 문자열을 반환합니다.

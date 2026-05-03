@@ -49,7 +49,7 @@
       <div class="bottom-controls" :class="{ 'open': isMenuOpen }">
         <!-- BRUSH SIZE CONTROL (Side Panel) -->
         <Transition name="fade">
-          <div v-if="activeToolData?.isBrush" class="brush-settings">
+          <div v-if="showBrushSettings" class="brush-settings">
             <div class="setting-title">BRUSH SIZE: {{ brushSize }}</div>
             <input type="range" min="2" max="100" v-model="brushSize" @input="updateBrushSize" />
             <div class="brush-preview" :style="{ width: brushSize + 'px', height: brushSize + 'px' }"></div>
@@ -97,7 +97,7 @@
 
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import Engine from '../../engine/core/Engine.js';
 import { DefaultTools } from '../../engine/core/ToolRegistry.js';
 
@@ -117,10 +117,11 @@ const totalFertility = ref(0);
 const totalMaxFertility = ref(0);
 
 const engine = ref(null);
+const allTools = ref([]);
 let resizeObserver = null;
 
 const handleMouseMove = (e) => {
-  if (engine) {
+  if (engine.value) {
     // Basic engine mouse move logic (if any specific Vue-side handling was needed)
   }
 };
@@ -132,25 +133,44 @@ const toolCategories = [
   { name: 'Nature', icon: '🌱' },
   { name: 'Resources', icon: '⛏️' },
   { name: 'Life', icon: '🐑' },
+  { name: 'Interaction', icon: '🤝' },
   { name: 'View', icon: '👁️' }
 ];
 
 const activeCategory = ref('Landscape');
 
-const allTools = computed(() => {
-  return engine.value ? DefaultTools(engine.value) : [];
-});
-
 const filteredTools = computed(() => {
   return allTools.value.filter(t => t.category === activeCategory.value);
 });
 
+// 🔄 도구 변경 시 UI 브러쉬 크기 동기화
+watch(activeTool, (newId) => {
+  const tool = allTools.value.find(t => t.id === newId);
+  if (tool && tool.isBrush && tool.brushSize) {
+    brushSize.value = tool.brushSize;
+    if (engine.value) engine.value.brushSize = tool.brushSize;
+  }
+});
+
 const activeToolData = computed(() => {
-  return allTools.value.find(t => t.id === activeTool.value);
+  return allTools.value.find(t => t.id === activeTool.value) || null;
+});
+
+const showBrushSettings = computed(() => {
+  const tool = activeToolData.value;
+  if (!tool) return false;
+  // 🎨 명시적 속성 체크 또는 ID 패턴 매칭 (보강됨)
+  return tool.isBrush === true || 
+         tool.id?.includes('paint_') || 
+         tool.id?.includes('spawn_') || 
+         tool.id?.includes('fill_');
 });
 
 const updateBrushSize = () => {
-  if (engine) engine.brushSize = Number(brushSize.value);
+  if (engine.value) {
+    engine.value.brushSize = Number(brushSize.value);
+    console.log(`🎨 Brush Size Updated in Engine: ${engine.value.brushSize}`);
+  }
 };
 
 const updateSimParams = () => {
@@ -161,12 +181,20 @@ const updateSimParams = () => {
 };
 
 const selectTool = (tool) => {
+  console.log(`🎯 Tool Selected: ${tool.name} (${tool.id}), isBrush: ${tool.isBrush}`);
   if (tool.isInstant && tool.id.startsWith('view_')) {
     if (engine.value) engine.value.toggleView(tool.id);
     return;
   }
   activeTool.value = tool.id;
-  if (engine.value) engine.value.setActiveTool(tool);
+  if (engine.value) {
+    engine.value.setActiveTool(tool);
+    // 도구 선택 시 브러쉬 크기 즉시 엔진에 동기화
+    if (tool.isBrush) {
+      if (tool.brushSize && !brushSize.value) brushSize.value = tool.brushSize;
+      engine.value.brushSize = Number(brushSize.value);
+    }
+  }
 };
 
 
@@ -180,6 +208,7 @@ const store = useWorldboxStore();
 onMounted(() => {
   if (gameCanvas.value && worldboxContainer.value) {
     engine.value = new Engine(gameCanvas.value);
+    allTools.value = DefaultTools(engine.value);
     
     // 🌍 Global access for UI components
     window.gameEngine = engine.value;
@@ -197,10 +226,11 @@ onMounted(() => {
         engine.value.setActiveTool(initialTool);
     }
 
-    // Set initial debug params
+    // Set initial debug & brush params
     updateSimParams();
+    updateBrushSize();
 
-    engine.monitor.onUpdate = (stats) => {
+    engine.value.monitor.onUpdate = (stats) => {
       if (!stats) return;
       fps.value = stats.fps;
       entityCount.value = stats.entityCount;
@@ -222,7 +252,7 @@ onMounted(() => {
         
         gameCanvas.value.width = width;
         gameCanvas.value.height = height;
-        if (engine) engine.handleResize(width, height);
+        if (engine.value) engine.value.handleResize(width, height);
       }
     });
 
@@ -237,11 +267,12 @@ onMounted(() => {
 onUnmounted(() => {
   if (resizeObserver) resizeObserver.disconnect();
   window.removeEventListener('mousemove', handleMouseMove);
-  if (engine) {
-
-    engine.onEntitySelect = null;
-    engine.monitor.onUpdate = null;
-    engine.destroy();
+  if (engine.value) {
+    engine.value.onEntitySelect = null;
+    if (engine.value.monitor) {
+      engine.value.monitor.onUpdate = null;
+    }
+    engine.value.destroy();
   }
 });
 

@@ -206,12 +206,6 @@ export default class Engine {
     updateFertilityStat(oldVal, newVal) { this.monitor.updateFertilityStat(oldVal, newVal); }
     updatePotentialStat(oldMax, newMax) { this.monitor.updatePotentialStat(oldMax, newMax); }
 
-    setActiveTool(tool) {
-        if (this.toolManager && tool) {
-            this.toolManager.setTool(tool.id);
-        }
-    }
-
     preRenderTerrain() {
         this.chunkManager.markAllDirty();
         this.chunkManager.render(this.terrainCtx);
@@ -272,6 +266,9 @@ export default class Engine {
             this.dispatchCommand(command);
         }
         this.activeTool = tool;
+        if (this.toolManager && tool) {
+            this.toolManager.setTool(tool.id);
+        }
         this.isPainting = false;
         if (this.camera) this.camera.isDragging = false;
     }
@@ -349,8 +346,19 @@ export default class Engine {
                 const type = methodToType[command.payload.method];
                 if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
                 break;
+            case 'CHANGE_BIOME':
+                this.eventBus.emit('APPLY_TOOL_EFFECT', { ...command.payload, action: 'CHANGE_BIOME' });
+                break;
             case 'SPAWN_RESOURCE':
-                this.factoryProvider.spawn('resource', command.payload.type, command.payload.x, command.payload.y, { quality: command.payload.amount });
+                const resType = command.payload.type || command.payload.resourceId;
+                const resAmount = command.payload.amount || 1;
+                
+                // 🌳 Nature와 Resource 카테고리 자동 판별
+                const isNature = resType.includes('tree') || resType.includes('grass') || 
+                                 resType.includes('flower') || ['berry', 'shrub', 'mushroom', 'cactus', 'kelp', 'seaweed', 'lotus', 'reed', 'snow_flower', 'medicinal_herb'].includes(resType);
+                
+                const cat = isNature ? 'nature' : 'resource';
+                this.factoryProvider.spawn(cat, resType, command.payload.x, command.payload.y, { quality: resAmount / 20 });
                 break;
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);

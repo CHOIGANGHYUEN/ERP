@@ -11,9 +11,9 @@ export class Tool {
         this.name = name;
         this.icon = icon;
         this.category = category;
+        this.isInstant = false;
+        this.isBrush = false;
     }
-    get isInstant() { return false; }
-    get isBrush() { return false; }
 
     execute() { return null; }
     onMouseDown(worldPos, e) { return null; }
@@ -22,7 +22,7 @@ export class Tool {
 }
 
 export class MoveTool extends Tool {
-    constructor() { super({ id: 'move_hand', name: 'Move', icon: '🖐️', category: 'Landscape' }); }
+    constructor() { super({ id: 'move_hand', name: 'Move', icon: '🖐️', category: 'Interaction' }); }
     onMouseDown(worldPos, e) { return { type: 'CAMERA_DOWN', event: e }; }
     onMouseMove(worldPos, e) { return { type: 'CAMERA_MOVE', event: e }; }
     onMouseUp(e) { return { type: 'CAMERA_UP' }; }
@@ -46,21 +46,23 @@ export class BrushTool extends Tool {
         // 🚀 전략 패턴 주입 (Strategy Pattern Injection)
         this.strategy = config.strategy;
         this.lastPos = null;
+        this.isBrush = true; // 🎨 UI 인식을 위한 일반 속성 설정
     }
-    get isBrush() { return true; }
 
     onMouseDown(worldPos, e, engine) {
         this.isPainting = true;
         this.lastPos = worldPos;
         if (this.strategy) {
-            this.strategy.apply(null, worldPos, this.brushSize, this._getToolConfig());
+            const currentSize = engine && engine.brushSize ? engine.brushSize : this.brushSize;
+            this.strategy.apply(null, worldPos, currentSize, this._getToolConfig());
         }
         return null; // 전략 내부에서 dispatchCommand를 호출하므로 null 반환
     }
 
     onMouseMove(worldPos, e, engine) {
         if (this.isPainting && this.strategy) {
-            this.strategy.apply(this.lastPos, worldPos, this.brushSize, this._getToolConfig());
+            const currentSize = engine && engine.brushSize ? engine.brushSize : this.brushSize;
+            this.strategy.apply(this.lastPos, worldPos, currentSize, this._getToolConfig());
             this.lastPos = worldPos;
         }
         return null;
@@ -121,8 +123,8 @@ export class ToggleTool extends Tool {
     constructor(config) {
         super(config);
         this.flagName = config.flagName;
+        this.isInstant = true;
     }
-    get isInstant() { return true; }
 
     // 호환성 유지: Vue UI 등에서 기존처럼 tool.execute({ engine }) 형태로 호출될 수 있음을 대비
     execute({ engine }) {
@@ -164,26 +166,18 @@ export const DefaultTools = (engine) => [
     new BrushTool({ id: 'paint_low_mountain', name: 'Mountain', icon: '⛰️', category: 'Landscape', color: '#85929e', biome: 'LOW_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2 }),
     new BrushTool({ id: 'paint_high_mountain', name: 'High Peak', icon: '🏔️', category: 'Landscape', color: '#fdfefe', biome: 'HIGH_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2 }),
     
-    // 🌱 Nature (Plants/Trees/Organic)
+    // 🌱 Nature (Trees & Plants - SprayBrush)
     new SingleSpawnTool({ id: 'single_tree_normal', name: 'Oak (1)', icon: '🌳', category: 'Nature', resourceId: 'oak_tree' }),
     new SingleSpawnTool({ id: 'single_fruit_tree', name: 'Fruit (1)', icon: '🍎', category: 'Nature', resourceId: 'tree_fruit' }),
     new SingleSpawnTool({ id: 'single_beehive_tree', name: 'Beehive (1)', icon: '🍯', category: 'Nature', resourceId: 'tree_beehive' }),
 
-    new SprinkleTool({ id: 'spawn_grass', name: 'Grass', icon: '🌾', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'grass', color: '#c5e1a5', count: 12 }),
-    new SprinkleTool({ id: 'spawn_flower', name: 'Flower', icon: '🌸', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'flower', color: '#ff80ab', count: 10 }),
-    new SprinkleTool({ id: 'spawn_tree_normal', name: 'Oak Tree', icon: '🌳', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'oak_tree', color: '#388e3c', count: 3 }),
-    new SprinkleTool({ id: 'spawn_fruit_tree', name: 'Fruit Tree', icon: '🍎', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_fruit', color: '#689f38', count: 3 }),
-    new SprinkleTool({ id: 'spawn_beehive_tree', name: 'Beehive Tree', icon: '🍯', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_beehive', color: '#afb42b', count: 3 }),
-    new SprinkleTool({ id: 'spawn_tropical', name: 'Jungle Tree', icon: '🌴', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tropical_fruit_tree', color: '#1b5e20', count: 3 }),
-    new SprinkleTool({ id: 'spawn_mahogany', name: 'Mahogany', icon: '🌲', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'mahogany_tree', color: '#2e7d32', count: 3 }),
-
-
-
-
-    // 🌱 Nature (전략 패턴 적용: SprayBrush)
-    new SingleSpawnTool({ id: 'single_tree_normal', name: 'Oak (1)', icon: '🌳', category: 'Nature', resourceId: 'oak_tree' }),
-    new SingleSpawnTool({ id: 'single_fruit_tree', name: 'Fruit (1)', icon: '🍎', category: 'Nature', resourceId: 'tree_fruit' }),
-    new SingleSpawnTool({ id: 'single_beehive_tree', name: 'Beehive (1)', icon: '🍯', category: 'Nature', resourceId: 'tree_beehive' }),
+    new BrushTool({ id: 'spawn_grass', name: 'Grass', icon: '🌾', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'grass', color: '#c5e1a5', count: 12, strategy: new SprayBrush(engine), brushSize: 15 }),
+    new BrushTool({ id: 'spawn_flower', name: 'Flower', icon: '🌸', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'flower', color: '#ff80ab', count: 10, strategy: new SprayBrush(engine), brushSize: 15 }),
+    new BrushTool({ id: 'spawn_tree_normal', name: 'Oak Tree', icon: '🌳', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'oak_tree', color: '#388e3c', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_fruit_tree', name: 'Fruit Tree', icon: '🍎', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_fruit', color: '#689f38', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_beehive_tree', name: 'Beehive Tree', icon: '🍯', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_beehive', color: '#afb42b', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_tropical', name: 'Jungle Tree', icon: '🌴', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tropical_fruit_tree', color: '#1b5e20', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_mahogany', name: 'Mahogany', icon: '🌲', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'mahogany_tree', color: '#2e7d32', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
 
     new BrushTool({ id: 'spawn_berries', name: 'Berries', icon: '🍓', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'wild_berries', color: '#e91e63', count: 6, strategy: new SprayBrush(engine), brushSize: 15 }),
     new BrushTool({ id: 'spawn_mushroom', name: 'Mushroom', icon: '🍄', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'wild_mushroom', color: '#d32f2f', count: 6, strategy: new SprayBrush(engine), brushSize: 15 }),

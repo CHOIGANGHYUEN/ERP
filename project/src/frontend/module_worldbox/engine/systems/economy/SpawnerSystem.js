@@ -17,9 +17,12 @@ export default class SpawnerSystem extends System {
         this.eventBus.on('APPLY_TOOL_EFFECT', (payload) => {
             const idx = this.terrainGen.getIndex(payload.x, payload.y);
             if (this.terrainGen.isValidIndex(idx)) {
-                if (payload.action.startsWith('SPAWN_')) {
-                    const resourceId = payload.resourceId || payload.action.replace('SPAWN_', '').toLowerCase();
+                if (payload.action === 'SPAWN_RESOURCE') {
+                    const resourceId = payload.resourceId || 'grass';
                     this.spawnGenericResource(payload.x, payload.y, resourceId, payload.color, payload.treeType, true);
+                }
+                else if (payload.action === 'SPAWN_ENTITY') {
+                    this.spawnEntity({ ...payload, x: payload.x, y: payload.y });
                 }
                 else if (payload.action === 'CHANGE_BIOME') {
                     const ix = Math.floor(payload.x);
@@ -131,18 +134,40 @@ export default class SpawnerSystem extends System {
 
     spawnEntity(payload) {
         let type = payload.type;
-        // 🔄 [Compatibility Fix] method에서 type 추출 (spawnSheep -> sheep)
+        // 🔄 [Compatibility Fix] method에서 type 추출
         if (!type && payload.method) {
             type = payload.method.replace('spawn', '').toLowerCase();
-            // 특수 케이스 처리
             if (type === 'wilddog') type = 'wild_dog';
         }
         
         if (!type) return;
 
         const isBaby = payload.isBaby || false;
-        const category = type === 'human' ? 'human' : 'animal';
-        this.engine.factoryProvider.spawn(category, type, payload.x, payload.y, { isBaby });
+        
+        // 🍖 [Critical Fix] 고기(meat)나 자원성 타입은 resource 카테고리로 생성
+        const resourceTypes = ['meat', 'poop', 'wood', 'stone', 'food', 'gold', 'leather', 'bone'];
+        const isResource = resourceTypes.includes(type);
+        
+        const category = isResource ? 'resource' : (type === 'human' ? 'human' : 'animal');
+        
+        const newId = this.engine.factoryProvider.spawn(category, type, payload.x, payload.y, { 
+            isBaby,
+            quality: payload.quality || 1.0 
+        });
+        
+        // 🍖 [Expert Predation Link] 사냥꾼이 있다면, 새로 생성된 고기를 즉시 타겟으로 설정
+        if (newId && payload.killerId) {
+            const killer = this.entityManager.entities.get(payload.killerId);
+            if (killer) {
+                const killerState = killer.components.get('AIState');
+                if (killerState) {
+                    killerState.targetId = newId;
+                    killerState.failedPathCount = 0; // 경로 실패 카운트 초기화
+                }
+            }
+        }
+        
+        return newId;
     }
 
     spawnPoop(x, y, fertilityAmount = 1.0) {

@@ -110,9 +110,12 @@ export default class ConstructionSystem extends System {
 
                 // 2. 🚀 [Troubleshooting] 건설에 참여한 모든 유닛 상태 초기화 (핵심 로직)
                 // 이 부분은 지형 에러와 상관없이 실행되어야 함
+                const buildingRadius = (visual?.size || 40) * 0.5 + 10; // 건물 크기에 따른 안전 거리
+
                 for (const id of this.entityManager.animalIds) {
                     const entity = this.entityManager.entities.get(id);
                     if (!entity) continue;
+                    
                     const state = entity.components.get('AIState');
                     if (state && state.targetId === targetId) {
                         state.mode = 'idle';
@@ -122,14 +125,21 @@ export default class ConstructionSystem extends System {
                         // 건물 밖으로 밀어내기 (끼임 방지 - 부드럽게 위치 조정)
                         const transform = entity.components.get('Transform');
                         if (transform) {
-                            const dx = transform.x - targetPos.x;
-                            const dy = transform.y - targetPos.y;
-                            const d = Math.hypot(dx, dy) || 1;
+                            let dx = transform.x - targetPos.x;
+                            let dy = transform.y - targetPos.y;
+                            let d = Math.hypot(dx, dy);
+
+                            // 정중앙에 있을 경우 랜덤한 방향으로 밀어내기
+                            if (d < 1) {
+                                const angle = Math.random() * Math.PI * 2;
+                                dx = Math.cos(angle);
+                                dy = Math.sin(angle);
+                                d = 1;
+                            }
                             
-                            // 📏 고정값 45px 대신, 건물의 중심에서 약 30px 지점으로 부드럽게 재배치
-                            const pushDist = 30; 
-                            transform.x = targetPos.x + (dx / d) * pushDist; 
-                            transform.y = targetPos.y + (dy / d) * pushDist;
+                            // 📏 건물의 반지름보다 약간 먼 곳으로 안전하게 이동
+                            transform.x = targetPos.x + (dx / d) * buildingRadius; 
+                            transform.y = targetPos.y + (dy / d) * buildingRadius;
                             
                             transform.vx = 0;
                             transform.vy = 0;

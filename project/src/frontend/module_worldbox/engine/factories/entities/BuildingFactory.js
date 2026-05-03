@@ -3,6 +3,7 @@ import EntityBuilder from '../core/EntityBuilder.js';
 import Storage from '../../components/resource/Storage.js';
 import Housing from '../../components/civilization/Housing.js';
 import Door from '../../components/civilization/Door.js';
+import Health from '../../components/stats/Health.js';
 
 /**
  * 🏠 BuildingFactory
@@ -39,7 +40,8 @@ export default class BuildingFactory extends IEntityFactory {
                 maxProgress: config.maxProgress,
                 isComplete: !options.isBlueprint,
                 isBlueprint: options.isBlueprint || false
-            });
+            })
+            .addComponent('Health', new Health(config.maxHp || 500));
 
         // 🚪 울타리 문(fence_gate)인 경우 Door 컴포넌트 추가
         if (type === 'fence_gate') {

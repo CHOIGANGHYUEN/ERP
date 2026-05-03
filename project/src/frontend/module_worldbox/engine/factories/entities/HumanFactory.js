@@ -7,6 +7,7 @@ import Age from '../../components/stats/Age.js';
 import Builder from '../../components/civilization/Builder.js';
 import Inventory from '../../components/resource/Inventory.js';
 import GathererComponent from '../../components/resource/GathererComponent.js';
+import Health from '../../components/stats/Health.js';
 
 /**
  * 👨‍👩‍👧‍👦 HumanFactory
@@ -88,6 +89,7 @@ export default class HumanFactory extends IEntityFactory {
                 currentAge: options.isBaby ? 0 : 18 + Math.random() * 5,
                 maxAge: config.maxLifespan || (60 + Math.random() * 20)
             }))
+            .addComponent('Health', new Health(config.baseHealth || 100))
             .addComponent('Builder', new Builder())
             .addComponent('Inventory', new Inventory(20))
             .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }));

@@ -1,15 +1,22 @@
 import { AnimalStates } from '../../../components/behavior/State.js';
 import { JobTypes } from '../../../config/JobTypes.js';
+import PredatorSensor from '../sensors/PredatorSensor.js';
+import FoodSensor from '../sensors/FoodSensor.js';
 
 /**
  * 🧠 HumanBrain
  * 인간 개체의 고도화된 행동 우선순위를 결정합니다.
  */
 export default class HumanBrain {
-    constructor(entityManager, eventBus, engine) {
+    constructor(entityManager, eventBus, engine, spatialHash) {
         this.em = entityManager;
         this.eventBus = eventBus;
         this.engine = engine;
+        this.spatialHash = spatialHash;
+        
+        // 🧠 전용 센서 초기화 (블랙리스트 연동 지원)
+        this.predatorSensor = new PredatorSensor(entityManager, spatialHash);
+        this.foodSensor = new FoodSensor(entityManager, spatialHash);
     }
 
     /**
@@ -21,13 +28,19 @@ export default class HumanBrain {
 
         const civ = entity.components.get('Civilization');
         
-        // 0. 극단적 생존 위협: 배가 너무 고프면 하던 일 중단
-        // 0. 생존 우선순위 (허기, 피로)
+        // 🚨 0. 생존 직결: 주변의 포식자 감지 시 최우선 도망
+        const nearbyPredator = this.predatorSensor.findNearestPredator(entity, state, 150);
+        if (nearbyPredator) {
+            state.targetId = nearbyPredator;
+            return AnimalStates.FLEE;
+        }
+
+        // 1. 생존 우선순위 (허기, 피로)
         if (stats.hunger < 35) {
             return this._tryForage(entity, state, stats);
         }
 
-        // 1. 현재 진행 중인 핵심 생존/작업 상태 방어
+        // 2. 현재 진행 중인 핵심 생존/작업 상태 방어
         if (state.mode === AnimalStates.EAT && stats.hunger < 90) return AnimalStates.EAT;
         if (state.mode === AnimalStates.FORAGE && state.targetId) return AnimalStates.FORAGE;
         if (state.mode === AnimalStates.SLEEP) return AnimalStates.SLEEP;
@@ -49,11 +62,6 @@ export default class HumanBrain {
 
         // 배회(Wander) 중이더라도 진행 중인 이동은 보장
         let baseDecision = (state.mode === AnimalStates.WANDER) ? AnimalStates.WANDER : AnimalStates.IDLE;
-
-        // 2. 생존 직결: 배가 많이 고프면 음식 탐색 최우선
-        if (stats.hunger < 30) {
-            return this._tryForage(entity, state, stats);
-        }
 
         // 3. 피로도가 높으면 수면
         if (stats.fatigue > 70) return AnimalStates.SLEEP;
@@ -86,13 +94,9 @@ export default class HumanBrain {
         }
 
         // 4. [Individual Judgment] 부여받은 직업(Role) 내에서 능동적으로 할 일을 찾음
-        // IDLE 상태여도 3초를 다 기다리지 않고, 직업 로직상 할 일이 있다면 즉시 작업으로 전환
         if (civ && civ.role) {
             const roleDecision = civ.role.decide(entity, dt);
-            if (roleDecision) {
-                // 직업 로직이 명확한 행동 지침(나무 발견, 건설지 발견 등)을 주었다면 즉시 수행
-                return roleDecision;
-            }
+            if (roleDecision) return roleDecision;
         }
 
         // 5. 건설 우선순위 절대화 (창고보다 우선)
@@ -101,7 +105,6 @@ export default class HumanBrain {
         const storages = blackboard.storages || [];
         const totalWoodInVillage = storages.reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
         
-        // 🏗️ 이중 체크: 블랙보드에 없으면 공간 쿼리로 한 번 더 확인 (전역 범위 10000px)
         let hasBlueprints = blueprints.length > 0;
         if (!hasBlueprints) {
             const nearestBP = this.em.findNearestEntityWithComponent(
@@ -120,12 +123,7 @@ export default class HumanBrain {
         const woodInInv = (inventory?.items['wood'] || 0);
 
         if (hasBlueprints) {
-            // 주머니에 나무가 5개 이상 있거나, 창고에 나무가 5개 이상 있다면 건설 모드 진입
-            if (woodInInv >= 5 || totalWoodInVillage >= 5) {
-                return 'build';
-            }
-            // 둘 다 없다면? 직접 캐러 가야 함 (무한 루프 방지)
-            this.engine.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '🪵🪓?', duration: 500 });
+            if (woodInInv >= 5 || totalWoodInVillage >= 5) return 'build';
             return 'gather_wood';
         }
 
@@ -134,21 +132,17 @@ export default class HumanBrain {
             if (storages.length > 0) return 'deposit';
         }
 
-        // 🚨 [직업 배정 누락 및 촌장 노동 완벽 보완] 
         if (isUnemployed || civ?.jobType === 'chief' || baseDecision === AnimalStates.IDLE) {
             if (stats.hunger > 35) { 
                 if (hasBlueprints) {
                     if (woodInInv >= 5 || totalWoodInVillage >= 5) return 'build';
-                    this.engine.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '🪵?', duration: 500 });
                     return 'gather_wood';
                 }
-                // 촌장 전용: 지을 게 없다면 건설보다는 마을을 살피는 느낌으로 방황 유도
                 if (civ?.jobType === 'chief') return AnimalStates.WANDER;
                 return 'gather_wood';
             }
         }
 
-        // 6. 아무 할 일이 없다면 기본 상태(IDLE 또는 진행 중인 WANDER) 반환
         return baseDecision;
     }
 
@@ -160,64 +154,15 @@ export default class HumanBrain {
         const animal = entity.components.get('Animal');
         if (!transform || !animal) return AnimalStates.IDLE;
 
-        const searchRadius = 250 + (100 - stats.hunger) * 3;
-
-        // 🔒 FoodSensor를 대체하여 Claim을 완벽히 존중하는 전용 수동 탐색 로직
-        // 1. 식물 먼저 탐색
-        const conditionPlant = (ent) => {
-            const res = ent.components.get('Resource');
-            if (!res || !res.edible || res.value <= 0) return false;
-
-            if (res.claimedBy && res.claimedBy !== entity.id) {
-                const claimer = this.em.entities.get(res.claimedBy);
-                if (claimer && claimer.components.get('AIState')?.targetId === ent.id) return false;
-                res.claimedBy = null;
-            }
-            if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
-            return true;
-        };
-
-        const nearestPlantId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, searchRadius, conditionPlant, this.engine.spatialHash
-        );
-
-        if (nearestPlantId !== null) {
-            state.targetId = nearestPlantId;
-            const targetEnt = this.em.entities.get(nearestPlantId);
-            if (targetEnt && targetEnt.components.has('Resource')) {
-                targetEnt.components.get('Resource').claimedBy = entity.id;
-            }
+        const searchRadius = 500 + (100 - stats.hunger) * 3;
+        
+        // 🥩 [Expert Optimization] FoodSensor를 사용하여 블랙리스트 연동
+        const foodId = this.foodSensor.findFood(stats, transform.x, transform.y, searchRadius, state);
+        if (foodId) {
+            state.targetId = foodId;
             return AnimalStates.FORAGE;
         }
 
-        // 2. 식물이 없으면 동물(사냥감) 탐색
-        const PREY_TYPES = new Set(['sheep', 'cow']);
-        const conditionAnimal = (ent) => {
-            if (ent.id === entity.id) return false;
-            const a = ent.components.get('Animal');
-            if (!a || !PREY_TYPES.has(a.type)) return false;
-
-            if (a.claimedBy && a.claimedBy !== entity.id) {
-                const claimer = this.em.entities.get(a.claimedBy);
-                if (claimer && claimer.components.get('AIState')?.targetId === ent.id) return false;
-                a.claimedBy = null;
-            }
-            return true;
-        };
-
-        const nearestAnimalId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, searchRadius, conditionAnimal, this.engine.spatialHash
-        );
-
-        if (nearestAnimalId !== null) {
-            state.targetId = nearestAnimalId;
-            const targetEnt = this.em.entities.get(nearestAnimalId);
-            if (targetEnt && targetEnt.components.has('Animal')) {
-                targetEnt.components.get('Animal').claimedBy = entity.id;
-            }
-            return AnimalStates.FORAGE;
-        }
-
-        return AnimalStates.IDLE;
+        return AnimalStates.WANDER;
     }
 }

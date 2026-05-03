@@ -141,9 +141,10 @@ export default class AnimalBehaviorSystem extends System {
         const plantRes = plantEntity.components.get('Resource');
         
         if (stats && plantRes) {
-            const nutrientValue = plantRes.value || 5.0; 
+            const nutrientValue = plantRes.value || 10.0; // 기본 영양가 상향
             stats.storedFertility = (stats.storedFertility || 0) + nutrientValue;
-            stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + nutrientValue * 2);
+            // 🥗 [Balance Fix] 식사 효율 2.5배 상향 (영양가 * 5)
+            stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + nutrientValue * 5.0);
             stats.digestionQuality = (stats.digestionQuality || 0.5) * 0.5 + (plantRes.value || 0.5) * 0.5;
         }
 
@@ -158,9 +159,12 @@ export default class AnimalBehaviorSystem extends System {
 
     attackAndConsumeAnimal(entity, victimEntity) {
         if (!victimEntity) return;
+        // 🍖 [Expert Solution] 사냥꾼(entity)의 ID를 함께 전달하여, 
+        // CombatSystem이 사냥 성공 시 사냥꾼에게 고기 ID를 넘겨줄 수 있게 함
         this.eventBus.emit('COMBAT_ATTACK', {
             attacker: entity,
-            defender: victimEntity
+            defender: victimEntity,
+            isPredation: true // 포식 행위임을 명시
         });
     }
 }

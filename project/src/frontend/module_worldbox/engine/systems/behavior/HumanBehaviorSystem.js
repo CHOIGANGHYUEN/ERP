@@ -17,7 +17,7 @@ export default class HumanBehaviorSystem extends System {
         super(entityManager, eventBus);
         this.engine = engine;
         this.spatialHash = spatialHash;
-        this.humanBrain = new HumanBrain(this.entityManager, this.eventBus, this.engine);
+        this.humanBrain = new HumanBrain(this.entityManager, this.eventBus, this.engine, this.spatialHash);
         this.stateFactory = new StateFactory(this);
         this.foodSensor = new FoodSensor(this.entityManager, this.spatialHash);
         this.zoneSensor = new ZoneSensor(this.engine);

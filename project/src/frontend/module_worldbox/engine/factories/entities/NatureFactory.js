@@ -1,6 +1,7 @@
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
 import ResourceNode from '../../components/resource/ResourceNode.js';
+import Health from '../../components/stats/Health.js';
 
 /**
  * 🌲 NatureFactory
@@ -24,6 +25,11 @@ export default class NatureFactory extends IEntityFactory {
             // 일반 환경 요소도 최소한의 자원 컴포넌트는 가짐 (오류 방지)
             builder.addComponent('Resource', new ResourceNode(type, 10));
         }
+
+        // 🏥 [Health Integration] 모든 자연 개체에 체력 부여
+        const config = this.engine.resourceBalance?.[type] || {};
+        const maxHp = config.maxHp || 50;
+        builder.addComponent('Health', new Health(maxHp));
 
         if (this.engine.spatialHash) {
             this.engine.spatialHash.insert(id, x, y, true); // Static

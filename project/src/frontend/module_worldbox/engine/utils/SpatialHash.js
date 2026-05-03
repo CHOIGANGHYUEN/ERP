@@ -49,6 +49,17 @@ export default class SpatialHash {
     }
 
     /**
+     * 엔티티의 위치를 업데이트합니다. (InputSystem 등에서 사용)
+     * 이 클래스는 이전 위치를 저장하지 않으므로, 성능을 위해 단순히 새 위치에 삽입하거나
+     * 필요 시 전체 리프레시를 유도합니다.
+     */
+    update(entityId, x, y, isStatic = false) {
+        // 기존 위치를 모르므로 안전하게 새 위치에 삽입만 수행
+        // (실제 정밀한 이동은 전용 시스템의 refresh 시점에 처리됨)
+        this.insert(entityId, x, y, isStatic);
+    }
+
+    /**
      * 엔티티를 제거합니다. (정적 개체 파괴 시 필요)
      */
     remove(entityId, x, y, isStatic = true) {

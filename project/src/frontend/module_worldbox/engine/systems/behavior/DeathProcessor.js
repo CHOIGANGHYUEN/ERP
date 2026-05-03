@@ -9,12 +9,25 @@ export default class DeathProcessor extends System {
 
     update(dt, time) {
         const em = this.entityManager;
-        for (const id of em.animalIds) {
-            const entity = em.entities.get(id);
-            if (!entity) continue;
-            const state = entity.components.get('AIState');
-            if (state && state.mode === AnimalStates.DIE) {
+        
+        // 🏥 [Health Integration] 모든 엔티티의 체력을 검사하여 사망 처리
+        for (const [id, entity] of em.entities) {
+            const health = entity.components.get('Health');
+            if (health && health.currentHp <= 0) {
                 this.processDeath(entity, dt);
+            }
+        }
+
+        // ⏳ [Item Decay] 드랍된 아이템의 소멸 처리
+        for (const id of em.resourceIds) {
+            const entity = em.entities.get(id);
+            const drop = entity?.components.get('DroppedItem');
+            if (drop) {
+                drop.update(dt);
+                if (drop.isDecayed) {
+                    this.cleanupSpatialHash(entity, entity.components.get('Transform'));
+                    em.removeEntity(id);
+                }
             }
         }
     }
@@ -81,14 +94,32 @@ export default class DeathProcessor extends System {
             }
         }
 
-        // 3. 아이템 드롭 (벌이 아닌 경우에만 고기 생성)
+        // 3. 📦 [Item Factory Integration] 사망 시 아이템 드랍
         const animal = entity.components.get('Animal');
-        if (animal && animal.type !== 'bee') {
-            this.eventBus.emit('SPAWN_ENTITY', { 
-                type: 'meat', 
-                x: transform.x, 
-                y: transform.y 
-            });
+        const resource = entity.components.get('Resource');
+        const building = entity.components.get('Building');
+        
+        let dropType = null;
+        let dropAmount = 1;
+
+        if (animal) {
+            const config = this.engine.speciesConfig[animal.type] || {};
+            dropType = config.dropItemType || (animal.type === 'bee' ? null : 'meat');
+            dropAmount = config.dropAmount || 1;
+        } else if (resource) {
+            const config = this.engine.resourceBalance[resource.type] || {};
+            dropType = config.dropItemType;
+            dropAmount = config.dropAmount || 1;
+        } else if (building) {
+            dropType = 'wood'; // 건물 파괴 시 기본적으로 목재 드랍
+            dropAmount = 3;
+        }
+
+        if (dropType) {
+            const itemFactory = this.engine.factoryProvider.getFactory('item');
+            if (itemFactory) {
+                itemFactory.spawnDrop(transform.x, transform.y, dropType, dropAmount);
+            }
         }
 
         // 4. [Village Cleanup] 직업 및 마을 할당 해제

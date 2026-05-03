@@ -18,9 +18,15 @@ export default class BrushStrategy {
         throw new Error('BrushStrategy.apply() must be implemented.');
     }
 
-    /** 도구의 동작 유형에 따라 실제 월드에 반영 (브릿지 역할) */
+    /** 도구의 동작 유형에 따라 실제 월드에 반영 (파티클 시스템 연동으로 씨앗 비 효과 복구) */
     _paint(x, y, toolConfig) {
         const payload = { ...toolConfig, x, y };
-        this.engine.dispatchCommand({ type: toolConfig.actionType, payload });
+        
+        // 🚀 [Visual Restoration] 즉시 소환 대신 파티클 시스템을 거쳐 착지 후 소환되도록 변경
+        if (toolConfig.actionType === 'SPAWN_RESOURCE' || toolConfig.actionType === 'SPAWN_ENTITY') {
+            this.engine.dispatchCommand({ type: 'SPAWN_PARTICLES', payload });
+        } else {
+            this.engine.dispatchCommand({ type: toolConfig.actionType, payload });
+        }
     }
 }

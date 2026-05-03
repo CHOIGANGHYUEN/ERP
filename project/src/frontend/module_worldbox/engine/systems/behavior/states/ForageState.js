@@ -47,6 +47,20 @@ export default class ForageState extends State {
             aComp.claimedBy = entityId;
         }
 
+        // 🔒 [DroppedItem Claiming] 바닥 아이템 독점 체크
+        const droppedItem = target.components.get('DroppedItem');
+        if (droppedItem) {
+            if (droppedItem.claimedBy && droppedItem.claimedBy !== entityId) {
+                const claimer = this.system.entityManager.entities.get(droppedItem.claimedBy);
+                const claimerState = claimer?.components.get('AIState');
+                if (claimerState && claimerState.targetId === state.targetId) {
+                    state.targetId = null;
+                    return AnimalStates.IDLE;
+                }
+            }
+            droppedItem.claimedBy = entityId;
+        }
+
         const tPos = target.components.get('Transform');
         if (!tPos) {
             state.targetId = null;

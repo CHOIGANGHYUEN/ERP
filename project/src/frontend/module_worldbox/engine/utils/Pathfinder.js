@@ -282,9 +282,9 @@ export default class Pathfinder {
         return path;
     }
 
-    static followPath(transform, state, targetPos, speed, engine, targetRadius = 8) {
+    static followPath(transform, state, targetPos, speed, engine, targetRadius = 8, recalcInterval = 2000) {
         const now = Date.now();
-        const needsRecalc = !state.path || state.pathTargetId !== state.targetId || (now - (state.lastPathCalcTime || 0) > 2000);
+        const needsRecalc = !state.path || state.pathTargetId !== state.targetId || (now - (state.lastPathCalcTime || 0) > recalcInterval);
 
         if (needsRecalc) {
             state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);

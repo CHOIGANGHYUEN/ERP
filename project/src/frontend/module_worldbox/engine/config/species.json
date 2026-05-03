@@ -6,7 +6,10 @@
         "hungerDecayRate": 0.1,
         "fatigueIncreaseRate": 0.05,
         "lifespan": 15,
-        "approachSlowdownRadius": 20
+        "approachSlowdownRadius": 20,
+        "baseHealth": 60,
+        "dropItemType": "meat",
+        "dropAmount": 2
     },
     "cow": {
         "diet": "herbivore",
@@ -15,7 +18,10 @@
         "hungerDecayRate": 0.08,
         "fatigueIncreaseRate": 0.04,
         "lifespan": 20,
-        "approachSlowdownRadius": 25
+        "approachSlowdownRadius": 25,
+        "baseHealth": 120,
+        "dropItemType": "meat",
+        "dropAmount": 4
     },
     "wolf": {
         "diet": "carnivore",
@@ -24,7 +30,10 @@
         "hungerDecayRate": 0.12,
         "fatigueIncreaseRate": 0.08,
         "lifespan": 12,
-        "approachSlowdownRadius": 35
+        "approachSlowdownRadius": 35,
+        "baseHealth": 100,
+        "dropItemType": "meat",
+        "dropAmount": 3
     },
     "wild_dog": {
         "diet": "carnivore",
@@ -33,7 +42,10 @@
         "hungerDecayRate": 0.15,
         "fatigueIncreaseRate": 0.1,
         "lifespan": 10,
-        "approachSlowdownRadius": 30
+        "approachSlowdownRadius": 30,
+        "baseHealth": 80,
+        "dropItemType": "meat",
+        "dropAmount": 2
     },
     "hyena": {
         "diet": "carnivore",
@@ -42,7 +54,10 @@
         "hungerDecayRate": 0.12,
         "fatigueIncreaseRate": 0.08,
         "lifespan": 14,
-        "approachSlowdownRadius": 30
+        "approachSlowdownRadius": 30,
+        "baseHealth": 90,
+        "dropItemType": "meat",
+        "dropAmount": 3
     },
     "human": {
         "diet": "omnivore",
@@ -51,7 +66,10 @@
         "hungerDecayRate": 0.15,
         "fatigueIncreaseRate": 0.1,
         "lifespan": 80,
-        "approachSlowdownRadius": 20
+        "approachSlowdownRadius": 20,
+        "baseHealth": 100,
+        "dropItemType": "meat",
+        "dropAmount": 1
     },
     "bee": {
         "diet": "herbivore",
@@ -60,7 +78,10 @@
         "hungerDecayRate": 0.2,
         "fatigueIncreaseRate": 0.15,
         "lifespan": 1,
-        "approachSlowdownRadius": 5
+        "approachSlowdownRadius": 5,
+        "baseHealth": 5,
+        "dropItemType": "flower",
+        "dropAmount": 1
     },
     "tiger": {
         "diet": "carnivore",
@@ -71,7 +92,9 @@
         "lifespan": 15,
         "damage": 25,
         "baseHealth": 150,
-        "approachSlowdownRadius": 30
+        "approachSlowdownRadius": 30,
+        "dropItemType": "meat",
+        "dropAmount": 5
     },
     "lion": {
         "diet": "carnivore",
@@ -82,7 +105,9 @@
         "lifespan": 14,
         "damage": 28,
         "baseHealth": 160,
-        "approachSlowdownRadius": 35
+        "approachSlowdownRadius": 35,
+        "dropItemType": "meat",
+        "dropAmount": 5
     },
     "bear": {
         "diet": "carnivore",
@@ -93,7 +118,9 @@
         "lifespan": 25,
         "damage": 35,
         "baseHealth": 300,
-        "approachSlowdownRadius": 40
+        "approachSlowdownRadius": 40,
+        "dropItemType": "meat",
+        "dropAmount": 8
     },
     "fox": {
         "diet": "carnivore",
@@ -104,7 +131,9 @@
         "lifespan": 8,
         "damage": 12,
         "baseHealth": 60,
-        "approachSlowdownRadius": 20
+        "approachSlowdownRadius": 20,
+        "dropItemType": "meat",
+        "dropAmount": 2
     },
     "crocodile": {
         "diet": "carnivore",
@@ -115,7 +144,9 @@
         "lifespan": 40,
         "damage": 40,
         "baseHealth": 250,
-        "approachSlowdownRadius": 45
+        "approachSlowdownRadius": 45,
+        "dropItemType": "meat",
+        "dropAmount": 6
     },
     "deer": {
         "diet": "herbivore",
@@ -126,7 +157,9 @@
         "lifespan": 12,
         "damage": 2,
         "baseHealth": 80,
-        "approachSlowdownRadius": 25
+        "approachSlowdownRadius": 25,
+        "dropItemType": "meat",
+        "dropAmount": 3
     },
     "rabbit": {
         "diet": "herbivore",
@@ -137,7 +170,9 @@
         "lifespan": 5,
         "damage": 0,
         "baseHealth": 20,
-        "approachSlowdownRadius": 10
+        "approachSlowdownRadius": 10,
+        "dropItemType": "meat",
+        "dropAmount": 1
     },
     "horse": {
         "diet": "herbivore",
@@ -148,7 +183,9 @@
         "lifespan": 25,
         "damage": 5,
         "baseHealth": 180,
-        "approachSlowdownRadius": 30
+        "approachSlowdownRadius": 30,
+        "dropItemType": "meat",
+        "dropAmount": 4
     },
     "elephant": {
         "diet": "herbivore",
@@ -159,7 +196,9 @@
         "lifespan": 60,
         "damage": 15,
         "baseHealth": 800,
-        "approachSlowdownRadius": 50
+        "approachSlowdownRadius": 50,
+        "dropItemType": "meat",
+        "dropAmount": 15
     },
     "goat": {
         "diet": "herbivore",
@@ -170,6 +209,8 @@
         "lifespan": 15,
         "damage": 4,
         "baseHealth": 90,
-        "approachSlowdownRadius": 20
+        "approachSlowdownRadius": 20,
+        "dropItemType": "meat",
+        "dropAmount": 2
     }
 }

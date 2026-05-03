@@ -31,6 +31,10 @@ export default class BaseStats extends Component {
         this.strength = options.strength || 10;
         this.speed = options.speed || 1.0;
         this.defense = options.defense || 0; // 방어력 추가
+
+        // 🤕 [Injury System] 피격 시 속도 저하 효과
+        this.injurySlowMultiplier = 1.0; // 1.0 = 정상 속도
+        this.injurySlowTimer = 0;        // 효과 지속 시간 (초)
     }
 
     /**
@@ -45,6 +49,8 @@ export default class BaseStats extends Component {
         this.strength = 10;
         this.speed = 1.0;
         this.defense = 0;
+        this.injurySlowMultiplier = 1.0;
+        this.injurySlowTimer = 0;
     }
 
     /**
@@ -56,6 +62,11 @@ export default class BaseStats extends Component {
         const mitigation = Math.min(0.8, this.defense / 100);
         const finalDamage = Math.max(1, amount * (1 - mitigation));
         this.health = Math.max(0, this.health - finalDamage);
+
+        // 🤕 [Injury Logic] 공격 당하면 일시적으로 속도가 50% 느려짐 (2초간)
+        this.injurySlowMultiplier = 0.5;
+        this.injurySlowTimer = 2.0;
+
         return finalDamage;
     }
 }

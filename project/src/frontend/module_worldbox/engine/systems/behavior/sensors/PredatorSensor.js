@@ -9,7 +9,7 @@ export default class PredatorSensor {
      * 🦁 주변의 포식자(육식동물)를 감지합니다.
      * @returns {string|null} 감지된 포식자의 ID
      */
-    findNearestPredator(entity, radius = 100) {
+    findNearestPredator(entity, state, radius = 100) {
         const transform = entity.components.get('Transform');
         if (!transform) return null;
 
@@ -20,6 +20,12 @@ export default class PredatorSensor {
 
         for (const id of nearbyIds) {
             if (id === entity.id) continue;
+
+            // 🚫 [Expert Optimization] 블랙리스트 필터링 및 청소
+            if (state && state.blacklist && state.blacklist.has(id)) {
+                if (Date.now() < state.blacklist.get(id)) continue;
+                else state.blacklist.delete(id); // 만료된 블랙리스트 삭제
+            }
 
             const other = this.entityManager.entities.get(id);
             if (!other) continue;

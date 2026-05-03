@@ -15,7 +15,7 @@ export default class HerbivoreBrain {
         if (state.mode === AnimalStates.GRABBED) return;
 
         // 1. 생존 본능 (포식자 감지 시 최우선 도망)
-        const predatorId = this.predatorSensor.findNearestPredator(this.entityManager.entities.get(id), 120);
+        const predatorId = this.predatorSensor.findNearestPredator(this.entityManager.entities.get(id), state, 120);
         if (predatorId) {
             state.targetId = predatorId;
             state.mode = AnimalStates.FLEE;
@@ -24,7 +24,7 @@ export default class HerbivoreBrain {
 
         // 2. 허기 관리 (도망 중이 아닐 때만)
         if (state.mode !== AnimalStates.FLEE) {
-            if (stats.hunger < 60 && state.mode !== AnimalStates.GRAZE) {
+            if (stats.hunger < 80 && state.mode !== AnimalStates.GRAZE) {
                 state.mode = AnimalStates.GRAZE; // 전용 GrazeState 사용
             }
         }

@@ -35,6 +35,7 @@ export default class CombatSystem extends System {
 
             if (defenderStats.health <= 0 && defenderState) {
                 defenderState.mode = AnimalStates.DIE;
+                defenderState.killerId = attacker.id; // 🍖 [Expert Tracking] 사냥꾼 ID를 기록하여 고기 스폰 시 연동
 
                 // 💰 [Looting] 사망 시 재화 약탈 (인간 간의 전투 등)
                 const attackerWealth = attacker.components.get('Wealth');

@@ -21,7 +21,8 @@ export default class ResourceNode {
                       lowerType.includes('plant') ||
                       lowerType.includes('grass') ||
                       lowerType.includes('flower') ||
-                      lowerType.includes('shrub');
+                      lowerType.includes('shrub') ||
+                      lowerType.includes('meat'); // 🍖 [Expert Fix] 고기도 이제 먹을 수 있는 자원임
                       
         this.isMineral = lowerType.includes('stone') || lowerType.includes('iron') || lowerType.includes('gold');
         

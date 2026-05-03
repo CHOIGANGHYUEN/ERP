@@ -52,6 +52,10 @@ export default class State extends Component {
 
         // 🧠 [Ecological Cycle Update] 상태 스택 (인터럽트 대응)
         this.modeStack = [];
+
+        // 🚫 [Pathfinding Optimization] 경로 탐색 실패 관리
+        this.failedPathCount = 0;      // 현재 타겟에 대한 경로 탐색 실패 횟수
+        this.blacklist = new Map();    // { targetId: expirationTime } - 일시적 무시 대상 목록
     }
 
     /**
