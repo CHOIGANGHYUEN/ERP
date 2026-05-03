@@ -93,9 +93,13 @@ export default class GatherPlantState extends State {
             // 채집 시간 (0.8초)
             state.timer = (state.timer || 0) + dt;
             if (state.timer >= 0.8) {
-                // 자원 수확 및 엔티티 제거
+                // 📦 [User Request] 인벤토리에 즉시 넣지 않고 바닥에 드랍함
+                const itemFactory = this.system.engine.factoryProvider.getFactory('item');
                 const amount = res.value || 5;
-                inventory.add('food', amount);
+                
+                if (itemFactory) {
+                    itemFactory.spawnDrop(tPos.x, tPos.y, 'fruit', amount);
+                }
 
                 // 파티클 효과 (잎사귀 비산)
                 this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
@@ -113,7 +117,7 @@ export default class GatherPlantState extends State {
 
                 // 인벤토리 확인 후 계속할지 결정
                 if (inventory.getTotal() >= inventory.capacity) return 'deposit';
-                return AnimalStates.IDLE;
+                return 'gather_plant'; // 🌿 [Success] 다음 타겟 탐색을 위해 상태 유지
             }
         } else {
             // 이동

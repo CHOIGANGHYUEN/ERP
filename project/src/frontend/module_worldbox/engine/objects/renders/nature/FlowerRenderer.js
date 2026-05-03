@@ -2,10 +2,16 @@
  * 🌸 FlowerRenderer
  */
 export const FlowerRenderer = {
-    draw(ctx, t, v, isWithered, time, wind) {
-        const wv = wind ? wind.getSway(t.x, t.y) : { x: 0, y: 0 };
+    draw(ctx, t, v, isWithered, time, wind, entity) {
+        const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
         const osc = Math.sin(time * 0.008 + t.x * 0.2) * 1.0;
         const sway = isWithered ? 0 : (wv.x * 12 + osc);
+
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.1) * 1.5, 0);
+        }
         
         // 🌚 [Readability] 줄기 그림자/테두리
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';

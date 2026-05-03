@@ -13,6 +13,7 @@ export const AnimalStates = {
     FORAGE: 'forage',
     EAT: 'eat',
     GRAZE: 'graze',
+    PICKUP: 'pickup',
     DIE: 'die',
     GRABBED: 'grabbed'
 };

@@ -9,6 +9,7 @@ export default class EconomyManager {
         this.eventBus = eventBus;
         this.blackboard = blackboard;
         this.transportTasks = [];
+        this.blueprints = [];
         this.updateTimer = 0;
     }
 
@@ -49,15 +50,17 @@ export default class EconomyManager {
                 });
             }
 
-            // 자원 노드 캐싱
+            // 자원 노드 캐싱 (Resource 및 DroppedItem 통합 지원)
             const res = entity.components.get('Resource');
-            if (res && res.value > 0 && !res.isFalling) {
-                let type = (res.type || 'unknown').toLowerCase();
+            const drop = entity.components.get('DroppedItem');
+            
+            if ((res && res.value > 0 && !res.isFalling) || drop) {
+                let type = (res?.type || drop?.itemType || 'unknown').toLowerCase();
                 
                 // 🍎 [Normalization] AI가 요청하는 표준 카테고리로 매핑
                 if (type.includes('tree') || type === 'wood') {
                     type = 'wood';
-                } else if (type === 'berry' || type === 'fruit' || type === 'wheat' || type === 'plant') {
+                } else if (type === 'berry' || type === 'fruit' || type === 'wheat' || type === 'plant' || type === 'grass' || type === 'flower') {
                     type = 'food';
                 } else if (type.includes('stone') || type === 'rock' || type === 'ore') {
                     type = 'stone';

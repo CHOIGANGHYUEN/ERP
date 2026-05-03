@@ -114,18 +114,17 @@ export default class GatherWoodState extends GatherState {
      */
     onGatherSuccess(entity, amount, resourceNode) {
         if (amount > 0) {
-            const inventory = entity.components.get('Inventory');
-            if (inventory) {
-                // 한 번의 도끼질로 얻는 기본 획득량을 랜덤하게 보정 (기존 로직 유지)
-                // 실제 추출된 amount를 기반으로 하지만 5~7 정도로 보정
-                const woodGained = 5 + Math.floor(Math.random() * 3);
-                inventory.add('wood', woodGained);
-            }
-
             const state = entity.components.get('AIState');
             const targetId = state.targetId;
             const targetEnt = this.system.entityManager.entities.get(targetId);
             const tPos = targetEnt?.components.get('Transform');
+
+            // 📦 [User Request] 인벤토리에 즉시 넣지 않고 바닥에 드랍함
+            const itemFactory = this.system.engine.factoryProvider.get('item');
+            if (itemFactory && tPos) {
+                const woodGained = 5 + Math.floor(Math.random() * 3);
+                itemFactory.spawnDrop(tPos.x, tPos.y, 'wood', woodGained);
+            }
 
             // 🪓 나무 팰 때마다 나무 파편(파티클) 튀는 타격감 추가
             if (tPos && this.system.eventBus) {

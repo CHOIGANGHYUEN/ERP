@@ -17,14 +17,11 @@ export default class ConstructionSystem extends System {
 
             if (transform && state && state.mode === 'build') {
                 const targetId = state.targetId;
-                if (!targetId) {
-                    state.mode = 'idle';
-                    continue;
-                }
+                if (!targetId) continue; // BuildState가 타겟을 요청 중일 수 있음 (강제 IDLE 방지)
 
                 const target = em.entities.get(targetId);
                 if (!target) {
-                    state.mode = 'idle';
+                    // 타겟이 정말로 사라졌을 때만 초기화 (BuildState가 다음 프레임에 감지할 것)
                     state.targetId = null;
                     continue;
                 }

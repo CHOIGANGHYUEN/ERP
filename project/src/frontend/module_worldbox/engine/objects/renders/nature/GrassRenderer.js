@@ -3,11 +3,17 @@
  * 바람에 흔들리는 풀잎과 지면 식생을 렌더링합니다.
  */
 export const GrassRenderer = {
-    draw(ctx, t, v, isWithered, time, wind) {
+    draw(ctx, t, v, isWithered, time, wind, entity) {
         const s = 0.8;
         const color = isWithered ? '#8d6e63' : v.color || '#4caf50';
         const darkColor = this.adjustColor(color, -40);
         const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
+
+        // 🤕 [Hit Shake] 타격 흔들림
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.1) * 1.5, 0);
+        }
 
         // 3개에서 4개로 풀잎 수 증가 및 무작위성 부여
         for (let i = 0; i < 4; i++) {

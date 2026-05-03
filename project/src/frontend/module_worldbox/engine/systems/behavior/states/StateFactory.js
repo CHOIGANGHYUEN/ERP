@@ -14,6 +14,7 @@ import WaitForTargetState from './WaitForTargetState.js';
 import TransporterState from './jobs/TransporterState.js';
 import GrazeState from './GrazeState.js';
 import GrabbedState from './GrabbedState.js';
+import PickupState from './PickupState.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 
 export default class StateFactory {
@@ -32,6 +33,7 @@ export default class StateFactory {
         this.states.set(AnimalStates.SLEEP, new SleepState(system));
         this.states.set(AnimalStates.FLEE, new FleeState(system));
         this.states.set(AnimalStates.EVADE, this.states.get(AnimalStates.FLEE));
+        this.states.set(AnimalStates.PICKUP, new PickupState(system));
         this.states.set('gather_wood', new GatherWoodState(system));
         this.states.set('gather_plant', new GatherPlantState(system));
         this.states.set('build', new BuildState(system));

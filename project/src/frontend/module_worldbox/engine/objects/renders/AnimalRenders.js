@@ -26,43 +26,58 @@ export const AnimalRenders = {
     spriteCache: new Map(),
 
     getSprite(type, mode, frameIdx, color, options = {}) {
-        // 프레임 인덱스를 4단계로 고정하여 캐시 효율 증대
-        const animFrame = Math.floor(frameIdx % 4);
+        // 🚀 프레임 인덱스를 8단계로 상향하여 더 부드러운 애니메이션 제공
+        const animFrame = Math.floor(frameIdx % 8);
         const role = options.role || 'worker';
         const hasHoney = options.nectar > 5 ? 'H' : 'N';
-        const gender = options.entity?.components.get('Animal')?.gender || 'male';
-        const key = `${type}_${mode}_${animFrame}_${color}_${role}_${hasHoney}_${gender}`;
+        const entity = options.entity;
+        const animal = entity?.components.get('Animal');
+        const gender = animal?.gender || 'male';
+        const visual = entity?.components.get('Visual');
+        
+        // 👤 인간 전용 추가 속성 (방향 및 소지품)
+        const facing = visual?.facing ?? 2;
+        const inventory = entity?.components.get('Inventory');
+        const hasWood = (inventory?.items?.wood || 0) > 0 ? 'W' : '_';
+        const hasFood = (inventory?.items?.food || 0) > 0 ? 'F' : '_';
+        const isBaby = visual?.isBaby ? 'B' : 'A';
+
+        const key = `${type}_${mode}_${animFrame}_${color}_${role}_${hasHoney}_${gender}_${facing}_${hasWood}${hasFood}_${isBaby}`;
         if (this.spriteCache.has(key)) return this.spriteCache.get(key);
 
         const canvas = document.createElement('canvas');
-        canvas.width = 32; canvas.height = 32;
+        // 인간 렌더러의 도구/무기 범위를 고려하여 캔버스 크기 상향
+        canvas.width = 48; canvas.height = 48;
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = false;
-        ctx.translate(16, 24);
+        ctx.translate(24, 36); // 중심점 조정
         
         const s = 1;
+        // 캐시용 frameIdx 재계산 (0~8 범위로 정규화)
+        const cachedTime = animFrame * (1000 / 8); 
+
         switch (type) {
-            case 'sheep': SheepRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'cow': CowRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'wolf': WolfRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'wild_dog': WildDogRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'hyena': HyenaRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'human': HumanRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
-            case 'bee': BeeRenderer.draw(ctx, frameIdx, s, mode, options.entity); break;
+            case 'sheep': SheepRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'cow': CowRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'wolf': WolfRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'wild_dog': WildDogRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'hyena': HyenaRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'human': HumanRenderer.draw(ctx, cachedTime, s, mode, entity); break;
+            case 'bee': BeeRenderer.draw(ctx, animFrame, s, mode, entity); break;
             
             // 🦁 Carnivores
-            case 'tiger': TigerRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'lion': LionRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'bear': BearRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'fox': FoxRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'crocodile': CrocodileRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'tiger': TigerRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'lion': LionRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'bear': BearRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'fox': FoxRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'crocodile': CrocodileRenderer.draw(ctx, animFrame, s, mode); break;
 
             // 🦌 Herbivores
-            case 'deer': DeerRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'rabbit': RabbitRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'horse': HorseRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'elephant': ElephantRenderer.draw(ctx, frameIdx, s, mode); break;
-            case 'goat': GoatRenderer.draw(ctx, frameIdx, s, mode); break;
+            case 'deer': DeerRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'rabbit': RabbitRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'horse': HorseRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'elephant': ElephantRenderer.draw(ctx, animFrame, s, mode); break;
+            case 'goat': GoatRenderer.draw(ctx, animFrame, s, mode); break;
         }
 
         this.spriteCache.set(key, canvas);
@@ -94,33 +109,37 @@ export const AnimalRenders = {
         // 🚀 고도화된 상태별 물리 변환 적용
         this.applyAdvancedStateMotion(ctx, type, mode, time, entity);
 
-        // 👤 인간: 스프라이트 캐시 우회 — 연속 time 기반 직접 렌더링
-        if (type === 'human') {
-            const displaySize = visual.size * 22;
-            const scale = displaySize / 32;
-            ctx.save();
-            // flipX 반전은 이미 위에서 ctx.scale(-1,1) 적용됨
-            // HumanRenderer 내부 기준점(16,24) 보정
-            ctx.translate(-16 * scale, -24 * scale);
-            ctx.scale(scale, scale);
-            ctx.translate(16, 24);
-            HumanRenderer.draw(ctx, time, 1, mode, entity);
-            ctx.restore();
-            ctx.restore();
-            return;
+        // 💀 사망 애니메이션 (회전하며 작아짐)
+        if (mode === AnimalStates.DIE) {
+            const dieTime = visual.lastDeathTime ? (time - visual.lastDeathTime) : 0;
+            const progress = Math.min(1.0, dieTime / 1000); // 1초간 진행
+            ctx.rotate(progress * Math.PI * 2);
+            ctx.scale(1 - progress, 1 - progress);
+            ctx.globalAlpha = 1 - progress;
+            if (progress >= 1.0) {
+                ctx.restore();
+                return;
+            }
         }
 
-        // 기타 동물: 기존 스프라이트 캐시 사용
+        // ⚡ [Expert Optimization] 모든 개체(인간 포함) 스프라이트 캐시 사용
         let speedMult = 0.008;
         if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT) speedMult = 0.015;
         else if (mode === AnimalStates.SLEEP) speedMult = 0.002;
+        
         const frameIdx = time * speedMult;
         const options = { role: animal?.role, entity: entity, nectar: animal?.nectar };
+        
         const sprite = this.getSprite(type, mode, frameIdx, visual.color, options);
         const displaySize = visual.size * 22;
-        ctx.drawImage(sprite, -16 * (displaySize / 32), -24 * (displaySize / 32), displaySize, displaySize);
+        
+        // 캔버스 크기(48x48)를 고려한 중앙 정렬 출력
+        const s = displaySize / 32;
+        ctx.drawImage(sprite, -24 * s, -36 * s, 48 * s, 48 * s);
+        
         ctx.restore();
     },
+
 
     /**
      * 🌀 물리 기반 상태별 모션 변환 (Breathing, Swaying, Chewing + Attack/Hit)
@@ -132,51 +151,49 @@ export const AnimalRenders = {
         // ⚔️ [Combat Motion] 공격 연출 (150ms 동안 앞으로 런지)
         if (visual.lastAttackTime && (time - visual.lastAttackTime) < 150) {
             const progress = (time - visual.lastAttackTime) / 150;
-            const lunge = Math.sin(progress * Math.PI) * 10;
-            ctx.translate(lunge, 0); // 전진 덮치기
-            ctx.rotate(0.15 * Math.sin(progress * Math.PI)); // 약간의 고개 끄덕임
+            const lunge = Math.sin(progress * Math.PI) * 12;
+            ctx.translate(lunge, -Math.sin(progress * Math.PI) * 4); // 점프하며 덮치기
+            ctx.rotate(0.2 * Math.sin(progress * Math.PI)); 
         }
 
         // 🩸 [Combat Motion] 피격 연출 (200ms 동안 붉은 점멸 및 진동)
         if (visual.lastHitTime && (time - visual.lastHitTime) < 200) {
             const hitProgress = (time - visual.lastHitTime) / 200;
-            const shake = (1 - hitProgress) * 2.5;
+            const shake = (1 - hitProgress) * 4;
             ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-            ctx.filter = `brightness(${100 + (1 - hitProgress) * 100}%) sepia(100%) saturate(500%) hue-rotate(-50deg)`;
         }
 
-        // 1. 공통 사망 처리
+        // 1. 공통 사망 처리 (필터링만 수행, 변환은 drawAnimalBody에서)
         if (mode === AnimalStates.DIE) {
-            ctx.filter = 'grayscale(100%) brightness(80%)';
+            ctx.filter = 'grayscale(80%) brightness(120%)';
             return;
         }
 
-        // 2. 상태별 공통 물리 효과
+        // 2. 상태별 공통 물리 효과 (더 역동적인 수치로 조정)
         switch (mode) {
             case AnimalStates.SLEEP:
-                // 💤 수면: 느린 호흡 (상하 스케일링)
-                const sleepBreath = Math.sin(time * 0.002) * 0.03;
-                ctx.scale(1, 1 + sleepBreath);
+                const sleepBreath = Math.sin(time * 0.002) * 0.04;
+                ctx.scale(1.02, 0.96 + sleepBreath);
                 break;
 
             case AnimalStates.EAT:
             case AnimalStates.FORAGE:
-                // 🍎 식사: 머리를 위아래로 흔드는 저작 운동 (더 역동적으로 상향)
-                const chew = Math.abs(Math.sin(time * 0.015)) * 3.5;
+                const chew = Math.abs(Math.sin(time * 0.015)) * 4.5;
                 ctx.translate(0, chew);
+                ctx.rotate(Math.sin(time * 0.015) * 0.1);
                 break;
 
             case AnimalStates.RUN:
             case AnimalStates.HUNT:
             case AnimalStates.FLEE:
-                // ⚡ 질주: 몸체를 앞으로 기울임 (역동성 강조)
-                ctx.rotate(0.08);
-                ctx.translate(0, Math.sin(time * 0.02) * 1.5); // 상하 요동 증가
+                ctx.rotate(0.12);
+                ctx.translate(0, Math.sin(time * 0.025) * 2.5); // 고주파 바운스
+                ctx.scale(1.1, 0.9); // 압축 효과
                 break;
 
             case AnimalStates.WALK:
-                // 🚶 보행: 일정한 리듬의 상하 바운스
-                ctx.translate(0, Math.sin(time * 0.01) * 0.8);
+                ctx.translate(0, Math.sin(time * 0.012) * 1.2);
+                ctx.rotate(Math.sin(time * 0.01) * 0.03);
                 break;
 
             case 'gather_wood': {

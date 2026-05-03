@@ -64,25 +64,29 @@ export default class GatherState extends State {
             if (transform.vy !== undefined) transform.vy *= 0.5;
             state.isChopping = true;
 
-            // 채집 쿨다운 (도끼질 타이머 등, 자식 클래스에서 오버라이드 가능하지만 여기선 컴포넌트로 위임)
+            // 채집 쿨다운 (도끼질 타이머)
             state.chopTimer = (state.chopTimer || 0) + dt;
-            const chopInterval = state.chopInterval || 0.4;
+            const chopInterval = state.chopInterval || 0.8; // 기본 0.8초 간격
 
-            // ⚔️ [Action Loop] 실제 채집(타격) 로직 실행
-            const extracted = gatherer.performGathering(
-                dt, // 델타 타임 전달
-                target,
-                state.targetId,
-                em,
-                this.system.eventBus,
-                transform
-            );
+            if (state.chopTimer >= chopInterval) {
+                state.chopTimer = 0; // 타이머 초기화
+
+                // ⚔️ [Action Loop] 실제 채집(타격) 로직 실행
+                const extracted = gatherer.performGathering(
+                    chopInterval, // 간격만큼의 채집량 적용
+                    target,
+                    state.targetId,
+                    em,
+                    this.system.eventBus,
+                    transform
+                );
+
+                // 자식 클래스에서 오버라이드할 콜백 (애니메이션 연출 등)
+                this.onGatherSuccess(entity, extracted, res);
+            }
 
             const targetHealth = target.components.get('Health');
             
-            // 자식 클래스에서 오버라이드할 콜백 (애니메이션 연출 등)
-            this.onGatherSuccess(entity, extracted, res);
-
             // 🛑 [Termination] 체력이 0이 되었거나 타겟이 삭제되었다면 루프 종료
             if ((targetHealth && targetHealth.currentHp <= 0) || res.value <= 0) {
                 state.targetId = null;

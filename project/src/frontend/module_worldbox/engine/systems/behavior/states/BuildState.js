@@ -80,10 +80,18 @@ export default class BuildState extends State {
             if (!state.isTargetRequested && !state.storageTargetId) {
                 const targetManager = this.system.engine.systemManager.targetManager;
                 const blackboard = this.system.engine.systemManager.blackboard;
-                const totalWood = blackboard.storages.reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
+                const totalWood = (blackboard.storages || []).reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
                 
-                if (blackboard.storages.length === 0 || totalWood < 5) {
-                    // 마을에 자원이 없으면 여기서 대기하지 말고 뇌(Brain)가 다른 결정을 내리게 함
+                if ((blackboard.storages || []).length === 0 || totalWood < 5) {
+                    // ⏳ 마을에 자원이 부족해도 즉시 포기하지 않고 '대기' (10초 유예)
+                    state.waitTimer = (state.waitTimer || 0) + dt;
+                    if (state.waitTimer < 10.0) {
+                        if (Math.random() < 0.01) {
+                            this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '🪵?', duration: 1000 });
+                        }
+                        return null; // 대기 유지
+                    }
+                    
                     state.isTargetRequested = false;
                     state.targetId = null;
                     return AnimalStates.IDLE;
@@ -92,6 +100,7 @@ export default class BuildState extends State {
                 if (targetManager) {
                     targetManager.requestTarget(entityId, 'STORAGE_WITHDRAW', { resourceType: 'wood', amount: 20 }, 'build');
                     state.isTargetRequested = true;
+                    state.waitTimer = 0;
                 }
             }
 

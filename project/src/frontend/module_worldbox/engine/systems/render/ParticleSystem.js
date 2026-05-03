@@ -12,6 +12,7 @@ export default class ParticleSystem extends System {
         this.addDust = this.addDust.bind(this);
         this.addZzz = this.addZzz.bind(this);
         this.addBlood = this.addBlood.bind(this);
+        this.spawn = this.spawn.bind(this);
 
         this.eventBus.on('SPAWN_PARTICLES', this.addParticles);
         this.eventBus.on('SPAWN_EFFECT_PARTICLES', this.addEffectParticles);
@@ -20,6 +21,25 @@ export default class ParticleSystem extends System {
         this.eventBus.on('SPAWN_DUST', this.addDust);
         this.eventBus.on('SPAWN_ZZZ', this.addZzz);
         this.eventBus.on('SPAWN_BLOOD', this.addBlood);
+    }
+
+    /**
+     * 🚀 [Universal Spawner] 다양한 타입의 파티클을 범용적으로 생성
+     */
+    spawn(type, options = {}) {
+        const { x = 0, y = 0, color = '#ffffff', size = 2, velocity = { x: 0, y: 0 }, life = 1.0 } = options;
+        
+        this.particles.push({
+            x, y,
+            vx: velocity.x,
+            vy: velocity.y,
+            color,
+            size,
+            type: type.toUpperCase(),
+            life,
+            maxLife: life,
+            alpha: 1.0
+        });
     }
 
     destroy() {

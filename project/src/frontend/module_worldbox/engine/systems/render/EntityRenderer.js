@@ -3,6 +3,7 @@ import { AnimalRenders } from '../../objects/renders/AnimalRenders.js';
 import { NatureRenders } from '../../objects/renders/NatureRenders.js';
 import { TreeRenderer } from '../../objects/renders/nature/TreeRenderer.js';
 import { BuildRender } from '../../objects/renders/BuildRender.js';
+import { ItemRenderer } from '../../objects/renders/ItemRenderer.js';
 
 /**
  * 🎨 EntityRenderer
@@ -52,6 +53,17 @@ export default class EntityRenderer {
 
         renderList.sort((a, b) => a.y - b.y);
 
+        // 1. 🌑 [Unified Shadows] 모든 개체의 그림자를 먼저 렌더링 (Z-Order 최하단)
+        for (const item of renderList) {
+            this.renderShadow(ctx, item.t, item.v, item.entity, time);
+        }
+
+        // 2. 🌊 [Water Ripples] 물 위에 있는 개체들을 위한 파동 효과
+        for (const item of renderList) {
+            this.renderWaterRipples(ctx, item.t, item.entity, time);
+        }
+
+        // 3. 🎨 [Main Entities] 실제 개체 렌더링
         for (const item of renderList) {
             const { id, entity, t, v } = item;
             const state = entity.components.get('AIState');
@@ -82,8 +94,63 @@ export default class EntityRenderer {
         }
 
         this.renderParticles(ctx, particles);
+    }
 
+    /** 🌑 통합 그림자 렌더링 시스템 */
+    renderShadow(ctx, t, v, entity, time) {
+        const size = v.size || 10;
+        const type = v.type;
+        
+        // 사망하거나 비주얼이 꺼져있으면 그림자 생략
+        if (v.alpha === 0) return;
 
+        ctx.save();
+        ctx.translate(Math.floor(t.x), Math.floor(t.y));
+        
+        // 🌀 호흡/모션에 따른 동적 그림자 크기 변화
+        let breathScale = 1.0;
+        if (entity.components.has('Animal')) {
+            breathScale = 1.0 + Math.sin(time * 0.003) * 0.05;
+        }
+
+        let sw = size * 0.8 * breathScale;
+        let sh = size * 0.3 * breathScale;
+
+        // 나무는 더 크고 진한 그림자
+        if (type === 'tree') {
+            sw *= 1.2;
+            sh *= 1.2;
+        }
+
+        ctx.beginPath();
+        ctx.ellipse(0, 1, sw, sh, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.fill();
+        ctx.restore();
+    }
+
+    /** 🌊 수면 파동 효과 (타일 기반 감지) */
+    renderWaterRipples(ctx, t, entity, time) {
+        if (!this.engine.terrainGen) return;
+        
+        const tx = Math.floor(t.x);
+        const ty = Math.floor(t.y);
+        const tile = this.engine.terrainGen.getTileAt?.(tx, ty);
+        
+        // 물 타일(Deep Water, Shallow Water)에서만 활성화
+        if (tile === 0 || tile === 1) { 
+            ctx.save();
+            ctx.translate(tx, ty);
+            const rippleScale = (Math.sin(time * 0.005 + t.x * 0.1) + 1) * 0.5;
+            const alpha = 0.3 * (1 - rippleScale);
+            
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 8 * rippleScale, 3 * rippleScale, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.restore();
+        }
     }
 
     renderResource(entity, ctx, time, wind) {
@@ -95,12 +162,7 @@ export default class EntityRenderer {
         ctx.globalAlpha = v.alpha !== undefined ? v.alpha : 1.0;
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
         
-        ctx.beginPath();
-        const shadowW = v.type === 'tree' ? 6 : 4;
-        const shadowH = v.type === 'tree' ? 3 : 2;
-        ctx.ellipse(0, 0, shadowW, shadowH, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fill();
+        // 기존 중복 그림자 제거 (renderShadow에서 통합 처리)
 
         if (v.type === 'tree') {
             const res = entity.components.get('Resource');
@@ -115,24 +177,27 @@ export default class EntityRenderer {
             }
             ctx.restore(); 
             this.drawTreeCached(ctx, t, v, entity, time, wind);
+        } else if (v.type === 'item') {
+            const itemType = v.itemType || 'wood';
+            // ctx.restore()를 호출하기 전에 렌더링 수행 (위치 유지를 위해)
+            ItemRenderer.render(ctx, itemType, v, time, entity);
+            ctx.restore(); 
         } else if (v.type === 'building') {
             const structure = entity.components.get('Structure');
-            // console.debug(`[EntityRenderer] Dispatching to BuildRender: ${v.subtype}, ID: ${entity.id}`);
-            BuildRender.render(ctx, v.subtype || 'default', t, v, structure, time, this.engine);
+            // ctx.restore()를 호출하기 전에 렌더링 수행 (위치 유지를 위해)
+            this.drawBuildingCached(ctx, t, v, structure, time);
+            ctx.restore(); 
             
             const storage = entity.components.get('Storage');
             if (storage && structure && structure.isComplete) {
+                ctx.save();
+                ctx.translate(Math.floor(t.x), Math.floor(t.y));
                 this.renderStorageResources(ctx, storage, v.size || 40);
+                ctx.restore();
             }
-            ctx.restore();
         } else {
-            // 🤕 [Hit Shake] 리소스 피격 흔들림
-            const health = entity.components.get('Health');
-            if (health && health.hitTimer > 0) {
-                const shake = Math.sin(time * 0.05) * 2;
-                ctx.translate(shake, 0);
-            }
-            NatureRenders.render(ctx, v.type, t, v, time, wind);
+            // 🤕 [Hit Shake] 및 개별 연출은 NatureRenders 및 하위 렌더러에서 통합 처리
+            NatureRenders.render(ctx, v.type, t, v, time, wind, entity);
             ctx.restore();
         }
     }
@@ -222,6 +287,36 @@ export default class EntityRenderer {
         const shear = totalSway / size;
         ctx.transform(1, 0, shear, 1, 0, 0);
         ctx.drawImage(sprite, -sprite.width / 2, -sprite.height + 2);
+        ctx.restore();
+    }
+
+    drawBuildingCached(ctx, t, v, structure, time) {
+        const size = v.size || 30;
+        const type = v.subtype || 'default';
+        const isComplete = structure ? structure.isComplete : true;
+        const progress = structure ? Math.floor(structure.progress / (structure.maxProgress / 4)) : 4; // 4단계 진행도 캐싱
+        
+        // 🏗️ 건설 중이면 캐싱 우회 (애니메이션 정보가 많으므로) 또는 짧은 키 사용
+        const key = `build_${type}_${size}_${isComplete ? 'full' : 'p' + progress}`;
+        
+        const sprite = this.getSprite(key, (sCtx) => {
+            BuildRender.render(sCtx, type, { x: 0, y: 0 }, v, structure, 0, this.engine);
+        }, size * 2.5, size * 2.5);
+
+        ctx.save();
+        ctx.translate(Math.floor(t.x), Math.floor(t.y));
+        
+        // 🔥 애니메이션 파트 (모닥불, 연기 등은 캐시된 이미지 위에 덧그림)
+        ctx.drawImage(sprite, -sprite.width / 2, -sprite.height * 0.8);
+        
+        // 실시간 애니메이션 오버레이 (불꽃, 연기 등)
+        if (isComplete && (type === 'bonfire' || type === 'house' || type === 'farm')) {
+            BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true); // true for overlayOnly
+        } else if (!isComplete) {
+            // 건설 중 정보 표시
+            BuildRender.renderBlueprintInfo(ctx, { x: 0, y: 0 }, structure);
+        }
+
         ctx.restore();
     }
 

@@ -39,6 +39,7 @@ export default class SystemManager {
         // 🚀 SHARED SPATIAL HASH: AI와 Renderer가 공통으로 사용하여 Culling 성능 극대화
         this.spatialHash = new SpatialHash(100);
         engine.spatialHash = this.spatialHash;
+        engine.entityManager.spatialHash = this.spatialHash;
 
         // Phase 1: Environment & Input
         this.inputSystem = new InputSystem(em, eb, engine);

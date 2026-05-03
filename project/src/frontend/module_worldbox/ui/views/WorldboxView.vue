@@ -2,6 +2,10 @@
   <div class="worldbox-container" ref="worldboxContainer">
     <canvas ref="gameCanvas" id="worldbox-canvas"></canvas>
     
+    <!-- 🎭 Cinematic Overlay -->
+    <div class="vignette-overlay"></div>
+    <div class="color-grade-layer"></div>
+    
     <!-- UI Overlay - Always on top -->
     <div class="ui-overlay" :class="{ 'menu-active': isMenuOpen }">
       <!-- Detailed Inspection Panel -->
@@ -288,10 +292,34 @@ const handleGodPower = (toolId) => {
 .worldbox-container {
   width: 100%;
   height: 100%;
-  min-height: 500px; /* Force minimum height if parent is auto */
+  min-height: 500px;
   position: relative;
-  background: #111;
+  background: #0a0a0a;
   overflow: hidden;
+  box-shadow: inset 0 0 100px rgba(0,0,0,0.8);
+}
+
+/* 🎭 Cinematic Visual FX */
+.vignette-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: radial-gradient(circle, transparent 40%, rgba(0, 0, 0, 0.4) 100%);
+  z-index: 500;
+}
+
+.color-grade-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  backdrop-filter: saturate(1.1) contrast(1.05) brightness(1.02);
+  z-index: 501;
 }
 
 #worldbox-canvas {

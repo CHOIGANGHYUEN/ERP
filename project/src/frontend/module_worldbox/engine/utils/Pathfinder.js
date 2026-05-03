@@ -282,9 +282,26 @@ export default class Pathfinder {
         return path;
     }
 
-    static followPath(transform, state, targetPos, speed, engine, targetRadius = 8, recalcInterval = 2000) {
+    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcInterval = 2000) {
         const now = Date.now();
-        const needsRecalc = !state.path || state.pathTargetId !== state.targetId || (now - (state.lastPathCalcTime || 0) > recalcInterval);
+        
+        // 1. 재탐색 조건 체크 (타겟 변경 또는 쿨타임 만료)
+        let needsRecalc = !state.path || 
+                          state.pathTargetId !== state.targetId || 
+                          (now - (state.lastPathCalcTime || 0) > recalcInterval);
+
+        // 2. 🚧 [Obstacle Recovery] 경로가 가로막혔을 때의 유예 기간 (매 프레임 재계산 방지)
+        if (!needsRecalc && state.path && state.pathIndex < state.path.length) {
+            const nextWp = state.path[state.pathIndex];
+            
+            // 3초에 한 번만 장애물 정밀 검사 (성능 최적화)
+            state.blockCheckTimer = (state.blockCheckTimer || 0) + 1;
+            if (state.blockCheckTimer % 30 === 0) { 
+                if (this.isLineBlocked(transform.x, transform.y, nextWp.x, nextWp.y, engine)) {
+                    needsRecalc = true; // 장애물 발견 시 즉시 재탐색 예약
+                }
+            }
+        }
 
         if (needsRecalc) {
             state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
@@ -294,20 +311,17 @@ export default class Pathfinder {
         }
 
         if (state.path) {
-            // 🛑 탐색 실패 (길이 없거나 바다 건너편)
+            // 🛑 탐색 실패 처리
             if (state.path.length === 0) {
                 transform.vx = 0;
                 transform.vy = 0;
-                return -1; // 도달 불가 상태 반환
+                return -1;
             }
 
-            // 최종 목적지 거리 확인 (도착 판정)
+            // 도착 판정
             const dxEnd = targetPos.x - transform.x;
             const dyEnd = targetPos.y - transform.y;
-            const distSqEnd = dxEnd * dxEnd + dyEnd * dyEnd;
-            const radiusSq = targetRadius * targetRadius;
-
-            if (distSqEnd <= radiusSq) {
+            if (dxEnd * dxEnd + dyEnd * dyEnd <= targetRadius * targetRadius) {
                 transform.vx = 0;
                 transform.vy = 0;
                 state.path = null;
@@ -318,22 +332,14 @@ export default class Pathfinder {
                 const wp = state.path[state.pathIndex];
                 const dx = wp.x - transform.x;
                 const dy = wp.y - transform.y;
-                const distSq = dx * dx + dy * dy;
 
-                // 웨이포인트 통과 판정 (기본 8px)
-                if (distSq < 64) {
+                // 웨이포인트 통과 판정 (범위 확대: 12px)
+                if (dx * dx + dy * dy < 144) {
                     state.pathIndex++;
                 }
 
                 if (state.pathIndex < state.path.length) {
                     const targetWp = state.path[state.pathIndex];
-
-                    // 🚧 [Real-time Obstacle Detection] 다음 지점까지 막혔는지 실시간 체크
-                    if (this.isLineBlocked(transform.x, transform.y, targetWp.x, targetWp.y, engine)) {
-                        state.path = null; // 경로 무효화 -> 다음 프레임에 재탐색 유도
-                        return false;
-                    }
-
                     const nx = targetWp.x - transform.x;
                     const ny = targetWp.y - transform.y;
                     const d = Math.hypot(nx, ny);
@@ -345,7 +351,6 @@ export default class Pathfinder {
                 }
             }
         }
-
         return false;
     }
 

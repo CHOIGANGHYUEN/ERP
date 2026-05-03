@@ -94,11 +94,37 @@ export default class DeathProcessor extends System {
             }
         }
 
-        // 3. 📦 [Item Factory Integration] 사망 시 아이템 드랍
         const animal = entity.components.get('Animal');
         const resource = entity.components.get('Resource');
         const building = entity.components.get('Building');
-        
+
+        // 💥 [Visual Feedback] 사망 파티클 연출 고도화
+        const particleCount = animal ? 8 : 5;
+        let particleType = 'dust';
+        let particleColor = '#ffffff';
+
+        if (animal) {
+            particleColor = '#ff5252'; // Blood/Flesh
+        } else if (resource) {
+            const rType = resource.type;
+            if (rType.includes('tree')) particleColor = '#8d6e63'; // Wood
+            else if (rType.includes('rock') || rType.includes('ore')) particleColor = '#9e9e9e'; // Stone
+            else particleColor = '#4caf50'; // Leaf/Grass
+        } else if (building) {
+            particleColor = '#5d4037'; // Construction debris
+        }
+
+        for (let i = 0; i < particleCount; i++) {
+            this.engine.particleSystem.spawn(particleType, { 
+                x: transform.x + (Math.random() - 0.5) * 15,
+                y: transform.y + (Math.random() - 0.5) * 15,
+                color: particleColor,
+                size: 2 + Math.random() * 3,
+                velocity: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 }
+            });
+        }
+
+        // 3. 📦 [Item Factory Integration] 사망 시 아이템 드랍
         let dropType = null;
         let dropAmount = 1;
 
@@ -107,7 +133,7 @@ export default class DeathProcessor extends System {
             dropType = config.dropItemType || (animal.type === 'bee' ? null : 'meat');
             dropAmount = config.dropAmount || 1;
         } else if (resource) {
-            const config = this.engine.resourceBalance[resource.type] || {};
+            const config = this.engine.resourceConfig[resource.type] || {};
             dropType = config.dropItemType;
             dropAmount = config.dropAmount || 1;
         } else if (building) {

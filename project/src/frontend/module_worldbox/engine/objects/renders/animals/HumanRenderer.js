@@ -154,12 +154,22 @@ export const HumanRenderer = {
 
         // [팔] 특수 상태 오버라이드
         if (isChopping) {
-            rax = 1.0 + chopPhase * 1.5; ray = -4.0 + chopPhase * 8; 
-            lax = -2.5; lay = 2.0; 
+            // 🪓 도끼질: 큰 궤적의 휘두름 (0.4초 주기에 맞춘 파워 스윙)
+            const swing = Math.sin(chopPhase * Math.PI);
+            rax = 2.0 + swing * 8.0; 
+            ray = -10.0 + swing * 12.0; 
+            lax = -2.5 - swing * 2.0; lay = 2.0; 
+            ctx.rotate(swing * 0.15); // 몸체도 같이 숙임
         } else if (isBuilding) {
-            const hp = (Math.sin(t*5.0)+1)/2;
-            rax = 1.5; ray = -4.0 + hp * 7;
-            lax = -2.5; lay = 2.0;
+            // 🔨 망치질: 정교하고 빠른 반복 (톡톡톡 타격감)
+            const hammer = Math.abs(Math.sin(t * 12.0));
+            rax = 2.5; ray = -6.0 + hammer * 6.0;
+            lax = -3.0; lay = 1.0;
+        } else if (mode === 'farming') {
+            // 🌾 농사: 괭이질/물주기 모션 (부드러운 앞뒤 스윙)
+            const hoe = Math.sin(t * 4.0);
+            rax = 1.0 + hoe * 4.0; ray = -2.0 + Math.abs(hoe) * 3.0;
+            lax = -1.0; lay = 0;
         } else if (isEating || isForaging) {
             const eo = Math.abs(Math.sin(t*3.5));
             rax = 1.0; ray = -2.0 + eo * 2.5;
@@ -169,9 +179,11 @@ export const HumanRenderer = {
             rax = 2.0 - sh; ray = -3.0 - shb;
             lax = -4.5 + sh; lay = -3.0 + shb;
         } else if (isHunting) {
+            // 🏹 추격/사냥: 무기를 앞세운 돌진 자세
             const tp = (Math.sin(t*4.0)+1)/2;
-            rax = 2.0 + tp * 2.5; ray = -2.0;
+            rax = 4.0 + tp * 2.0; ray = -3.0;
             lax = -3.0; lay = -1.0;
+            ctx.rotate(0.1);
         } else if (isFleeing) {
             const fl = Math.sin(t*5.5);
             rax = 2.0 + fl * 1.5; ray = -1.5;

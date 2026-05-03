@@ -26,27 +26,27 @@ export default class EntityManager {
         return id;
     }
 
-    removeEntity(id) {
+    removeEntity(id, spatialHash = null) {
         const entity = this.entities.get(id);
         if (entity) {
+            // 🚀 [Synchronization] 공간 해시에서 즉시 제거 (유령 타겟 방지)
+            const sh = spatialHash || this.spatialHash;
+            if (sh) {
+                const transform = entity.components.get('Transform');
+                if (transform) {
+                    sh.remove(id, transform.x, transform.y);
+                }
+            }
+
             const building = entity.components.get('Building');
             if (building) {
                 console.warn(`🏢 Removing Building Entity! ID: ${id}, Type: ${building.type}`);
-                console.trace();
             }
             
             this.animalIds.delete(id);
             this.resourceIds.delete(id);
             this.buildingIds.delete(id);
             
-            // 🚀 [메모리 비우기] 재사용 전 데이터 초기화
-            for (const component of entity.components.values()) {
-                for (const key in component) {
-                    if (typeof component[key] === 'number') component[key] = 0;
-                    else if (typeof component[key] === 'string') component[key] = '';
-                    else component[key] = null;
-                }
-            }
             this.entities.delete(id); // 활성 맵에서는 제거
             this.entityPool.push(id); // 재활용 대기소로 이동
         }

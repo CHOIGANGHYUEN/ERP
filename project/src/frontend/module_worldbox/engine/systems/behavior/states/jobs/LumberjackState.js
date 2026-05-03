@@ -112,14 +112,47 @@ export default class LumberjackState extends BaseJobState {
         }
 
         jobCtrl.chopTimer = (jobCtrl.chopTimer || 0) + dt;
-        if (jobCtrl.chopTimer > 2.0) { // 2초 벌목
-            // 자원 획득 로직
-            const inv = entity.components.get('Inventory');
-            if (inv) inv.items['wood'] = (inv.items['wood'] || 0) + 5;
+        const chopInterval = 1.0; // 1초마다 도끼질
+
+        if (jobCtrl.chopTimer >= chopInterval) {
+            jobCtrl.chopTimer = 0;
             
-            // 나무 파괴
-            this.system.engine.entityManager.removeEntity(jobCtrl.targetId);
-            jobCtrl.jobState = 'SEARCHING';
+            const res = target.components.get('Resource');
+            const inv = entity.components.get('Inventory');
+            
+            if (res && inv) {
+                // 🪓 나무에서 5개씩 추출 (인벤토리에 추가 대신 바닥에 드랍)
+                const extracted = res.extract(5);
+                if (extracted > 0) {
+                    const tPos = target.components.get('Transform');
+                    const itemFactory = this.system.engine.factoryProvider.get('item');
+
+                    if (itemFactory && tPos) {
+                        itemFactory.spawnDrop(tPos.x, tPos.y, 'wood', extracted);
+                    }
+                    
+                    // 타격 파티클
+                    if (tPos) {
+                        this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
+                            x: tPos.x, y: tPos.y - 15, count: 4, type: 'EFFECT', color: '#8d6e63', speed: 2
+                        });
+                    }
+                }
+
+                // 나무가 다 고갈되었을 때만 삭제 및 다음 탐색
+                if (res.value <= 0) {
+                    this.system.engine.entityManager.removeEntity(jobCtrl.targetId);
+                    jobCtrl.targetId = null;
+                    jobCtrl.jobState = 'SEARCHING';
+                }
+                
+                // 인벤토리가 꽉 찼으면 창고로 가야 하지만, LumberjackState는 단순화된 버전이므로 
+                // 여기서는 나무 고갈 시에만 상태를 전환함.
+            } else {
+                // 컴포넌트가 없으면 안전하게 포기
+                jobCtrl.targetId = null;
+                jobCtrl.jobState = 'SEARCHING';
+            }
         }
     }
 

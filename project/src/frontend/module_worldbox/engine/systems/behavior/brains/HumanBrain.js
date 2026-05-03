@@ -44,12 +44,20 @@ export default class HumanBrain {
         if (state.mode === AnimalStates.EAT && stats.hunger < 90) return AnimalStates.EAT;
         if (state.mode === AnimalStates.FORAGE && state.targetId) return AnimalStates.FORAGE;
         if (state.mode === AnimalStates.SLEEP) return AnimalStates.SLEEP;
+        if (state.mode === AnimalStates.PICKUP && state.targetId) return AnimalStates.PICKUP;
 
-        // 🚀 Deposit(반납) 중이더라도 건설 자원이 있고 건설지가 있다면 건설로 전향할 수 있게 함
-        // (단, 인벤토리가 꽉 찼다면 반납 강제)
+        // 🚀 [Inventory Management] 주변에 떨어진 아이템 줍기 (최상위 우선순위 중 하나)
         const totalInInv = inventory ? inventory.getTotal() : 0;
         const isFull = inventory && totalInInv >= inventory.capacity;
         
+        if (!isFull) {
+            const pickupId = this._tryPickup(entity, state);
+            if (pickupId) {
+                state.targetId = pickupId;
+                return AnimalStates.PICKUP;
+            }
+        }
+
         if (state.mode === 'deposit' && !isFull) {
             // 건축가이거나 촌장인데 나무가 있다면 건설지로 가는 것이 더 효율적 (강제 반납 해제)
             const isWorker = civ?.jobType === 'architect' || civ?.jobType === 'chief';
@@ -164,5 +172,26 @@ export default class HumanBrain {
         }
 
         return AnimalStates.WANDER;
+    }
+
+    /**
+     * 주변에 떨어진 아이템이 있는지 탐색합니다.
+     */
+    _tryPickup(entity, state) {
+        const transform = entity.components.get('Transform');
+        if (!transform) return null;
+
+        const searchRadius = 150; // 줍기는 비교적 좁은 범위에서 수행
+        return this.em.findNearestEntityWithComponent(
+            transform.x, 
+            transform.y, 
+            searchRadius,
+            (ent) => {
+                const item = ent.components.get('DroppedItem');
+                // 아직 아무도 찜하지 않았거나 내가 찜한 것만 주움
+                return item && (!item.claimedBy || item.claimedBy === entity.id);
+            },
+            this.spatialHash
+        );
     }
 }

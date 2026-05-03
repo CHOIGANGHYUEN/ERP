@@ -223,12 +223,16 @@ export default class TargetManager {
     _findBestBlueprint(pos, criteria, requesterId) {
         let minDistSq = Infinity;
         let bestId = null;
+        const blueprints = this.blackboard.blueprints || [];
 
-        for (const [id, entity] of this.entityManager.entities) {
+        for (const bp of blueprints) {
+            const id = bp.id;
+            const entity = this.entityManager.entities.get(id);
+            if (!entity) continue;
+
             const structure = entity.components.get('Structure');
             const transform = entity.components.get('Transform');
             
-            // 🏗️ Structure 컴포넌트의 isBlueprint 플래그로 판단
             if (structure && structure.isBlueprint && transform && !structure.isComplete) {
                 // 🛑 [Blacklist Check] 도달 불가능 타겟 제외
                 const aiState = this.entityManager.entities.get(requesterId)?.components.get('AIState');

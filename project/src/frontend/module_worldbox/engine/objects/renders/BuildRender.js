@@ -4,88 +4,107 @@
  * 마을 건물의 도트 그래픽 렌더링을 담당합니다.
  */
 export const BuildRender = {
-    render(ctx, type, t, v, structure, time, engine) {
+    render(ctx, type, t, v, structure, time, engine, overlayOnly = false) {
         ctx.save();
         
+        // 🧱 [Construction VFX] 건설 중인 경우 먼지 파티클 효과
+        if (structure && !structure.isComplete && !overlayOnly) {
+            this.renderConstructionDust(ctx, t, v, time);
+        }
+
         // 완성된 건물은 기본적으로 불투명하게 처리 (청사진 투명도 해제)
-        if (structure && structure.isComplete) {
+        if (structure && structure.isComplete && !overlayOnly) {
             ctx.globalAlpha = 1.0;
         }
 
         switch (type) {
             case 'bonfire':
             case 'camp': 
-                this.drawBonfire(ctx, t, v, time);
+                this.drawBonfire(ctx, t, v, time, overlayOnly);
                 break;
             case 'storage':
             case 'warehouse':
-                this.drawStorage(ctx, t, v, time);
+                if (!overlayOnly) this.drawStorage(ctx, t, v, time);
                 break;
             case 'house':
             case 'tent':
-                this.drawHouse(ctx, t, v, time);
+                this.drawHouse(ctx, t, v, time, overlayOnly);
                 break;
             case 'farm':
-                this.drawFarm(ctx, t, v, time);
+                this.drawFarm(ctx, t, v, time, overlayOnly);
                 break;
             case 'fence':
-                this.drawFence(ctx, t, v, time, engine);
+                if (!overlayOnly) this.drawFence(ctx, t, v, time, engine);
                 break;
             case 'fence_gate':
-                this.drawGate(ctx, t, v, time, engine);
+                if (!overlayOnly) this.drawGate(ctx, t, v, time, engine);
                 break;
             default:
-                if (type !== 'default') {
-                    console.warn(`[BuildRender] Unknown building type: ${type}`);
-                }
-                this.drawDefaultBuilding(ctx, t, v);
+                if (!overlayOnly) this.drawDefaultBuilding(ctx, t, v);
         }
 
         // 🏗️ [Blueprint Visualization] 건설 중인 경우 정보 표시
-        if (structure && !structure.isComplete) {
+        if (structure && !structure.isComplete && !overlayOnly) {
             this.renderBlueprintInfo(ctx, t, structure);
         }
         
         ctx.restore();
     },
 
+    /** 🧱 건설 중 먼지 파티클 효과 */
+    renderConstructionDust(ctx, t, v, time) {
+        const s = v.size || 30;
+        const animTime = time * 0.005;
+        ctx.fillStyle = 'rgba(210, 180, 140, 0.4)';
+        for (let i = 0; i < 4; i++) {
+            const pTime = (animTime + i * 0.7) % 2;
+            const px = Math.sin(pTime * 5) * (s * 0.6);
+            const py = - (pTime * s * 0.4);
+            const pSize = 3 + pTime * 5;
+            ctx.beginPath();
+            ctx.arc(px, py, pSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    },
+
     /** 🔥 모닥불 렌더링 (일렁이는 효과 강화) */
-    drawBonfire(ctx, t, v, time = 0) {
+    drawBonfire(ctx, t, v, time = 0, overlayOnly = false) {
         const s = v.size || 25;
-        // 🚀 [Timing Fix] performance.now() 대응을 위해 0.001 곱하기
         const animTime = time * 0.006;
         
-        // 0. 바닥 빛무리 (Glow Effect)
-        const glowSize = s * (1.2 + Math.sin(animTime * 1.5) * 0.1);
-        const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-        glowGrad.addColorStop(0, 'rgba(255, 152, 0, 0.3)');
-        glowGrad.addColorStop(1, 'rgba(255, 152, 0, 0)');
-        ctx.fillStyle = glowGrad;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, glowSize, glowSize * 0.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 1. 바닥 돌 (Base Rocks)
-        ctx.fillStyle = '#424242';
-        ctx.strokeStyle = '#212121';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * Math.PI * 2;
-            const rx = Math.cos(angle) * (s * 0.45);
-            const ry = Math.sin(angle) * (s * 0.25);
+        if (!overlayOnly) {
+            // 0. 바닥 빛무리 (Glow Effect)
+            const glowSize = s * (1.2 + Math.sin(animTime * 1.5) * 0.1);
+            const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
+            glowGrad.addColorStop(0, 'rgba(255, 152, 0, 0.3)');
+            glowGrad.addColorStop(1, 'rgba(255, 152, 0, 0)');
+            ctx.fillStyle = glowGrad;
             ctx.beginPath();
-            ctx.rect(rx - 3, ry - 3, 6, 6);
+            ctx.ellipse(0, 0, glowSize, glowSize * 0.5, 0, 0, Math.PI * 2);
             ctx.fill();
-            ctx.stroke();
+
+            // 1. 바닥 돌 (Base Rocks)
+            ctx.fillStyle = '#424242';
+            ctx.strokeStyle = '#212121';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const rx = Math.cos(angle) * (s * 0.45);
+                const ry = Math.sin(angle) * (s * 0.25);
+                ctx.beginPath();
+                ctx.rect(rx - 3, ry - 3, 6, 6);
+                ctx.fill();
+                ctx.stroke();
+            }
+            
+            // 2. 장작 (Crossed Logs)
+            ctx.fillStyle = '#5d4037';
+            ctx.strokeStyle = '#3e2723';
+            ctx.fillRect(-s * 0.35, -2, s * 0.7, 5);
+            ctx.strokeRect(-s * 0.35, -2, s * 0.7, 5);
+            ctx.fillRect(-2, -s * 0.35, 5, s * 0.7);
+            ctx.strokeRect(-2, -s * 0.35, 5, s * 0.7);
         }
-        
-        // 2. 장작 (Crossed Logs)
-        ctx.fillStyle = '#5d4037';
-        ctx.strokeStyle = '#3e2723';
-        ctx.fillRect(-s * 0.35, -2, s * 0.7, 5);
-        ctx.strokeRect(-s * 0.35, -2, s * 0.7, 5);
-        ctx.fillRect(-2, -s * 0.35, 5, s * 0.7);
-        ctx.strokeRect(-2, -s * 0.35, 5, s * 0.7);
         
         // 3. 불꽃 (Multi-layered Dynamic Flames)
         const flameBaseH = s * 0.8;
@@ -161,23 +180,44 @@ export const BuildRender = {
     },
 
     /** 🏠 집 렌더링 (연기 효과 추가) */
-    drawHouse(ctx, t, v, time = 0) {
+    drawHouse(ctx, t, v, time = 0, overlayOnly = false) {
         const s = v.size || 42;
         const animTime = time * 0.006;
         
-        // 1. 벽면
-        ctx.fillStyle = '#efebe9';
-        ctx.strokeStyle = '#d7ccc8';
-        ctx.lineWidth = 1.5;
-        ctx.fillRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
-        ctx.strokeRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
+        if (!overlayOnly) {
+            // 1. 벽면
+            ctx.fillStyle = '#efebe9';
+            ctx.strokeStyle = '#d7ccc8';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
+            ctx.strokeRect(-s * 0.4, -s * 0.5, s * 0.8, s * 0.5);
+            
+            // 2. 굴뚝
+            const cx = s * 0.25, cy = -s * 0.8;
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(cx - 3, cy, 6, s * 0.3);
+
+            // 3. 지붕
+            ctx.fillStyle = '#b71c1c';
+            ctx.strokeStyle = '#7f0000';
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.5, -s * 0.5);
+            ctx.lineTo(0, -s * 0.9);
+            ctx.lineTo(s * 0.5, -s * 0.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 4. 문 & 창문
+            ctx.fillStyle = '#3e2723';
+            ctx.fillRect(-s * 0.1, -s * 0.3, s * 0.2, s * 0.3);
+            ctx.fillStyle = '#81d4fa';
+            ctx.fillRect(-s * 0.3, -s * 0.35, 6, 6);
+            ctx.fillRect(s * 0.2, -s * 0.35, 6, 6);
+        }
         
-        // 2. 굴뚝 및 연기
+        // 연기 파티클 (Dynamic Overlay)
         const cx = s * 0.25, cy = -s * 0.8;
-        ctx.fillStyle = '#5d4037';
-        ctx.fillRect(cx - 3, cy, 6, s * 0.3);
-        
-        // 연기 파티클
         ctx.fillStyle = 'rgba(150, 150, 150, 0.4)';
         for(let i=0; i<3; i++) {
             const pTime = (animTime * 0.3 + i * 0.5) % 2;
@@ -188,41 +228,25 @@ export const BuildRender = {
             ctx.arc(px, py, pSize, 0, Math.PI * 2);
             ctx.fill();
         }
-
-        // 3. 지붕
-        ctx.fillStyle = '#b71c1c';
-        ctx.strokeStyle = '#7f0000';
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.5, -s * 0.5);
-        ctx.lineTo(0, -s * 0.9);
-        ctx.lineTo(s * 0.5, -s * 0.5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // 4. 문 & 창문
-        ctx.fillStyle = '#3e2723';
-        ctx.fillRect(-s * 0.1, -s * 0.3, s * 0.2, s * 0.3);
-        ctx.fillStyle = '#81d4fa';
-        ctx.fillRect(-s * 0.3, -s * 0.35, 6, 6);
-        ctx.fillRect(s * 0.2, -s * 0.35, 6, 6);
     },
 
     /** 🌾 농장 렌더링 */
-    drawFarm(ctx, t, v, time = 0) {
+    drawFarm(ctx, t, v, time = 0, overlayOnly = false) {
         const s = v.size || 50;
         const animTime = time * 0.006;
         
-        // 1. 흙 바닥
-        ctx.fillStyle = '#5d4037';
-        ctx.fillRect(-s * 0.5, -s * 0.4, s, s * 0.8);
+        if (!overlayOnly) {
+            // 1. 흙 바닥
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(-s * 0.5, -s * 0.4, s, s * 0.8);
+            
+            // 2. 울타리
+            ctx.strokeStyle = '#3e2723';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-s * 0.52, -s * 0.42, s * 1.04, s * 0.84);
+        }
         
-        // 2. 울타리
-        ctx.strokeStyle = '#3e2723';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-s * 0.52, -s * 0.42, s * 1.04, s * 0.84);
-        
-        // 3. 작물 (일렁이는 효과)
+        // 3. 작물 (일렁이는 효과 - Dynamic Overlay)
         for(let i=0; i<16; i++) {
             const row = Math.floor(i / 4);
             const col = i % 4;

@@ -15,10 +15,18 @@ export const ResourceRenders = {
     },
 
     /** 🌲 나무 렌더링 (도트 레이어 방식) */
-    drawTree(ctx, t, v, size, isWithered, time, wind) {
+    drawTree(ctx, t, v, size, isWithered, time, wind, entity) {
         const trunkW = Math.max(1, Math.floor(size / 4));
         const trunkH = isWithered ? Math.floor(size * 0.7) : size;
         
+        // 🤕 [Hit Shake] 타격 시 흔들림 적용
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            const shake = Math.sin(time * 0.05) * 2.5 * (health.hitTimer / 0.2);
+            ctx.translate(shake, 0);
+            ctx.rotate(shake * 0.02);
+        }
+
         ctx.fillStyle = isWithered ? '#3e2723' : '#4e342e';
         ctx.fillRect(-Math.floor(trunkW / 2), -trunkH, trunkW, trunkH);
         
@@ -91,11 +99,17 @@ export const ResourceRenders = {
     },
 
     /** 🌿 풀 렌더링 */
-    drawGrass(ctx, t, v, isWithered, time, wind) {
+    drawGrass(ctx, t, v, isWithered, time, wind, entity) {
         const s = 0.8;
         const color = isWithered ? '#8d6e63' : v.color || '#4caf50';
         const darkColor = this.adjustColor(color, -40);
         const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
+
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.08) * 1.5, 0);
+        }
 
         for (let i = 0; i < 3; i++) {
             const phase = i * 2 + t.x * 0.1;
@@ -112,11 +126,17 @@ export const ResourceRenders = {
     },
 
     /** 🌸 꽃 렌더링 */
-    drawFlower(ctx, t, v, isWithered, time, wind) {
+    drawFlower(ctx, t, v, isWithered, time, wind, entity) {
         const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
         const osc = Math.sin(time * 0.008 + t.x * 0.2) * 1.0;
         const sway = isWithered ? 0 : (wv.x * 6 + osc);
         
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.08) * 1.5, 0);
+        }
+
         ctx.fillStyle = isWithered ? '#5d4037' : '#2e7d32';
         ctx.fillRect(-0.2, -1.5, 0.5, 1.5);
         ctx.fillRect(sway * 0.2 - 0.2, -3.5, 0.5, 2.0);
@@ -136,8 +156,14 @@ export const ResourceRenders = {
     },
 
     /** 🍄 버섯 렌더링 */
-    drawMushroom(ctx, t, v, isWithered) {
+    drawMushroom(ctx, t, v, isWithered, entity, time) {
         const s = 1.0;
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.08) * 1.2, 0);
+        }
+
         ctx.fillStyle = isWithered ? '#d7ccc8' : '#ffffff'; 
         ctx.fillRect(-s, 0, s*2, s*1.5);
         ctx.fillStyle = isWithered ? '#8d6e63' : (v.color || '#d32f2f');
@@ -151,8 +177,14 @@ export const ResourceRenders = {
     },
 
     /** 🌵 선인장 렌더링 */
-    drawCactus(ctx, t, v, isWithered) {
+    drawCactus(ctx, t, v, isWithered, entity, time) {
         const s = 1.2;
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.08) * 1.5, 0);
+        }
+
         ctx.fillStyle = isWithered ? '#795548' : '#2e7d32';
         ctx.fillRect(-s, -5*s, s*2, 5*s);
         if (!isWithered) {
@@ -166,8 +198,14 @@ export const ResourceRenders = {
     },
 
     /** 💎 광석/바위 렌더링 */
-    drawRock(ctx, t, v, isWithered) {
+    drawRock(ctx, t, v, isWithered, entity, time) {
         const s = 1.5;
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.1) * 2.0, 0);
+        }
+
         const color = v.color || '#90a4ae';
         const dark = this.adjustColor(color, -30);
         const light = this.adjustColor(color, 30);
@@ -214,8 +252,14 @@ export const ResourceRenders = {
     },
 
     /** 🍓 베리 덤불 렌더링 */
-    drawBerries(ctx, t, v, isWithered) {
+    drawBerries(ctx, t, v, isWithered, entity, time) {
         const s = 1.0;
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.08) * 1.5, 0);
+        }
+
         ctx.fillStyle = isWithered ? '#5d4037' : '#1b5e20';
         ctx.fillRect(-2*s, -2*s, 4*s, 2*s);
         ctx.fillRect(-1.5*s, -3*s, 3*s, s);

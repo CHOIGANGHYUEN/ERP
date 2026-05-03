@@ -11,52 +11,52 @@ import { MushroomRenderer } from './nature/MushroomRenderer.js';
  * 환경 자원 및 식생 렌더링을 총괄하는 중앙 모듈입니다.
  */
 export const NatureRenders = {
-    render(ctx, type, t, v, time, wind) {
+    render(ctx, type, t, v, time, wind, entity) {
         const isWithered = v.isWithered || false;
 
         switch (true) {
             case type.includes('tree'):
-                TreeRenderer.draw(ctx, t, v, v.size || 15, isWithered, time, wind);
+                TreeRenderer.draw(ctx, t, v, v.size || 15, isWithered, time, wind, entity);
                 break;
             case (type === 'grass' || type === 'pasture_grass' || type === 'weeds'):
-                GrassRenderer.draw(ctx, t, v, isWithered, time, wind);
+                GrassRenderer.draw(ctx, t, v, isWithered, time, wind, entity);
                 break;
             case (type === 'flower' || type === 'wildflowers' || type === 'medicinal_herb' || type === 'snow_flower'):
-                FlowerRenderer.draw(ctx, t, v, isWithered, time, wind);
+                FlowerRenderer.draw(ctx, t, v, isWithered, time, wind, entity);
                 break;
             case (type === 'poop'):
-                PoopRenderer.draw(ctx, t, v, wind);
+                PoopRenderer.draw(ctx, t, v, wind, entity);
                 break;
             case (type === 'lotus'):
-                WaterPlantRenderer.drawLotus(ctx, t, v, isWithered, wind);
+                WaterPlantRenderer.drawLotus(ctx, t, v, isWithered, wind, entity);
                 break;
             case (['seaweed', 'deep_sea_kelp', 'waterweed', 'luminous_moss'].includes(type)):
-                WaterPlantRenderer.drawKelp(ctx, t, v, time, isWithered, wind);
+                WaterPlantRenderer.drawKelp(ctx, t, v, time, isWithered, wind, entity);
                 break;
             case (type === 'reed'):
-                WaterPlantRenderer.drawReed(ctx, t, v, isWithered, time, wind);
+                WaterPlantRenderer.drawReed(ctx, t, v, isWithered, time, wind, entity);
                 break;
             case (['rock', 'ore', 'gems', 'stone', 'coal', 'iron_ore', 'gold_ore', 'silver_ore', 'surface_copper', 'obsidian', 'flint', 'salt', 'sandstone', 'deep_stone', 'manganese_nodule', 'mud', 'sand', 'clay', 'river_gravel'].includes(type)):
-                RockRenderer.draw(ctx, t, v);
+                RockRenderer.draw(ctx, t, v, isWithered, entity, time);
                 break;
             case (type === 'mushroom' || type === 'wild_mushroom'):
-                MushroomRenderer.draw(ctx, t, v, isWithered, time, wind);
+                MushroomRenderer.draw(ctx, t, v, isWithered, time, wind, entity);
                 break;
             case (type === 'cactus'):
-                this.drawCactus(ctx, t, v, isWithered, wind, time);
+                this.drawCactus(ctx, t, v, isWithered, wind, time, entity);
                 break;
             case (type === 'bones'):
-                this.drawBones(ctx, t, v);
+                this.drawBones(ctx, t, v, entity);
                 break;
             case (type === 'meat' || type === 'milk'):
-                this.drawFallback(ctx, t, v);
+                this.drawFallback(ctx, t, v, entity);
                 break;
             default:
-                this.drawFallback(ctx, t, v);
+                this.drawFallback(ctx, t, v, entity);
         }
     },
 
-    drawCactus(ctx, t, v, isWithered, wind, time) {
+    drawCactus(ctx, t, v, isWithered, wind, time, entity) {
         const s = 1.2;
         const color = isWithered ? '#795548' : '#2e7d32';
         const dark = '#1b5e20';
@@ -65,6 +65,12 @@ export const NatureRenders = {
         // 🌬️ 바람 영향
         const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
         const swayX = isWithered ? 0 : wv.x * 2;
+
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        if (health && health.hitTimer > 0) {
+            ctx.translate(Math.sin(time * 0.08) * 1.5, 0);
+        }
 
         // 1. 메인 몸통
         ctx.fillStyle = color;
