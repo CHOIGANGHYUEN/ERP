@@ -68,27 +68,26 @@ export default class GatherState extends State {
             state.chopTimer = (state.chopTimer || 0) + dt;
             const chopInterval = state.chopInterval || 0.4;
 
-                // ⚔️ [Action Loop] 실제 채집(타격) 로직 실행
-                const extracted = gatherer.performGathering(
-                    chopInterval,
-                    target,
-                    state.targetId,
-                    em,
-                    this.system.eventBus,
-                    transform
-                );
+            // ⚔️ [Action Loop] 실제 채집(타격) 로직 실행
+            const extracted = gatherer.performGathering(
+                dt, // 델타 타임 전달
+                target,
+                state.targetId,
+                em,
+                this.system.eventBus,
+                transform
+            );
 
-                const targetHealth = target.components.get('Health');
-                
-                // 자식 클래스에서 오버라이드할 콜백 (애니메이션 연출 등)
-                this.onGatherSuccess(entity, extracted, res);
+            const targetHealth = target.components.get('Health');
+            
+            // 자식 클래스에서 오버라이드할 콜백 (애니메이션 연출 등)
+            this.onGatherSuccess(entity, extracted, res);
 
-                // 🛑 [Termination] 체력이 0이 되었거나 타겟이 삭제되었다면 루프 종료
-                if ((targetHealth && targetHealth.currentHp <= 0) || res.value <= 0) {
-                    state.targetId = null;
-                    state.isChopping = false;
-                    return 'idle';
-                }
+            // 🛑 [Termination] 체력이 0이 되었거나 타겟이 삭제되었다면 루프 종료
+            if ((targetHealth && targetHealth.currentHp <= 0) || res.value <= 0) {
+                state.targetId = null;
+                state.isChopping = false;
+                return 'idle';
             }
         } else {
             // 사거리 밖이면 이동

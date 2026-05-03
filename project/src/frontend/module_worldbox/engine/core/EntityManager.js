@@ -67,7 +67,7 @@ export default class EntityManager {
             entity.components.set(name, component);
             
             if (name === 'Animal') this.animalIds.add(entityId);
-            if (name === 'Resource') this.resourceIds.add(entityId);
+            if (name === 'Resource' || name === 'DroppedItem') this.resourceIds.add(entityId);
             if (name === 'Building') this.buildingIds.add(entityId);
         }
     }

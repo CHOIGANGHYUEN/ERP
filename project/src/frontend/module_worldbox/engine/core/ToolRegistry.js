@@ -109,6 +109,18 @@ export class SingleSpawnTool extends Tool {
     }
 }
 
+export class ItemSpawnTool extends Tool {
+    constructor(config) {
+        super(config);
+        this.itemType = config.itemType;
+        this.amount = config.amount || 1;
+    }
+    onMouseDown(worldPos) {
+        // ItemFactory를 직접 호출하는 대신 명령을 발송 (Command Pattern)
+        return { type: 'SPAWN_DROPPED_ITEM', payload: { type: this.itemType, x: worldPos.x, y: worldPos.y, amount: this.amount } };
+    }
+}
+
 export class BuildTool extends Tool {
     constructor(config) {
         super(config);
@@ -203,9 +215,16 @@ export const DefaultTools = (engine) => [
     new BrushTool({ id: 'spawn_salt', name: 'Salt', icon: '🧂', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'salt', color: '#ffffff', count: 10, strategy: new SprayBrush(engine), brushSize: 20 }),
     new BrushTool({ id: 'spawn_mud', name: 'Mud', icon: '🥣', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'mud', color: '#5d4037', count: 12, strategy: new SprayBrush(engine), brushSize: 20 }),
     new BrushTool({ id: 'spawn_sand_res', name: 'Sand', icon: '⏳', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'sand', color: '#ffe082', count: 15, strategy: new SprayBrush(engine), brushSize: 25 }),
-    new BrushTool({ id: 'spawn_meat', name: 'Meat', icon: '🥩', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'meat', color: '#ef5350', count: 5, strategy: new SprayBrush(engine), brushSize: 15 }),
-    new BrushTool({ id: 'spawn_milk', name: 'Milk', icon: '🥛', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'milk', color: '#ffffff', count: 5, strategy: new SprayBrush(engine), brushSize: 15 }),
-    new BrushTool({ id: 'spawn_poop', name: 'Poop', icon: '💩', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'poop', color: '#795548', count: 5, strategy: new SprayBrush(engine), brushSize: 15 }),
+
+    // 📦 Items (Collectible - 수집 대상)
+    new ItemSpawnTool({ id: 'item_wood', name: 'Wood Log', icon: '🪵', category: 'Items', itemType: 'wood', amount: 5 }),
+    new ItemSpawnTool({ id: 'item_stone', name: 'Stone Piece', icon: '🪨', category: 'Items', itemType: 'stone', amount: 3 }),
+    new ItemSpawnTool({ id: 'item_meat', name: 'Raw Meat', icon: '🥩', category: 'Items', itemType: 'meat', amount: 1 }),
+    new ItemSpawnTool({ id: 'item_fruit', name: 'Fruit', icon: '🍎', category: 'Items', itemType: 'fruit', amount: 2 }),
+    new ItemSpawnTool({ id: 'item_grass', name: 'Grass Item', icon: '🌾', category: 'Items', itemType: 'grass', amount: 3 }),
+    new ItemSpawnTool({ id: 'item_milk', name: 'Milk Jar', icon: '🥛', category: 'Items', itemType: 'milk', amount: 1 }),
+    new ItemSpawnTool({ id: 'item_poop', name: 'Fertilizer', icon: '💩', category: 'Items', itemType: 'poop', amount: 1 }),
+    new ItemSpawnTool({ id: 'item_gold', name: 'Gold Ingot', icon: '🟡', category: 'Items', itemType: 'gold', amount: 1 }),
 
     // 🐑 Life (Creatures)
     new SpawnTool({ id: 'spawn_sheep', name: 'Sheep', icon: '🐑', category: 'Life', spawnMethod: 'spawnSheep' }),

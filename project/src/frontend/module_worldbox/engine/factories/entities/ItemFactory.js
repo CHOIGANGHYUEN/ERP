@@ -33,13 +33,14 @@ export default class ItemFactory extends IEntityFactory {
         return id;
     }
 
-    /**
-     * 특정 위치에 아이템을 드랍합니다. 주변에 같은 종류의 아이템이 있으면 병합합니다.
-     */
     spawnDrop(x, y, itemType, amount) {
+        // 🚀 [Optimization] 드랍 시 약간의 랜덤 위치 오프셋 추가 (겹침 방지)
+        const jX = x + (Math.random() - 0.5) * 6;
+        const jY = y + (Math.random() - 0.5) * 6;
+
         // 1. 🔍 주변 아이템 검색 (병합 최적화)
         if (this.engine.spatialHash) {
-            const nearbyIds = this.engine.spatialHash.query(x, y, 15); // 15px 반경
+            const nearbyIds = this.engine.spatialHash.query(jX, jY, 15); // 15px 반경
             for (const id of nearbyIds) {
                 const ent = this.engine.entityManager.entities.get(id);
                 const drop = ent?.components.get('DroppedItem');
@@ -47,7 +48,6 @@ export default class ItemFactory extends IEntityFactory {
                     // 병합 성공!
                     drop.merge(amount);
                     
-                    // 시각적 피드백 (크기 갱신 등은 렌더러가 담당하거나 비주얼 컴포넌트 수정)
                     const visual = ent.components.get('Visual');
                     if (visual) visual.size = 8 + Math.min(drop.amount * 0.5, 8);
                     
@@ -56,7 +56,7 @@ export default class ItemFactory extends IEntityFactory {
             }
         }
 
-        // 2. 🆕 병합할 대상이 없으면 새로 생성
-        return this.create(itemType, x, y, { amount });
+        // 2. 🆕 병합할 대상이 없으면 새로 생성 (편차가 적용된 위치에)
+        return this.create(itemType, jX, jY, { amount });
     }
 }

@@ -10,6 +10,7 @@ import ConsumptionSystem from '../systems/economy/ConsumptionSystem.js';
 import KinematicSystem from '../systems/motion/KinematicSystem.js';
 import MetabolismSystem from '../systems/lifecycle/MetabolismSystem.js';
 import ReproductionSystem from '../systems/lifecycle/ReproductionSystem.js';
+import HealthSystem from '../systems/lifecycle/HealthSystem.js';
 import SpriteManager from '../systems/render/SpriteManager.js';
 import EnvironmentSystem from '../systems/lifecycle/EnvironmentSystem.js';
 import SpawnerSystem from '../systems/economy/SpawnerSystem.js';
@@ -54,6 +55,7 @@ export default class SystemManager {
         this.consumption = new ConsumptionSystem(em, eb, engine);
         this.metabolism = new MetabolismSystem(em, eb, tg);
         this.reproduction = new ReproductionSystem(em, eb, engine);
+        this.health = new HealthSystem(em, eb);
         this.spawner = new SpawnerSystem(em, eb, engine);
         
         // 🌾 Economy & Lifecycle Expansion
@@ -96,6 +98,7 @@ export default class SystemManager {
         this.consumption.update(dt);
         this.metabolism.update(dt, time);
         this.reproduction.update(dt, time);
+        this.health.update(dt, time);
         this.spawner.update(dt, time);
         this.farming.update(dt, time);
         this.livestock.update(dt, time);

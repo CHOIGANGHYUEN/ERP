@@ -74,17 +74,10 @@ export default class EntityRenderer {
                 this.renderResource(entity, ctx, time, wind);
             }
 
-            // 🏥 [Health Integration] HP바 및 피격 효과 후처리
+            // 🏥 [Health Integration] HP바 표시
             const health = entity.components.get('Health');
-            if (health) {
-                // 1. HP바 (체력이 닳았을 때만)
-                if (health.currentHp < health.maxHp && health.currentHp > 0) {
-                    this.renderHealthBar(ctx, health, t, v.size || 10);
-                }
-                // 2. 피격 흔들림 업데이트 (시간 기반)
-                if (health.hitTimer > 0) {
-                    health.update(0.016); // 대략적인 dt
-                }
+            if (health && health.currentHp < health.maxHp && health.currentHp > 0) {
+                this.renderHealthBar(ctx, health, t, v.size || 10);
             }
         }
 
@@ -285,12 +278,15 @@ export default class EntityRenderer {
         const t = entity.components.get('Transform');
         
         ctx.save();
-        // 🤕 [Hit Shake] 피격 시 흔들림 효과
+        // 🤕 [Hit Feedback] 피격 시 흔들림 및 번쩍임 효과
         if (health && health.hitTimer > 0) {
             const shake = Math.sin(time * 0.05) * 2;
             ctx.translate(shake, 0);
-            // ⚪ [White Tint] 피격 시 번쩍임 효과 (필터 지원 브라우저용)
-            ctx.filter = 'brightness(1.8) contrast(1.2)';
+            
+            // ⚪ [Optimization] filter 대신 globalAlpha 조절로 번쩍임 유도 (성능 이점)
+            if (Math.floor(time / 50) % 2 === 0) {
+                ctx.globalAlpha = 0.7; // 피격 시 깜빡임
+            }
         }
 
         AnimalRenders.drawAnimalBody(ctx, entity, time);

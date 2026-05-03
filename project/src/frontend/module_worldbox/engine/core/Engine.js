@@ -372,6 +372,12 @@ export default class Engine {
             case 'PLACE_BLUEPRINT':
                 this.factoryProvider.spawn('building', command.payload.type, command.payload.x, command.payload.y, { isBlueprint: true });
                 break;
+            case 'SPAWN_DROPPED_ITEM':
+                const itemFactory = this.factoryProvider.getFactory('item');
+                if (itemFactory) {
+                    itemFactory.spawnDrop(command.payload.x, command.payload.y, command.payload.type, command.payload.amount);
+                }
+                break;
         }
         if (this.isRunning) return;
         this.isRunning = true;

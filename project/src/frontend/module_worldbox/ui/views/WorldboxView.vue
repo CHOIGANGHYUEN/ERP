@@ -132,6 +132,7 @@ const toolCategories = [
   { name: 'Landscape', icon: '🌍' },
   { name: 'Nature', icon: '🌱' },
   { name: 'Resources', icon: '⛏️' },
+  { name: 'Items', icon: '📦' },
   { name: 'Life', icon: '🐑' },
   { name: 'Interaction', icon: '🤝' },
   { name: 'View', icon: '👁️' }
