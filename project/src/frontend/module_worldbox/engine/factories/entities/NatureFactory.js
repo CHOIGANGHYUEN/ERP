@@ -16,9 +16,9 @@ export default class NatureFactory extends IEntityFactory {
 
         builder.withTransform(x, y);
 
-        if (type.includes('tree')) {
+        if (type.includes('tree') || type === 'oak' || type === 'mahogany') {
             this._setupTree(builder, type, quality, options);
-        } else if (type.includes('grass') || type.includes('flower') || type === 'berry' || type === 'shrub') {
+        } else if (type.includes('grass') || type.includes('flower') || type.includes('berry') || type.includes('shrub') || type.includes('herb') || type.includes('moss') || type.includes('kelp') || type.includes('seaweed') || ['lotus', 'reed', 'vine', 'cactus', 'weeds', 'mushroom'].includes(type)) {
             this._setupPlant(builder, type, quality);
         } else {
             builder.withVisual({ type: type, color: '#2e7d32' });
@@ -49,44 +49,25 @@ export default class NatureFactory extends IEntityFactory {
 
         const visual = {
             type: 'tree',
-            size: initialSize,
+            size: targetSize, // 🌲 [Stability] 타이머 기반 생장 대신 즉시 성목으로 생성
             quality: quality,
             subtype: options.subtype || 'normal'
         };
 
-        const resource = new ResourceNode(type.includes('tree') ? type : 'tree', initialAmount);
+        const resource = new ResourceNode(type, targetAmount);
 
         builder.withVisual(visual).addComponent('Resource', resource);
-
-        if (!isGrown) {
-            // 묘목이 성목으로 자라나는 점진적 생장 로직
-            const growthInterval = setInterval(() => {
-                const em = this.engine.entityManager;
-                // 엔티티가 파괴(벌목)되면 생장 중지
-                if (!em.entities.has(builder.id)) {
-                    clearInterval(growthInterval);
-                    return;
-                }
-
-                visual.size += 1.0;
-                resource.value += 10;
-
-                // 목표치에 도달하면 완전한 성목으로 판정 후 타이머 종료
-                if (visual.size >= targetSize) {
-                    visual.size = targetSize;
-                    resource.value = targetAmount;
-                    clearInterval(growthInterval);
-                }
-            }, 6000); // 6초마다 생장
-        }
     }
 
     _setupPlant(builder, type, quality) {
         const amount = Math.floor(quality * 20) + 10;
+        const isGrassLike = type.includes('grass') || type.includes('pasture') || type.includes('reed') || type.includes('vine') || type.includes('weeds') || type.includes('moss');
+        const isBerryLike = type.includes('berry') || type.includes('fruit') || type === 'cactus';
+
         builder.withVisual({
-            type: type.includes('grass') ? 'grass' : (type === 'berry' ? 'berry' : 'flower'),
+            type: isGrassLike ? 'grass' : (isBerryLike ? 'berry' : 'flower'),
             quality: quality,
-            color: type.includes('grass') ? '#4caf50' : (type === 'berry' ? '#e91e63' : '#ff4081')
+            color: isGrassLike ? '#4caf50' : (isBerryLike ? '#e91e63' : '#ff4081')
         }).addComponent('Resource', new ResourceNode(type, amount));
     }
 }

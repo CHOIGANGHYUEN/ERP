@@ -17,7 +17,6 @@ export default class RenderCoordinator extends System {
         this.updateResolution(engine.width, engine.height);
         
         this.offCtx = this.offscreenCanvas.getContext('2d', { alpha: false });
-        console.log("RenderCoordinator: Capped Offscreen Canvas Initialized", this.offscreenCanvas.width, this.offscreenCanvas.height);
     }
 
     updateResolution(w, h) {

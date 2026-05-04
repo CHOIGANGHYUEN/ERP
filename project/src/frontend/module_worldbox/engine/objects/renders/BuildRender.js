@@ -7,64 +7,76 @@ export const BuildRender = {
     render(ctx, type, t, v, structure, time, engine, overlayOnly = false) {
         ctx.save();
 
-        // 🧱 [Construction VFX] 건설 중인 경우 먼지 파티클 효과
-        if (structure && !structure.isComplete && !overlayOnly) {
-            this.renderConstructionDust(ctx, t, v, time);
-            ctx.globalAlpha = 0.6; // [Fix] 청사진 시인성 확보를 위해 알파값 상향
-        }
-
-        // 완성된 건물은 기본적으로 불투명하게 처리
-        if (structure && structure.isComplete && !overlayOnly) {
-            ctx.globalAlpha = 1.0;
-        }
-
-        // 💡 [버그 수정 1] type이 'building'으로 넘어올 경우 바닥에 회색 사각형(그림자/기초)만 그리는 문제 해결
         const actualType = v?.subtype || type;
+        const isComplete = !structure || structure.isComplete;
+        
+        // 💡 [Fix] 청사진 상태(건설 중)일 때도 본체(집 모양 등)를 반투명하게 그리도록 강제
+        if (!isComplete && !overlayOnly) {
+            this.renderConstructionDust(ctx, t, v, time);
+            
+            ctx.save();
+            ctx.globalAlpha = 0.6; // 청사진 알파
+            this._drawBuildingBody(ctx, t, v, actualType, time, false);
+            ctx.restore();
+            
+            this.renderBlueprintInfo(ctx, t, structure);
+            ctx.restore();
+            return;
+        }
 
-        // 💡 [버그 수정 2] 엔진이 청사진의 Base 렌더링을 스킵할 경우를 대비해 본체를 강제 렌더링
-        const effectiveOverlay = overlayOnly && (!structure || structure.isComplete);
+        // 완성된 건물의 오버레이(연기 등)만 그리는 경우
+        if (overlayOnly) {
+            this._drawBuildingBody(ctx, t, v, actualType, time, true);
+            ctx.restore();
+            return;
+        }
 
-        switch (actualType) {
+        // 일반 렌더링 (완성된 건물)
+        this._drawBuildingBody(ctx, t, v, actualType, time, false);
+        
+        ctx.restore();
+    },
+
+    /** 🏗️ 실제 건물 모양을 그리는 내부 메서드 (중복 제거) */
+    _drawBuildingBody(ctx, t, v, type, time, overlayOnly) {
+        switch (type) {
             case 'bonfire':
             case 'camp':
-                this.drawBonfire(ctx, t, v, time, effectiveOverlay);
+                this.drawBonfire(ctx, t, v, time, overlayOnly);
                 break;
             case 'storage':
             case 'warehouse':
-                if (!effectiveOverlay) this.drawStorage(ctx, t, v, time);
+                this.drawStorage(ctx, t, v, time, overlayOnly);
                 break;
             case 'house':
             case 'tent':
-                this.drawHouse(ctx, t, v, time, effectiveOverlay);
+                this.drawHouse(ctx, t, v, time, overlayOnly);
                 break;
             case 'farm':
-                this.drawFarm(ctx, t, v, time, effectiveOverlay);
+                this.drawFarm(ctx, t, v, time, overlayOnly);
                 break;
             case 'well':
-                this.drawWell(ctx, t, v, time, effectiveOverlay);
+                this.drawWell(ctx, t, v, time, overlayOnly);
+                break;
+            case 'watchtower':
+                this.drawWatchtower(ctx, t, v, time, overlayOnly);
                 break;
             case 'blacksmith':
-                this.drawBlacksmith(ctx, t, v, time, effectiveOverlay);
+                this.drawBlacksmith(ctx, t, v, time, overlayOnly);
                 break;
             case 'temple':
-                this.drawTemple(ctx, t, v, time, effectiveOverlay);
+                this.drawTemple(ctx, t, v, time, overlayOnly);
                 break;
             case 'fence':
-                if (!effectiveOverlay) this.drawFence(ctx, t, v, time, engine);
+                if (!overlayOnly) this.drawFence(ctx, t, v, time);
                 break;
             case 'fence_gate':
-                if (!effectiveOverlay) this.drawGate(ctx, t, v, time, engine);
+                if (!overlayOnly) this.drawGate(ctx, t, v, time);
                 break;
             default:
-                if (!effectiveOverlay) this.drawDefaultBuilding(ctx, t, v);
+                if (!overlayOnly) this.drawDefaultBuilding(ctx, t, v);
+                break;
         }
-
-        // 🏗️ [Blueprint Visualization] 건설 중인 경우 정보 표시
-        if (structure && !structure.isComplete && !overlayOnly) {
-            this.renderBlueprintInfo(ctx, t, structure);
-        }
-
-        ctx.restore();
     },
 
     /** 🧱 건설 중 먼지 파티클 효과 */
@@ -442,10 +454,12 @@ export const BuildRender = {
 
         // 3. 진행도 바 채우기
         ctx.fillStyle = '#4caf50';
-        ctx.fillRect(bx, by, barW * progress, barH);
+        ctx.fillRect(bx, by, Math.max(2, barW * progress), barH); 
 
-        // 4. 테두리
         // 4. 테두리 (가이드라인)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(bx, by, barW, barH);
         ctx.strokeStyle = '#00e5ff'; // 사이버틱한 청사진 느낌
         ctx.setLineDash([5, 3]); // 점선 효과
         ctx.lineWidth = 1;

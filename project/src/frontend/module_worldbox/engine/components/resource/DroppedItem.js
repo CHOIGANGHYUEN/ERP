@@ -5,13 +5,16 @@ import Component from '../../core/Component.js';
  * 월드 바닥에 드랍된 아이템의 데이터와 수명을 관리합니다.
  */
 export default class DroppedItem extends Component {
-    constructor(itemType, amount = 1, decaySeconds = 600) {
+    constructor(itemType, amount = 1, decaySeconds = 600, displayName = '') {
         super('DroppedItem');
-        this.itemType = itemType; // 'wood', 'meat', 'grass', 'stone' 등
+        this.itemType = itemType; 
         this.amount = amount;
         
+        // 🏷️ [Cohesion Boost] 아이템 스스로 자신의 이름을 기억함
+        this.displayName = displayName || itemType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        
         // ⏳ 자연 소멸(Decay) 로직
-        this.decayTimer = decaySeconds; // 기본 10분 (600초)
+        this.decayTimer = decaySeconds;
         this.maxDecayTime = decaySeconds;
     }
 

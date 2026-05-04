@@ -1,5 +1,6 @@
 import System from '../../core/System.js';
 import Pathfinder from '../../utils/Pathfinder.js';
+import { GlobalLogger } from '../../utils/Logger.js';
 
 export default class ConstructionSystem extends System {
     constructor(entityManager, eventBus, engine) {
@@ -9,9 +10,12 @@ export default class ConstructionSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
-        
-        // 🏗️ 건설 로직 최적화: 건축가 역할을 수행 중인 인간들만 필터링
-        for (const [id, entity] of em.entities) {
+
+        // 🏗️ 건설 로직 최적화: 전체 엔티티가 아닌 '인류' 개체들만 타겟팅
+        for (const id of em.humanIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+            
             const transform = entity.components.get('Transform');
             const state = entity.components.get('AIState');
 
@@ -20,30 +24,27 @@ export default class ConstructionSystem extends System {
                 if (!targetId) continue; // BuildState가 타겟을 요청 중일 수 있음 (강제 IDLE 방지)
 
                 const target = em.entities.get(targetId);
-                if (!target) {
-                    // 타겟이 정말로 사라졌을 때만 초기화 (BuildState가 다음 프레임에 감지할 것)
-                    state.targetId = null;
-                    continue;
-                }
+                const structure = target?.components.get('Structure');
 
-                const targetPos = target.components.get('Transform');
-                const structure = target.components.get('Structure');
-                
-                if (!structure || structure.isComplete) {
+                // 💡 [Logic Fix] 타겟이 진짜로 사라졌거나 완공되었을 때만 중단
+                if (!target || !structure || structure.isComplete) {
                     state.mode = 'idle';
                     state.targetId = null;
                     continue;
                 }
 
-                // 거리 계산 (최적화: sqrt 대신 distSq 사용)
+                const targetPos = target.components.get('Transform');
+                if (!targetPos) continue;
+
+                // 거리 계산 (최적화: 40px로 범위 상향하여 안정성 확보)
                 const dx = targetPos.x - transform.x;
                 const dy = targetPos.y - transform.y;
                 const distSq = dx * dx + dy * dy;
 
-                if (distSq <= 625) { 
+                if (distSq <= 1600) {
                     transform.vx *= 0.5;
                     transform.vy *= 0.5;
-                    
+
                     const inventory = entity.components.get('Inventory');
                     if (!inventory) continue;
 
@@ -61,43 +62,58 @@ export default class ConstructionSystem extends System {
                     } else if (type === 'watchtower') {
                         requiredType = 'stone';
                     } else if (type === 'warehouse' || type === 'storage') {
-                        if (prog > 70) requiredType = 'iron_ore';
+                        requiredType = 'wood'; // 🪵 사용자의 요청에 따라 창고는 나무로만 건설
                     }
 
                     const hasResource = (inventory.items && inventory.items[requiredType]) > 0;
 
                     if (hasResource) {
                         const builderComp = entity.components.get('Builder');
-                        const buildSpeed = builderComp ? (builderComp.buildSpeed || 10) : 10;
-                        const progressAmount = buildSpeed * dt;
-                        
-                        if (!isNaN(progressAmount)) {
-                            structure.progress += progressAmount;
-                            
-                            // 자원 소모 (진행도에 비례)
-                            const consumption = progressAmount / 10;
-                            inventory.items[requiredType] = Math.max(0, inventory.items[requiredType] - consumption);
-                            
-                            // 🔨 건설 애니메이션 효과
-                            if (Math.random() < 0.1) {
-                                this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
-                                    x: transform.x, y: transform.y, count: 2, type: 'DUST', color: '#d7ccc8', speed: 1
-                                });
-                            }
+                        const buildSpeed = builderComp ? (builderComp.buildSpeed || 15) : 15;
+                        const progressPerTick = buildSpeed * dt;
 
-                            if (structure.progress >= structure.maxProgress) {
-                                this.finalizeBuilding(target, targetId, structure);
+                        // 🚀 [Resource-Linked Construction] 
+                        // 진행도 기여분을 누적하고, 10 단위가 될 때마다 자원 1개를 소모하며 실제 건물 진행도를 올립니다.
+                        state._buildProgressCounter = (state._buildProgressCounter || 0) + progressPerTick;
+                        
+                        if (state._buildProgressCounter >= 10) {
+                            const currentRes = inventory.items[requiredType] || 0;
+                            if (currentRes > 0) {
+                                inventory.items[requiredType] -= 1;
+                                structure.progress = Math.min(structure.maxProgress, (structure.progress || 0) + 10);
+                                state._buildProgressCounter -= 10;
+
+                                // 🔨 건설 애니메이션 효과 (자원 소모 시 강하게)
+                                this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
+                                    x: targetPos.x, y: targetPos.y, count: 5, type: 'DUST', color: '#d7ccc8', speed: 1.2
+                                });
+
+                                if (structure.progress >= structure.maxProgress) {
+                                    this.finalizeBuilding(target, targetId, structure);
+                                }
                             }
                         }
                     } else {
-                        // 자원이 없으면 대기 (시각적 알림 - 필요한 자원 아이콘 표시)
-                        if (Math.random() < 0.005) {
+                        // 자원이 없으면 대기 (시각적 알림)
+                        if (Math.random() < 0.01) {
                             const icons = { 'wood': '🪵', 'stone': '🪨', 'iron_ore': '⛓️' };
-                            this.eventBus.emit('SHOW_SPEECH_BUBBLE', { 
-                                entityId: id, 
-                                text: `${icons[requiredType] || '❓'}?`, 
-                                duration: 1500 
+                            this.eventBus.emit('SHOW_SPEECH_BUBBLE', {
+                                entityId: id,
+                                text: `${icons[requiredType] || '❓'}?`,
+                                duration: 1500
                             });
+                        }
+                        
+                        // 💡 [Logic Fix] 자원이 없으면 IDLE이나 무한 대기 상태에 빠지지 않도록 자원 채집으로 전환
+                        state.mode = 'gather_wood'; 
+                        state.targetId = null;
+                        state.targetResourceType = requiredType;
+                        state.isTargetRequested = false;
+                        
+                        // 인벤토리가 완전히 비었는지 확인
+                        const totalInInv = inventory ? Object.values(inventory.items || {}).reduce((a,b)=>a+b, 0) : 0;
+                        if (totalInInv > 0) {
+                             // 다른 자원이라도 있다면? 그래도 필요 자원을 캐러가야 함
                         }
                     }
                 }
@@ -111,11 +127,13 @@ export default class ConstructionSystem extends System {
             structure.progress = structure.maxProgress;
             structure.isComplete = true;
             structure.isBlueprint = false;
-            
+
             const visual = target.components.get('Visual');
             if (visual) {
                 visual.alpha = 1.0;
             }
+
+            GlobalLogger.success(`Building Complete: ${structure.type.toUpperCase()} at (${Math.floor(target.components.get('Transform')?.x || 0)}, ${Math.floor(target.components.get('Transform')?.y || 0)})`);
 
             const targetPos = target.components.get('Transform');
             if (targetPos) {
@@ -139,7 +157,7 @@ export default class ConstructionSystem extends System {
                 for (const id of this.entityManager.animalIds) {
                     const entity = this.entityManager.entities.get(id);
                     if (!entity) continue;
-                    
+
                     const state = entity.components.get('AIState');
                     if (state && state.targetId === targetId) {
                         state.mode = 'idle';
@@ -160,19 +178,19 @@ export default class ConstructionSystem extends System {
                                 dy = Math.sin(angle);
                                 d = 1;
                             }
-                            
+
                             // 📏 건물의 반지름보다 약간 먼 곳으로 안전하게 이동
-                            transform.x = targetPos.x + (dx / d) * buildingRadius; 
+                            transform.x = targetPos.x + (dx / d) * buildingRadius;
                             transform.y = targetPos.y + (dy / d) * buildingRadius;
-                            
+
                             transform.vx = 0;
                             transform.vy = 0;
                         }
                     }
                 }
 
-                console.log(`✅ Construction Complete: ${structure.type} (ID: ${targetId})`);
-                
+                GlobalLogger.success(`✅ Construction Complete: ${structure.type.toUpperCase()}`);
+
                 this.eventBus.emit('BUILDING_COMPLETE', { id: targetId, type: structure.type });
                 this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: targetPos.x, y: targetPos.y, count: 30, type: 'EFFECT', color: '#ffeb3b', speed: 8

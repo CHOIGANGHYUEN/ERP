@@ -52,6 +52,17 @@ export default class EntityRenderer {
         }
 
         renderList.sort((a, b) => a.y - b.y);
+ 
+        // 🔒 [Debug] AIPATH 모드일 때 블랙리스트(도달 불가) 타겟 수집
+        const blacklistedIds = new Set();
+        if (this.engine.viewFlags.debugAI) {
+            for (const ent of entityManager.entities.values()) {
+                const ai = ent.components.get('AIState');
+                if (ai && ai.unreachableTargets) {
+                    for (const tid of ai.unreachableTargets) blacklistedIds.add(tid);
+                }
+            }
+        }
 
         // 1. 🌑 [Unified Shadows] 모든 개체의 그림자를 먼저 렌더링 (Z-Order 최하단)
         for (const item of renderList) {
@@ -90,6 +101,27 @@ export default class EntityRenderer {
             const health = entity.components.get('Health');
             if (health && health.currentHp < health.maxHp && health.currentHp > 0) {
                 this.renderHealthBar(ctx, health, t, v.size || 10);
+            }
+
+            // 🔒 [Debug] 블랙리스트 타겟 표시
+            if (this.engine.viewFlags.debugAI && blacklistedIds.has(id)) {
+                ctx.save();
+                ctx.font = '12px serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('🔒', t.x, t.y - (v.size || 10) - 15);
+                ctx.restore();
+            }
+
+            // 💕 [Reproduction] 번식 중 하트 아이콘 표시
+            const social = entity.components.get('Social');
+            if (social && social.isBreeding) {
+                ctx.save();
+                ctx.font = '14px serif';
+                ctx.textAlign = 'center';
+                // 하트가 위아래로 둥실거리는 효과
+                const floatY = Math.sin(time * 0.005) * 5;
+                ctx.fillText('❤️', t.x, t.y - (v.size || 10) - 20 + floatY);
+                ctx.restore();
             }
         }
 
@@ -162,9 +194,9 @@ export default class EntityRenderer {
         ctx.globalAlpha = v.alpha !== undefined ? v.alpha : 1.0;
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
         
-        // 기존 중복 그림자 제거 (renderShadow에서 통합 처리)
+        const type = v.type;
 
-        if (v.type === 'tree') {
+        if (type === 'tree') {
             const res = entity.components.get('Resource');
             if (res && res.isFalling) {
                 const FALL_DURATION = 0.8;
@@ -177,16 +209,16 @@ export default class EntityRenderer {
             }
             ctx.restore(); 
             this.drawTreeCached(ctx, t, v, entity, time, wind);
-        } else if (v.type === 'item') {
-            const itemType = v.itemType || 'wood';
-            // ctx.restore()를 호출하기 전에 렌더링 수행 (위치 유지를 위해)
-            ItemRenderer.render(ctx, itemType, v, time, entity);
-            ctx.restore(); 
-        } else if (v.type === 'building') {
+            return; // Already restored
+        } else if (type === 'item') {
+            const itemType = v.itemType;
+            // 🎯 [Connection Fix] 데이터 연결을 위해 engine 인스턴스 전달
+            ItemRenderer.render(ctx, itemType || 'unknown', v, time, entity, this.engine);
+        } else if (type === 'building') {
             const structure = entity.components.get('Structure');
-            // ctx.restore()를 호출하기 전에 렌더링 수행 (위치 유지를 위해)
-            this.drawBuildingCached(ctx, t, v, structure, time);
+            // 건물의 경우 내부에서 좌표를 다시 잡으므로 restore 후 호출
             ctx.restore(); 
+            this.drawBuildingCached(ctx, t, v, structure, time);
             
             const storage = entity.components.get('Storage');
             if (storage && structure && structure.isComplete) {
@@ -195,11 +227,12 @@ export default class EntityRenderer {
                 this.renderStorageResources(ctx, storage, v.size || 40);
                 ctx.restore();
             }
+            return; // Already restored
         } else {
-            // 🤕 [Hit Shake] 및 개별 연출은 NatureRenders 및 하위 렌더러에서 통합 처리
-            NatureRenders.render(ctx, v.type, t, v, time, wind, entity);
-            ctx.restore();
+            NatureRenders.render(ctx, type, t, v, time, wind, entity);
         }
+
+        ctx.restore();
     }
 
     renderStorageResources(ctx, storage, size) {
@@ -293,23 +326,25 @@ export default class EntityRenderer {
     drawBuildingCached(ctx, t, v, structure, time) {
         const size = v.size || 30;
         const type = v.subtype || 'default';
-        const isComplete = structure ? structure.isComplete : true;
-        const progress = structure ? Math.floor(structure.progress / (structure.maxProgress / 4)) : 4; // 4단계 진행도 캐싱
         
-        // 🏗️ 건설 중이면 캐싱 우회 (애니메이션 정보가 많으므로) 또는 짧은 키 사용
+        // 1. 캐시 키 생성 (청사진인 경우 진행도 포함)
+        const progress = structure ? Math.floor(structure.progress / (structure.maxProgress / 4)) : 4;
+        const isComplete = !structure || structure.isComplete;
         const key = `build_${type}_${size}_${isComplete ? 'full' : 'p' + progress}`;
         
+        // 2. 캐시된 스프라이트 가져오기 또는 생성
         const sprite = this.getSprite(key, (sCtx) => {
-            BuildRender.render(sCtx, type, { x: 0, y: 0 }, v, structure, 0, this.engine);
+            // 💡 [Fix] 청사진이어도 본체(Body)를 그리도록 overlayOnly=false (기본값)로 호출
+            BuildRender.render(sCtx, type, { x: 0, y: 0 }, v, structure, 0, this.engine, false);
         }, size * 2.5, size * 2.5);
 
         ctx.save();
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
         
-        // 🔥 애니메이션 파트 (모닥불, 연기 등은 캐시된 이미지 위에 덧그림)
-        ctx.drawImage(sprite, -sprite.width / 2, -sprite.height * 0.8);
+        // 3. 스프라이트 그리기
+        ctx.drawImage(sprite, -sprite.width / 2, -(sprite.height - 5));
         
-        // 실시간 애니메이션 오버레이 (불꽃, 연기 등)
+        // 4. 동적 오버레이 및 건설 정보 (캐시하지 않음)
         if (isComplete && (type === 'bonfire' || type === 'house' || type === 'farm')) {
             BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true); // true for overlayOnly
         } else if (!isComplete) {

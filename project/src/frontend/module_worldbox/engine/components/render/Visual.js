@@ -3,11 +3,16 @@ import Component from '../../core/Component.js';
 export default class Visual extends Component {
     constructor(options = {}) {
         super('Visual');
+        
+        // 🚀 [Critical Fix] 전달받은 모든 옵션을 인스턴스에 복사 (itemType 등 누락 방지)
+        Object.assign(this, options);
+
         this.type = options.type || 'fallback';
-        this.subtype = options.subtype || ''; // 🏠 Added subtype support for buildings/resources
+        this.subtype = options.subtype || ''; 
         this.color = options.color || '#ffffff';
         this.alpha = options.alpha !== undefined ? options.alpha : 1.0;
         this.size = options.size || 1.0;
+        this.itemType = options.itemType || ''; // 명시적으로도 할당
         
         // 🎞️ 애니메이션 제어 데이터
         this.currentFrame = 0;

@@ -85,6 +85,8 @@ export default class PickupState extends State {
                     x: transform.x, y: transform.y, count: 3, type: 'DUST', color: '#fff'
                 });
             }
+            // 🔓 [Blacklist Clear] 성공적으로 작업을 완료했으므로 기존의 도달 불가 목록 초기화
+            if (state.unreachableTargets) state.unreachableTargets.clear();
 
             return AnimalStates.IDLE;
         } else {
@@ -93,6 +95,8 @@ export default class PickupState extends State {
             const speed = (stats?.speed || 40);
 
             if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine) === -1) {
+                if (!state.unreachableTargets) state.unreachableTargets = new Set();
+                state.unreachableTargets.add(state.targetId);
                 state.targetId = null;
                 return AnimalStates.IDLE;
             }

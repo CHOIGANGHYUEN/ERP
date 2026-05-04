@@ -4,6 +4,7 @@
       <div class="title-wrap">
         <span class="icon">{{ getIcon(entity.type, entity.subType) }}</span>
         <h3>{{ entity.name }}</h3>
+        <span v-if="entity.isChief" class="chief-tag" title="Village Chief">👑</span>
       </div>
       <button class="close-btn" @click="closePanel">✕</button>
     </div>
@@ -34,6 +35,17 @@
         <span class="job-badge" :style="{ background: jobMeta.bg, color: jobMeta.color }">
           {{ jobMeta.emoji }} {{ jobMeta.label }}
         </span>
+      </div>
+
+      <!-- 📋 현재 마을 과업 (Task) -->
+      <div class="status-row task-row" v-if="entity.currentTask">
+        <span class="label">Duty:</span>
+        <div class="task-info">
+          <span class="task-type">{{ getTaskLabel(entity.currentTask.type) }}</span>
+          <span class="task-priority" :class="getPriorityClass(entity.currentTask.priority)">
+            P{{ entity.currentTask.priority }}
+          </span>
+        </div>
       </div>
       <div class="status-row" v-if="entity.rank !== undefined">
         <span class="label">Hierarchy Rank:</span>
@@ -184,6 +196,22 @@ const jobMeta = computed(() => {
   };
 });
 
+const getTaskLabel = (type) => {
+  const labels = {
+    'build': '🏗️ Construction',
+    'gather_wood': '🪵 Woodcutting',
+    'gather_food': '🍎 Gathering',
+    'hunt': '🏹 Hunting'
+  };
+  return labels[type] || type;
+};
+
+const getPriorityClass = (p) => {
+  if (p >= 80) return 'high';
+  if (p >= 40) return 'medium';
+  return 'low';
+};
+
 const getIcon = (type, subType) => {
   if (subType === 'beehive') return '🍯';
   if (subType === 'fruit') return '🍎';
@@ -262,12 +290,44 @@ const getItemEmoji = (type) => {
 .panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 10px; }
 .title-wrap { display: flex; align-items: center; gap: 8px; }
 .title-wrap h3 { margin: 0; font-size: 1.1rem; color: #fff; }
+.chief-tag {
+  font-size: 1.1rem;
+  filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.5));
+  animation: float 2s ease-in-out infinite;
+}
 .icon { font-size: 1.2rem; }
 .close-btn { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
 .close-btn:hover { color: #fff; }
 
 .panel-body { display: flex; flex-direction: column; gap: 8px; }
 .status-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; }
+.task-row {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border-left: 3px solid #4fc3f7;
+}
+.task-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.task-type {
+  font-weight: bold;
+  color: #fff;
+  font-size: 0.8rem;
+}
+.task-priority {
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 800;
+}
+.task-priority.high { background: #ef5350; color: #fff; }
+.task-priority.medium { background: #ffa726; color: #fff; }
+.task-priority.low { background: #66bb6a; color: #fff; }
+
 .label { color: #aaa; width: 80px; }
 .value { font-weight: bold; }
 .value-sm { font-size: 0.75rem; color: #ccc; min-width: 45px; text-align: right; }
@@ -437,5 +497,10 @@ const getItemEmoji = (type) => {
   0% { opacity: 0.4; }
   50% { opacity: 1; }
   100% { opacity: 0.4; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }
 </style>

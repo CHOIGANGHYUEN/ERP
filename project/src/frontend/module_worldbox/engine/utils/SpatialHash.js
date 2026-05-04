@@ -31,18 +31,21 @@ export default class SpatialHash {
      * 엔티티를 등록합니다.
      */
     insert(entityId, x, y, isStatic = false) {
+        // 🛡️ [Stability] 유효하지 않은 좌표 차단 (NaN, Infinity 등)
+        if (!isFinite(x) || !isFinite(y)) return;
+
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
-        // 🚀 [Expert Optimization] 문자열 키 대신 정수 키(Int32) 사용으로 가비지 생성 원천 차단
+        
+        // 🚀 [Expert Optimization] 문자열 키 대신 정수 키(Int32) 사용
         const key = (cellY << 16) | cellX;
-
         const targetCells = isStatic ? this.staticCells : this.dynamicCells;
 
         if (!targetCells[key]) {
             targetCells[key] = [];
         }
         
-        // 중복 삽입 방지 (성능 및 메모리 안정성 확보)
+        // 중복 삽입 방지 (성능을 위해 includes 체크 수행)
         if (!targetCells[key].includes(entityId)) {
             targetCells[key].push(entityId);
         }
@@ -80,7 +83,10 @@ export default class SpatialHash {
      * 정적/동적 영역을 모두 탐색하여 인접 엔티티를 반환합니다.
      */
     query(x, y, radius = 100) {
-        const cellRadius = Math.ceil(radius / this.cellSize);
+        let cellRadius = Math.ceil(radius / this.cellSize);
+        if (isNaN(cellRadius)) cellRadius = 1;
+        cellRadius = Math.min(cellRadius, 20); // 🛡️ 최대 20격자(약 2000px)로 탐색 제한
+
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
         const foundIds = [];

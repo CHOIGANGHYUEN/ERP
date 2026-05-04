@@ -11,7 +11,21 @@ export default class GathererRole extends BaseRole {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
         const inventory = entity.components.get('Inventory');
-        if (!state || !transform) return null;
+        const civ = entity.components.get('Civilization');
+        const vs = this.engine.systemManager?.villageSystem;
+        if (!state || !transform || !civ || !vs) return null;
+
+        const village = vs.getVillage(civ.villageId);
+        if (!village) return null;
+
+        // 📋 [Task System] 할일 목록에서 작업 수주 (줍기 우선)
+        let task = this.claimTask(entity, village, 'pickup_food');
+        if (!task) task = this.claimTask(entity, village, 'gather_food');
+
+        if (!task) {
+            state.targetId = null;
+            return null;
+        }
 
         // 1. 인벤토리가 꽉 찼으면 창고로 배달
         if (inventory && inventory.getTotal() >= inventory.capacity) return 'deposit';
@@ -22,32 +36,44 @@ export default class GathererRole extends BaseRole {
             state.targetId = null;
         }
 
-        // 3. 주변 식물 탐색 (FoodSensor 대신 Claim을 완벽히 존중하는 수동 탐색 로직 적용)
-        const condition = (ent) => {
-            const res = ent.components.get('Resource');
-            if (!res || !res.edible || res.value <= 0) return false;
-
-            // 🚫 도달 불가(블랙리스트) 필터링
+        // 🍎 [Priority 1] 주변에 드롭된 식량(Dropped Food/Fruit)이 있는지 먼저 확인
+        const droppedFoodCondition = (ent) => {
+            const item = ent.components.get('DroppedItem');
+            if (!item || !['food', 'fruit', 'meat', 'berry'].includes(item.itemType)) return false;
+            if (item.claimedBy && item.claimedBy !== entity.id) return false;
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
-
-            // 🔒 찜(Claim) 필터링: 이미 다른 개체가 캐고 있다면 무시
-            if (res.claimedBy && res.claimedBy !== entity.id) {
-                const claimer = this.em.entities.get(res.claimedBy);
-                if (claimer && claimer.components.get('AIState')?.targetId === ent.id) return false;
-                res.claimedBy = null; // 독점권 해제
-            }
             return true;
         };
 
-        const nearestId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, 500, condition, this.engine.spatialHash
+        const nearestDroppedId = this.em.findNearestEntityWithComponent(
+            transform.x, transform.y, 400, droppedFoodCondition, this.engine.spatialHash
         );
 
-        if (nearestId !== null) {
-            state.targetId = nearestId;
-            const targetEnt = this.em.entities.get(nearestId);
+        if (nearestDroppedId !== null) {
+            state.targetId = nearestDroppedId;
+            const itemComp = this.em.entities.get(nearestDroppedId)?.components.get('DroppedItem');
+            if (itemComp) itemComp.claimedBy = entity.id;
+            return 'pickup';
+        }
+
+        // 🧺 [Priority 2] 주변 식물 탐색
+        const plantCondition = (ent) => {
+            const res = ent.components.get('Resource');
+            if (!res || !res.edible || res.value <= 0) return false;
+            if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
+            if (res.claimedBy && res.claimedBy !== entity.id) return false;
+            return true;
+        };
+
+        const nearestPlantId = this.em.findNearestEntityWithComponent(
+            transform.x, transform.y, 1000, plantCondition, this.engine.spatialHash
+        );
+
+        if (nearestPlantId !== null) {
+            state.targetId = nearestPlantId;
+            const targetEnt = this.em.entities.get(nearestPlantId);
             const targetRes = targetEnt.components.get('Resource');
-            if (targetRes) targetRes.claimedBy = entity.id; // 내가 찜함
+            if (targetRes) targetRes.claimedBy = entity.id; 
             return 'gather_plant';
         }
 

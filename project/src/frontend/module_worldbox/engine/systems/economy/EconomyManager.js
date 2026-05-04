@@ -138,7 +138,8 @@ export default class EconomyManager {
             status: 'PENDING'
         };
         this.transportTasks.push(task);
-        console.log(`🚚 Transport Task Created: ${resourceType} x${amount} from ${sourceId} to ${destId}`);
+        // [Optimization] Logistics log removed to reduce console noise. 
+        // Can be moved to GlobalLogger if user wants to monitor trade specifically.
     }
 
     /**

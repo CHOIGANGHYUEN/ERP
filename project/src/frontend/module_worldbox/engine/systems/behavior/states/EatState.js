@@ -1,4 +1,5 @@
 import State from './State.js';
+import { GlobalLogger } from '../../../utils/Logger.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 
 /**
@@ -49,7 +50,9 @@ export default class EatState extends State {
         }
 
         // 4. 섭취 루프
-        if (droppedItem || storage) {
+        const resource = target.components.get('Resource');
+
+        if (droppedItem || storage || resource) {
             state.timer = (state.timer || 0) + dt;
             const eatInterval = 0.5; // 0.5초마다 1개씩 섭취
 
@@ -72,21 +75,19 @@ export default class EatState extends State {
                         const config = this.system.engine.resourceConfig?.[itemType] || {};
                         nutrition = Number(config.nutrition) || 10;
                         
-                        console.log(`🍴 [EatTick] Entity ${entityId} consumed 1 ${itemType}. Remaining: ${droppedItem.amount}`);
+                        GlobalLogger.info(`Entity ${entityId} consumed 1 ${itemType}. (Hunger: ${Math.floor(stats.hunger)})`);
 
                         if (droppedItem.amount <= 0) {
-                            console.log(`🗑️ [EatAction] Item ${state.targetId} exhausted. Removing.`);
                             this.system.entityManager.removeEntity(state.targetId);
                             state.targetId = null;
                         }
                     } else {
-                        console.warn(`🍴 [EatAction] Item ${state.targetId} has invalid amount or exhausted: ${droppedItem.amount}`);
                         this.system.entityManager.removeEntity(state.targetId);
                         state.targetId = null;
                         return AnimalStates.IDLE;
                     }
                 } else if (storage) {
-                    // 창고 자원 소모 (인간용) - 다양한 식량 자원 지원
+                    // 창고 자원 소모 (인간용)
                     const foodTypes = ['food', 'fruit', 'berry', 'meat', 'wheat'];
                     let foundType = null;
                     
@@ -102,45 +103,50 @@ export default class EatState extends State {
                         itemType = foundType;
                         success = true;
                         
-                        // 영양가 계산
                         const config = this.system.engine.resourceConfig?.[itemType] || {};
                         nutrition = Number(config.nutrition) || 15;
+                    }
+                } else if (resource) {
+                    // 🌿 살아있는 자원(식물 등) 직접 섭취
+                    if (resource.value > 0) {
+                        resource.value -= 1;
+                        itemType = resource.type || 'plant';
+                        success = true;
                         
-                        console.log(`🏠 [EatTick] Entity ${entityId} ate ${itemType} from storage. Remaining: ${storage.items[itemType]}`);
+                        // 영양가 (식물은 보통 낮음)
+                        nutrition = resource.nutrition || 5;
+
+                        // Tick-by-tick log removed for performance and noise reduction
+
+                        if (resource.value <= 0) {
+                            this.system.entityManager.removeEntity(state.targetId);
+                            state.targetId = null;
+                        }
                     }
                 }
 
                 if (success) {
-                    // 🍖 허기 회복
                     const oldHunger = stats.hunger;
                     stats.hunger = Math.min(stats.maxHunger || 100, stats.hunger + nutrition);
-                    
-                    // 💩 배설물 포인트 축적 (MetabolismSystem과 이름 통일: storedFertility)
                     stats.storedFertility = Math.min(stats.maxWaste || 100, (stats.storedFertility || 0) + nutrition * 0.5);
                     
-                    console.log(`✅ [EatSuccess] Entity ${entityId} ate ${itemType}. Hunger: ${oldHunger.toFixed(1)} -> ${stats.hunger.toFixed(1)} (+${nutrition})`);
-
-                    // 시각 효과 파티클
                     if (this.system.eventBus && transform) {
                         this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                             x: transform.x, y: transform.y - 5, count: 2, type: 'DUST', color: '#fff'
                         });
                     }
 
-                    // 충분히 배부르면 종료
                     if (stats.hunger >= (stats.maxHunger || 100) * 0.98) {
-                        console.log(`😋 [EatState] Entity ${entityId} is FULL.`);
                         state.targetId = null;
                         return AnimalStates.IDLE;
                     }
                 } else {
-                    console.log(`🚫 [EatState] Nothing to consume at target ${state.targetId}.`);
                     state.targetId = null;
                     return AnimalStates.IDLE;
                 }
             }
         } else {
-            console.warn(`⚠️ [EatState] Target ${state.targetId} is neither DroppedItem nor Storage.`);
+            console.warn(`⚠️ [EatState] Target ${state.targetId} is missing edible components.`);
             state.targetId = null;
             return AnimalStates.IDLE;
         }

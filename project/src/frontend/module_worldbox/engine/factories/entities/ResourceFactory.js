@@ -27,8 +27,8 @@ export default class ResourceFactory extends IEntityFactory {
                        .addComponent('Resource', new ResourceNode('meat', 50));
                 break;
             case 'stone':
-            case 'iron_ore':
-            case 'gold_ore':
+            case 'iron':
+            case 'gold':
             case 'coal':
                 builder.withVisual({ type: 'rock', color: config.color || '#757575', size: 12 })
                        .addComponent('Resource', new ResourceNode(type, 100));

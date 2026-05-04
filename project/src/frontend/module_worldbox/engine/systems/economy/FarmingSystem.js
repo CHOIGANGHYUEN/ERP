@@ -1,5 +1,5 @@
 import System from '../../core/System.js';
-
+import { GlobalLogger } from '../../utils/Logger.js';
 /**
  * 🌾 FarmingSystem
  * 농장 타일 내 작물의 성장과 관리를 담당합니다.
@@ -21,7 +21,7 @@ export default class FarmingSystem extends System {
         for (const id of em.buildingIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
-            
+
             const farm = entity.components.get('Farm');
             if (farm) {
                 this.processFarm(id, entity, farm);
@@ -65,7 +65,7 @@ export default class FarmingSystem extends System {
                 storage.addItem(farm.cropType || 'wheat', harvested);
                 farm.currentCrops = 0;
                 farm.growth = 0;
-                console.log(`🌾 Farm ${id} harvested ${harvested} units of ${farm.cropType}`);
+                GlobalLogger.success(`🌾 Farm ${id} harvested ${harvested} units of ${farm.cropType}`);
                 this.eventBus.emit('FARM_HARVESTED', { id, amount: harvested });
             }
         }

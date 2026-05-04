@@ -1,4 +1,5 @@
 import System from "../../core/System";
+import { GlobalLogger } from "../../utils/Logger";
 
 export default class InputSystem extends System {
     constructor(entityManager, eventBus, engine) {
@@ -48,7 +49,7 @@ export default class InputSystem extends System {
                         const ent = this.entityManager.entities.get(nearest);
                         const state = ent?.components.get('AIState');
                         if (state) state.pushMode('grabbed');
-                        console.log(`🫳 Grabbed Entity: ${nearest}`);
+                        GlobalLogger.info(`🫳 Grabbed Entity: ${nearest}`);
                         return;
                     }
                 }
@@ -57,6 +58,9 @@ export default class InputSystem extends System {
                 if (!activeTool || activeTool.id === 'move_hand') {
                     this.camera.handleMouseDown(e);
                 }
+            } else if (e.button === 2) {
+                // 🖱️ [Right Click] 선택 해제 (Deselect)
+                this.eventBus.emit('INSPECT_REQUEST', { x: -10000, y: -10000 });
             }
         });
 
@@ -129,8 +133,12 @@ export default class InputSystem extends System {
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
         window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'x') {
+            const key = e.key.toLowerCase();
+            if (key === 'x') {
                 this.engine.toggleView('view_xray');
+            } else if (key === 'escape') {
+                // ⌨️ [ESC] 선택 해제 및 창 닫기
+                this.eventBus.emit('INSPECT_REQUEST', { x: -10000, y: -10000 });
             }
         });
     }

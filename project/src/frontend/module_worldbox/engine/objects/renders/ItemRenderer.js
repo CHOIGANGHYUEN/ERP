@@ -4,7 +4,7 @@
  * [Expert Design] 그라데이션, 글로우, 입체 명암을 적용하여 'Wowed' 디자인 구현
  */
 export const ItemRenderer = {
-    render(ctx, itemType, v, time, entity) {
+    render(ctx, itemType, v, time, entity, engine) {
         const s = v.size || 8;
         const animTime = time * 0.005;
         
@@ -36,43 +36,48 @@ export const ItemRenderer = {
             ctx.translate(Math.sin(time * 0.1) * 2, 0);
         }
 
-        switch (itemType) {
-            case 'wood': this.drawWood(ctx, s); break;
-            case 'meat': this.drawMeat(ctx, s); break;
-            case 'fruit': this.drawFruit(ctx, s, time); break;
-            case 'stone': this.drawStone(ctx, s); break;
-            case 'iron_ore': this.drawIron(ctx, s); break;
-            case 'coal': this.drawCoal(ctx, s); break;
-            case 'gold': this.drawGold(ctx, s, time); break;
-            case 'grass': this.drawGrass(ctx, s); break;
-            case 'flower': this.drawFlower(ctx, s); break;
-            case 'milk': this.drawMilk(ctx, s); break;
-            case 'poop': this.drawPoop(ctx, s); break;
-            case 'kelp': this.drawKelp(ctx, s); break;
-            default: this.drawDefaultItem(ctx, s, itemType);
-        }
+        const lower = itemType.toLowerCase();
+        
+        // 🎯 [Priority Fix] 특수 아이템 및 식물 계열을 먼저 판정하여 'wood' 오판 방지
+        if (lower.includes('grass') || lower.includes('pasture') || lower.includes('plant') || lower.includes('leaf') || lower.includes('shrub') || lower.includes('bush') || lower.includes('reed') || lower.includes('vine') || lower.includes('moss') || lower.includes('fiber')) this.drawGrass(ctx, s);
+        else if (lower.includes('flower')) this.drawFlower(ctx, s);
+        else if (lower.includes('mushroom')) this.drawMushroom(ctx, s);
+        else if (lower.includes('meat')) this.drawMeat(ctx, s);
+        else if (lower.includes('fruit') || lower.includes('berry') || lower.includes('apple')) this.drawFruit(ctx, s, time);
+        else if (lower.includes('iron')) this.drawIron(ctx, s);
+        else if (lower.includes('gold')) this.drawGold(ctx, s, time);
+        else if (lower.includes('coal')) this.drawCoal(ctx, s);
+        else if (lower.includes('stone') || lower.includes('rock') || lower.includes('mineral')) this.drawStone(ctx, s);
+        else if (lower.includes('milk')) this.drawMilk(ctx, s);
+        else if (lower.includes('poop')) this.drawPoop(ctx, s);
+        else if (lower.includes('kelp') || lower.includes('seaweed')) this.drawKelp(ctx, s);
+        // 나무는 다른 모든 특정 타입이 아닐 때만 가장 마지막에 판정
+        else if (lower.includes('wood') || lower.includes('tree') || lower.includes('log')) this.drawWood(ctx, s);
+        else this.drawDefaultItem(ctx, s, itemType);
 
         ctx.restore();
         
-        // 🏷️ [User Request] 아이템 정보 표시 (이름 및 수량)
-        this.renderInfoLabel(ctx, itemType, v, entity);
+        // 🏷️ [Connection Fix] resource_balance.json 데이터와 직접 연결
+        this.renderInfoLabel(ctx, itemType, v, entity, engine);
     },
 
-    renderInfoLabel(ctx, itemType, v, entity) {
+    renderInfoLabel(ctx, itemType, v, entity, engine) {
         const drop = entity?.components?.get('DroppedItem');
         if (!drop) return;
 
         ctx.save();
         const amount = drop.amount || 1;
-        const displayName = itemType.replace('_', ' ').toUpperCase();
+        
+        // 🏷️ [High Cohesion] 아이템 컴포넌트가 이미 알고 있는 이름을 즉시 사용
+        const realName = drop.displayName || itemType;
         
         // 아주 작게 표시하여 아기자기함 유지
         ctx.translate(0, -v.size * 1.5 - 2);
-        ctx.font = 'bold 7px Inter, Arial';
+        ctx.font = 'bold 6px Inter, Arial';
         ctx.textAlign = 'center';
         
         // 배경 박스 (은은하게)
-        const text = `${displayName} x${amount}`;
+        const text = `${realName} x${amount}`;
         const textWidth = ctx.measureText(text).width;
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.roundRect(-textWidth/2 - 2, -6, textWidth + 4, 8, 2);
@@ -253,6 +258,28 @@ export const ItemRenderer = {
         ctx.beginPath();
         ctx.arc(0, 0, s*0.2, 0, Math.PI*2);
         ctx.fill();
+    },
+    
+    /** 🍄 버섯 (Dropped Mushroom) */
+    drawMushroom(ctx, s) {
+        // 기둥
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(-s*0.15, 0, s*0.3, s*0.5);
+        
+        // 갓
+        const grad = ctx.createRadialGradient(0, -s*0.2, 0, 0, -s*0.2, s*0.6);
+        grad.addColorStop(0, '#ff5252');
+        grad.addColorStop(1, '#d32f2f');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, -s*0.1, s*0.6, s*0.4, 0, Math.PI, 0);
+        ctx.fill();
+        
+        // 점박이
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        this.fillCircle(ctx, -s*0.2, -s*0.3, s*0.1);
+        this.fillCircle(ctx, s*0.2, -s*0.2, s*0.08);
+        this.fillCircle(ctx, 0, -s*0.4, s*0.12);
     },
 
     /** 🥛 우유 (Milk Bottle) */

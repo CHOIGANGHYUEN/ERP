@@ -1,4 +1,5 @@
 import { DefaultTools } from './ToolRegistry.js';
+import { GlobalLogger } from '../utils/Logger.js';
 
 /**
  * 🛠️ ToolManager
@@ -27,7 +28,7 @@ export default class ToolManager {
         const tool = this.tools.get(toolId);
         if (tool) {
             this.activeTool = tool;
-            console.log(`🛠️ Tool Switched: ${tool.name} (${toolId})`);
+            GlobalLogger.info(`🛠️ Tool Switched: ${tool.name}`);
             
             // UI에 상태 동기화 (필요시 EventBus 활용)
             if (this.engine.eventBus) {

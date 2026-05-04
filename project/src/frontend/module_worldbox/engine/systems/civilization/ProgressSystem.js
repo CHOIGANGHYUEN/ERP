@@ -44,46 +44,6 @@ export default class ProgressSystem extends System {
                         this.eventBus.emit('CIVILIZATION_PROGRESS', { level: nextLevel, name: nextTech.name });
                     }
                 }
-
-                // AIState 검사해서 건설 로직 발동 (단, 배고프지 않을 때)
-                const state = entity.components.get('AIState');
-                const metabolism = entity.components.get('Metabolism');
-                const inventory = entity.components.get('Inventory');
-                const tPos = entity.components.get('Transform');
-
-                if (state && state.mode === 'wander' && metabolism && metabolism.stomach > metabolism.maxStomach * 0.4 && tPos) {
-
-                    // 건축 조건: 나무가 충분히 있는가?
-                    if (civ.techLevel >= 0 && inventory && inventory.items.wood >= 10 && Math.random() < 0.2) {
-                        // 청사진 찾기
-                        let blueprintId = this.findBlueprint(tPos.x, tPos.y);
-
-                        if (blueprintId) {
-                            state.mode = 'build';
-                            state.targetId = blueprintId;
-                        } else if (inventory.items.wood >= 30) {
-                            // 없으면 새로 생성 (무작위 건물 종류 - 기술 레벨에 맞춤)
-                            let buildType = 'camp';
-                            if (civ.techLevel >= 1 && inventory.items.wood >= 100 && Math.random() < 0.3) {
-                                buildType = 'house';
-                            }
-
-                            // 주변의 무작위 위치
-                            const spawnX = tPos.x + (Math.random() - 0.5) * 100;
-                            const spawnY = tPos.y + (Math.random() - 0.5) * 100;
-
-                            // 💡 [버그 수정] 존재하지 않는 createBlueprint 대신 factoryProvider.spawn 사용
-                            blueprintId = this.engine.factoryProvider.spawn('building', buildType, spawnX, spawnY, { isBlueprint: true });
-                            if (blueprintId) {
-                                state.mode = 'build';
-                                state.targetId = blueprintId;
-                            }
-                        }
-                    } else if (state.mode === 'wander' && Math.random() < 0.3 && inventory.items.wood < 50) {
-                        // 나무가 없으면 나무를 채집하는 모드로 전환 (새로운 State 필요)
-                        state.mode = 'gather_wood';
-                    }
-                }
             }
         }
     }

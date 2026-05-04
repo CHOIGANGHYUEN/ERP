@@ -13,6 +13,13 @@ export default class WaitForTargetState extends State {
         // 1. 타겟이 할당되었는지 확인
         if (state.targetId) {
             state.isTargetRequested = false;
+            
+            // 🚀 [Critical Fix] TargetManager 등이 이미 mode를 변경(예: build, gather)했을 수 있습니다.
+            // 만약 이미 mode가 'wait_target'이 아니라면, 외부에서 설정한 모드를 존중하고 덮어쓰지 않습니다.
+            if (state.mode !== 'wait_target') {
+                return null; 
+            }
+
             // 타겟이 생겼으므로 이전 상태(예: gather_wood, build 등)로 복귀
             return state.previousMode || 'idle';
         }

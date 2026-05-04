@@ -34,23 +34,48 @@ export default class StatsMonitor {
             this.entityCount = this.engine.entityManager.entities.size;
 
             if (this.onUpdate) {
-                // 🏘️ 마을 통계 수집
+                // 🏘️ 마을 통계 수집 (고도화된 정보 포함)
                 const villageStats = [];
-                const civSystem = this.engine.systemManager.civilization;
+                const civSystem = this.engine.systemManager.civilization || this.engine.systemManager.villageSystem;
+                
                 if (civSystem && civSystem.villages) {
                     for (const [vId, village] of civSystem.villages) {
-                        const blackboard = this.engine.systemManager.blackboard;
-                        const storages = blackboard?.storages?.filter(s => s.villageId === vId) || [];
-                        const totalFood = storages.reduce((sum, s) => sum + (s.items['food'] || 0), 0);
-                        const totalWood = storages.reduce((sum, s) => sum + (s.items['wood'] || 0), 0);
-                        
+                        // 📊 리소스 및 필요량 집계
+                        const wood = village.resources?.wood || 0;
+                        const food = village.resources?.food || 0;
+                        const woodNeed = village.resourceNeeds?.wood || 0;
+                        const foodNeed = village.resourceNeeds?.food || 0;
+
+                        // 📋 할일 목록(TaskBoard) 요약
+                        const tasks = village.taskBoard || [];
+                        const taskStats = {
+                            total: tasks.length,
+                            available: tasks.filter(t => t.status === 'AVAILABLE').length,
+                            inProgress: tasks.filter(t => t.status === 'CLAIMED').length,
+                            build: tasks.filter(t => t.type === 'build').length,
+                            gather: tasks.filter(t => t.type.startsWith('gather') || t.type === 'hunt').length
+                        };
+
+                        // 👑 촌장 정보
+                        const chief = this.engine.entityManager.entities.get(village.chiefId);
+                        const chiefName = chief?.name || 'Vacant';
+
                         villageStats.push({
                             id: vId,
                             name: village.name || `Village ${vId}`,
                             population: village.members?.size || 0,
-                            food: Math.floor(totalFood),
-                            wood: Math.floor(totalWood),
-                            houses: village.buildings?.filter(b => b.type === 'house').length || 0
+                            chiefId: village.chiefId,
+                            chiefName: chiefName,
+                            food: Math.floor(food),
+                            wood: Math.floor(wood),
+                            foodNeed: Math.floor(foodNeed),
+                            woodNeed: Math.floor(woodNeed),
+                            houses: Array.from(village.buildings).filter(bId => {
+                                const b = this.engine.entityManager.entities.get(bId);
+                                return b?.components.get('Structure')?.type === 'house';
+                            }).length,
+                            taskStats: taskStats,
+                            tasks: tasks.slice(0, 5) // 최근/우선순위 높은 과업 일부 전달
                         });
                     }
                 }

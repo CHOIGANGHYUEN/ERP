@@ -15,6 +15,7 @@ import TransporterState from './jobs/TransporterState.js';
 import GrazeState from './GrazeState.js';
 import GrabbedState from './GrabbedState.js';
 import PickupState from './PickupState.js';
+import WithdrawState from './WithdrawState.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 
 export default class StateFactory {
@@ -38,8 +39,15 @@ export default class StateFactory {
         this.states.set('gather_plant', new GatherPlantState(system));
         this.states.set('build', new BuildState(system));
         this.states.set('deposit', new DepositState(system));
+        this.states.set('withdraw', new WithdrawState(system));
+
         // 🏷️ Job States — 키 규칙: `job_${JobTypes.XXX}`
+        // 🧱 [Crucial Fix] 'architect' 직업 키가 누락되어 건축가들이 동작하지 않던 문제 해결
+        this.states.set('job_architect', this.states.get('build'));
         this.states.set('job_logger', new LumberjackState(system));
+        this.states.set('job_gatherer', new GatherPlantState(system));
+        this.states.set('job_farmer', this.states.get('job_gatherer')); // 농부는 일단 채집가 로직 공유
+        
         this.states.set('job_transporter', new TransporterState(system));
         this.states.set('wait_target', new WaitForTargetState(system));
         this.states.set(AnimalStates.GRABBED, new GrabbedState(system));

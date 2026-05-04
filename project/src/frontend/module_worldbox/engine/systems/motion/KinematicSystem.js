@@ -11,8 +11,7 @@ export default class KinematicSystem {
         const mh = this.engine.mapHeight;
         const frameCount = this.engine.frameCount || 0;
 
-        // 🚀 [Optimization] 매 프레임 동적 해시 초기화 (시스템 통합)
-        if (spatialHash) spatialHash.clearDynamic();
+        // SystemManager에서 이미 클리어됨
 
         // 🚀 [Optimization] 카메라 가시 영역 계산 (LOD용)
         const margin = 100;

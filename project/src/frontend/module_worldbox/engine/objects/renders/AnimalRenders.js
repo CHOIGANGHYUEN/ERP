@@ -249,9 +249,18 @@ export const AnimalRenders = {
             }
 
             default:
-                // 🧘 대기: 미세한 호흡
-                const idleBreath = Math.sin(time * 0.003) * 0.015;
-                ctx.scale(1 + idleBreath, 1 - idleBreath);
+                // 💕 [Reproduction] 번식 중 특수 모션 (고주파 진동 + 펄스)
+                const social = entity.components.get('Social');
+                if (social && social.isBreeding) {
+                    const breedShakeX = Math.sin(time * 0.04) * 2.0;
+                    const breedPulse = 1.0 + Math.sin(time * 0.03) * 0.1;
+                    ctx.translate(breedShakeX, 0);
+                    ctx.scale(breedPulse, 2.0 - breedPulse);
+                } else {
+                    // 🧘 대기: 미세한 호흡
+                    const idleBreath = Math.sin(time * 0.003) * 0.015;
+                    ctx.scale(1 + idleBreath, 1 - idleBreath);
+                }
                 break;
         }
 

@@ -18,34 +18,52 @@ export default class ItemFactory extends IEntityFactory {
         // 🎨 [시각적 힌트 추가] 아이템 타입에 따른 고유 색상 및 이모지 설정
         let color = '#ffffff';
         let icon = '📦';
-        if (type === 'wood' || type.includes('tree')) { color = '#8d6e63'; icon = '🪵'; }
-        else if (type === 'stone' || type.includes('rock')) { color = '#9e9e9e'; icon = '🪨'; }
-        else if (type === 'meat') { color = '#ff5252'; icon = '🥩'; }
-        else if (type === 'fruit' || type === 'berry') { color = '#e91e63'; icon = '🍎'; }
-        else if (type === 'grass' || type === 'flower' || type === 'shrub' || type === 'plant') { color = '#4caf50'; icon = '🌿'; }
-        else if (type === 'food' || type === 'bread') { color = '#8bc34a'; icon = '🍖'; }
-        else if (type === 'gold' || type.includes('gold')) { color = '#fbc02d'; icon = '🟡'; }
-        else if (type === 'coal') { color = '#212121'; icon = '⬛'; }
-        else if (type === 'iron_ore' || type.includes('iron')) { color = '#757575'; icon = '⛓️'; }
+        const lowerType = type.toLowerCase();
+
+        // 🎯 [Priority Fix] 식물 및 식품 계열 판정을 목재보다 먼저 수행하여 오판 방지
+        if (lowerType.includes('grass') || lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('pasture') || lowerType.includes('leaf') || lowerType.includes('herb') || lowerType.includes('shrub') || lowerType.includes('bush') || lowerType.includes('fiber') || lowerType.includes('reed') || lowerType.includes('vine')) { color = '#4caf50'; icon = '🌿'; }
+        else if (lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('apple')) { color = '#e91e63'; icon = '🍎'; }
+        else if (lowerType.includes('meat')) { color = '#ff5252'; icon = '🥩'; }
+        else if (lowerType.includes('food') || lowerType.includes('bread')) { color = '#8bc34a'; icon = '🍖'; }
+        else if (lowerType.includes('wood') || lowerType.includes('tree') || lowerType.includes('log')) { color = '#8d6e63'; icon = '🪵'; }
+        else if (lowerType.includes('stone') || lowerType.includes('rock') || lowerType.includes('ore') || lowerType.includes('mineral')) { color = '#9e9e9e'; icon = '🪨'; }
+        else if (lowerType.includes('gold')) { color = '#fbc02d'; icon = '🟡'; }
+        else if (lowerType.includes('coal')) { color = '#212121'; icon = '⬛'; }
+        else if (lowerType.includes('iron')) { color = '#757575'; icon = '⛓️'; }
+        else { color = '#ffffff'; icon = '📦'; } // 기본값
+
+        // 🔍 [Data Connection] 설정 파일에서 실제 이름 가져오기 (1회성 처리)
+        const config = this.engine.resourceConfig[type];
+        let displayName = config?.name;
+        
+        // 대소문자 무시 검색 (방어적 설계)
+        if (!displayName) {
+            const matchingKey = Object.keys(this.engine.resourceConfig).find(k => k.toLowerCase() === lowerType);
+            if (matchingKey) displayName = this.engine.resourceConfig[matchingKey].name;
+        }
 
         builder.withTransform(x, y)
             .withVisual({
                 type: 'item',
-                itemType: type, // renderer에서 이를 보고 적절한 아이콘/색상 결정
+                itemType: type,
                 color: color,
                 icon: icon,
-                size: 4 + Math.min(amount * 0.2, 4) // [Aesthetic] 훨씬 작고 아기자기하게 (4~8px 사이)
+                size: 2 + Math.min(amount * 0.05, 2)
             })
-            .addComponent('DroppedItem', new DroppedItem(type, amount, decayTime));
+            .addComponent('DroppedItem', new DroppedItem(type, amount, decayTime, displayName));
 
-        const id = builder.id;
+        const id = Number(builder.id);
+        if (isNaN(id)) {
+            console.error("ItemFactory: Generated ID is NaN!", builder.id);
+            return null;
+        }
 
         // 🚀 [Optimization] 공간 해시에 즉시 등록
         if (this.engine.spatialHash) {
             this.engine.spatialHash.insert(id, x, y, true);
         }
 
-        return id;
+        return Number(id);
     }
 
     spawnDrop(x, y, itemType, amount) {
@@ -68,7 +86,7 @@ export default class ItemFactory extends IEntityFactory {
                     drop.merge(amount);
 
                     const visual = ent.components.get('Visual');
-                    if (visual) visual.size = 4 + Math.min(drop.amount * 0.2, 4);
+                    if (visual) visual.size = 2 + Math.min(drop.amount * 0.1, 2);
 
                     return id;
                 }

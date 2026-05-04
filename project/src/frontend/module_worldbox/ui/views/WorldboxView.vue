@@ -29,21 +29,7 @@
         </div>
       </div>
 
-      <!-- 🏘️ Village Management Panel -->
-      <div class="village-panel" v-if="store?.villages?.length > 0">
-        <div class="panel-header-v">🏘️ VILLAGE STATUS</div>
-        <div class="village-list">
-          <div v-for="v in store.villages" :key="v.id" class="village-card">
-            <div class="v-name">{{ v.name }}</div>
-            <div class="v-stats">
-              <div class="v-stat" title="Population">👤 {{ v.population }}</div>
-              <div class="v-stat" title="Food Stock">🍖 {{ v.food }}</div>
-              <div class="v-stat" title="Wood Stock">🪵 {{ v.wood }}</div>
-              <div class="v-stat" title="Houses">🏠 {{ v.houses }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <VillageDetailPanel />
 
       <div class="top-bar">
         <h1>Worldbox Simulation</h1>
@@ -90,10 +76,35 @@
       </div>
 
       <!-- Toggle Button - INSIDE Overlay for better event flow -->
-      <button class="fixed-toggle-btn" @click="toggleMenu">
+      <button v-if="isGameStarted" class="fixed-toggle-btn" @click="toggleMenu">
         <span class="icon">{{ isMenuOpen ? '▼' : '▲' }}</span>
         TOOLS
       </button>
+
+      <!-- 🚀 [Expert Design] Intro / Start Screen -->
+      <Transition name="fade-scale">
+        <div v-if="!isGameStarted" class="intro-screen">
+          <div class="intro-content">
+            <div class="logo-wrapper">
+              <h1 class="logo-text">WORLD<span>BOX</span></h1>
+              <div class="logo-sub">CREATIVE SIMULATION ENGINE</div>
+            </div>
+            
+            <div class="intro-desc">
+              A high-performance ecological and civilization sandbox. <br/>
+              Create biomes, nurture life, and observe the rise of empires.
+            </div>
+
+            <button class="start-btn" @click="startGame">
+              <span class="btn-shine"></span>
+              <span class="btn-text">INITIALIZE UNIVERSE</span>
+              <span class="btn-icon">⚡</span>
+            </button>
+            
+            <div class="version-tag">STABLE BUILD V2.5.0</div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -107,6 +118,7 @@ import { DefaultTools } from '../../engine/core/ToolRegistry.js';
 
 import { useWorldboxStore } from '../store/worldboxStore';
 import EntityStatusPanel from '../components/EntityStatusPanel.vue';
+import VillageDetailPanel from '../components/VillageDetailPanel.vue';
 
 const worldboxContainer = ref(null);
 const gameCanvas = ref(null);
@@ -188,6 +200,9 @@ const updateSimParams = () => {
 const selectTool = (tool) => {
   console.log(`🎯 Tool Selected: ${tool.name} (${tool.id}), isBrush: ${tool.isBrush}`);
   if (tool.isInstant && tool.id.startsWith('view_')) {
+    if (tool.id === 'view_village') {
+      store.showVillageInfo = !store.showVillageInfo;
+    }
     if (engine.value) engine.value.toggleView(tool.id);
     return;
   }
@@ -210,62 +225,69 @@ const toggleMenu = () => {
 
 const store = useWorldboxStore();
 
-onMounted(() => {
-  if (gameCanvas.value && worldboxContainer.value) {
-    engine.value = new Engine(gameCanvas.value);
-    allTools.value = DefaultTools(engine.value);
-    
-    // 🌍 Global access for UI components
-    window.gameEngine = engine.value;
-    window.eventBus = engine.value.eventBus;
-    
-    engine.value.onEntitySelect = (data) => {
-      store.selectEntity(data);
-    };
-    
-    engine.value.start();
-    
-    // Set default tool to Move
-    const initialTool = allTools.value.find(t => t.id === 'move_hand');
-    if (initialTool) {
-        engine.value.setActiveTool(initialTool);
-    }
+const isGameStarted = ref(false);
+const startGame = () => {
+  if (isGameStarted.value) return;
+  isGameStarted.value = true;
+  initEngine();
+};
 
-    // Set initial debug & brush params
-    updateSimParams();
-    updateBrushSize();
-
-    engine.value.monitor.onUpdate = (stats) => {
-      if (!stats) return;
-      fps.value = stats.fps;
-      entityCount.value = stats.entityCount;
-      totalFertility.value = Math.floor(stats.totalFertility);
-      totalMaxFertility.value = Math.floor(stats.totalMaxFertility);
-      
-      // 🏘️ Store 동기화
-      if (stats.villages) {
-        store.updateVillageStats(stats.villages);
-      }
-    };
-
-
-    resizeObserver = new ResizeObserver(entries => {
-      for (let entry of entries) {
-        const { width, height } = entry.contentRect;
-        // Check if container has actual height
-        if (height < 100) return; 
-        
-        gameCanvas.value.width = width;
-        gameCanvas.value.height = height;
-        if (engine.value) engine.value.handleResize(width, height);
-      }
-    });
-
-    resizeObserver.observe(worldboxContainer.value);
-    
-    // Add mouse move listener
-    window.addEventListener('mousemove', handleMouseMove);
+const initEngine = () => {
+  if (!gameCanvas.value || !worldboxContainer.value) return;
+  
+  engine.value = new Engine(gameCanvas.value);
+  allTools.value = DefaultTools(engine.value);
+  
+  // 🌍 Global access for UI components
+  window.gameEngine = engine.value;
+  window.eventBus = engine.value.eventBus;
+  
+  engine.value.onEntitySelect = (data) => {
+    store.selectEntity(data);
+  };
+  
+  engine.value.start();
+  
+  // Set default tool to Move
+  const initialTool = allTools.value.find(t => t.id === 'move_hand');
+  if (initialTool) {
+      engine.value.setActiveTool(initialTool);
   }
+
+  // Set initial debug & brush params
+  updateSimParams();
+  updateBrushSize();
+
+  engine.value.monitor.onUpdate = (stats) => {
+    if (!stats) return;
+    fps.value = stats.fps;
+    entityCount.value = stats.entityCount;
+    totalFertility.value = Math.floor(stats.totalFertility);
+    totalMaxFertility.value = Math.floor(stats.totalMaxFertility);
+    
+    // 🏘️ Store 동기화
+    if (stats.villages) {
+      store.updateVillageStats(stats.villages);
+    }
+  };
+
+  resizeObserver = new ResizeObserver(entries => {
+    for (let entry of entries) {
+      const { width, height } = entry.contentRect;
+      if (height < 100) return; 
+      
+      gameCanvas.value.width = width;
+      gameCanvas.value.height = height;
+      if (engine.value) engine.value.handleResize(width, height);
+    }
+  });
+
+  resizeObserver.observe(worldboxContainer.value);
+  window.addEventListener('mousemove', handleMouseMove);
+};
+
+onMounted(() => {
+  console.log("🌌 Worldbox View Mounted. Awaiting User Initialization...");
 });
 
 
@@ -377,69 +399,6 @@ const handleGodPower = (toolId) => {
   font-size: 0.65rem;
 }
 
-/* 🏘️ Village Panel Styles */
-.village-panel {
-  position: absolute;
-  top: 210px; /* Below debug panel */
-  left: 20px;
-  width: 200px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 10px;
-  pointer-events: auto;
-  color: #eee;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.panel-header-v {
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 1px;
-  color: #4caf50;
-  border-bottom: 1px solid rgba(76, 175, 80, 0.3);
-  padding-bottom: 4px;
-}
-
-.village-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.village-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  padding: 8px;
-}
-
-.v-name {
-  font-size: 0.75rem;
-  font-weight: bold;
-  color: #fff;
-  margin-bottom: 4px;
-}
-
-.v-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-
-.v-stat {
-  font-size: 0.65rem;
-  color: #ccc;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 
 input[type="range"] {
   accent-color: #2e7d32;
@@ -699,6 +658,122 @@ input[type="range"] {
   letter-spacing: 3px;
   color: #fff;
   margin: 0;
+}
+
+/* 🚀 Intro Screen Styles */
+.intro-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, #1a1a1a 0%, #050505 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  pointer-events: auto;
+}
+
+.intro-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+}
+
+.logo-text {
+  font-size: 5rem;
+  font-weight: 900;
+  letter-spacing: 15px;
+  color: #fff;
+  margin: 0;
+  text-shadow: 0 0 30px rgba(255,255,255,0.2);
+}
+
+.logo-text span {
+  color: #4caf50;
+  text-shadow: 0 0 30px rgba(76, 175, 80, 0.4);
+}
+
+.logo-sub {
+  font-size: 0.9rem;
+  letter-spacing: 8px;
+  color: #666;
+  font-weight: bold;
+  margin-top: -10px;
+}
+
+.intro-desc {
+  font-size: 1rem;
+  color: #aaa;
+  line-height: 1.6;
+  max-width: 500px;
+  margin-top: 10px;
+}
+
+.start-btn {
+  position: relative;
+  background: #2e7d32;
+  color: white;
+  border: none;
+  padding: 18px 50px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.start-btn:hover {
+  transform: scale(1.05) translateY(-5px);
+  background: #388e3c;
+  box-shadow: 0 15px 50px rgba(76, 175, 80, 0.3);
+}
+
+.start-btn:active {
+  transform: scale(0.98);
+}
+
+.btn-icon {
+  font-size: 1.3rem;
+  animation: pulse 2s infinite;
+}
+
+.version-tag {
+  font-size: 0.6rem;
+  color: #444;
+  letter-spacing: 2px;
+  margin-top: 20px;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0.5; transform: scale(0.9); }
+}
+
+.fade-scale-enter-active, .fade-scale-leave-active {
+  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fade-scale-enter-from {
+  opacity: 0;
+  transform: scale(1.1);
+}
+
+.fade-scale-leave-to {
+  opacity: 0;
+  transform: scale(0.9) translateY(-20px);
+  filter: blur(20px);
 }
 </style>
 

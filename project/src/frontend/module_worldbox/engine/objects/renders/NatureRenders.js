@@ -36,7 +36,7 @@ export const NatureRenders = {
             case (type === 'reed'):
                 WaterPlantRenderer.drawReed(ctx, t, v, isWithered, time, wind, entity);
                 break;
-            case (['rock', 'ore', 'gems', 'stone', 'coal', 'iron_ore', 'gold_ore', 'silver_ore', 'surface_copper', 'obsidian', 'flint', 'salt', 'sandstone', 'deep_stone', 'manganese_nodule', 'mud', 'sand', 'clay', 'river_gravel'].includes(type)):
+            case (['rock', 'ore', 'gems', 'stone', 'coal', 'iron', 'gold', 'silver', 'copper', 'obsidian', 'flint', 'salt', 'sandstone', 'deep_stone', 'manganese_nodule', 'mud', 'sand', 'clay', 'river_gravel'].includes(type)):
                 RockRenderer.draw(ctx, t, v, isWithered, entity, time);
                 break;
             case (type === 'mushroom' || type === 'wild_mushroom'):

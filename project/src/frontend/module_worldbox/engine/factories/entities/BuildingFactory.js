@@ -13,7 +13,11 @@ export default class BuildingFactory extends IEntityFactory {
     create(type, x, y, options = {}) {
         const em = this.engine.entityManager;
         const builder = new EntityBuilder(em);
-        const id = builder.id;
+        const id = Number(builder.id);
+        if (isNaN(id)) {
+            console.error("BuildingFactory: Generated ID is NaN!", builder.id);
+            return null;
+        }
 
         const buildingConfigs = this.engine.buildingsConfig || {};
         const config = buildingConfigs[type] || { maxHp: 500, maxProgress: 100, width: 40, height: 40 };
@@ -25,7 +29,7 @@ export default class BuildingFactory extends IEntityFactory {
                 subtype: type,
                 size: options.size || (config.width || 40),
                 color: options.color || (config.color || '#8d6e63'),
-                alpha: options.isBlueprint ? 0.3 : 1.0
+                alpha: options.isBlueprint ? 0.8 : 1.0
             })
             .addComponent('Building', {
                 type: type,
@@ -88,7 +92,7 @@ export default class BuildingFactory extends IEntityFactory {
                 subtype: type, 
                 size: 25, 
                 color: '#ff9800',
-                alpha: options.isBlueprint ? 0.6 : 1.0 // 청사진 알파 상향
+                alpha: options.isBlueprint ? 0.8 : 1.0 // 청사진 알파 상향 (0.6 -> 0.8)
             }).addComponent('LightSource', { intensity: 1.0, radius: 100 });
         }
 

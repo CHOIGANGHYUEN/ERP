@@ -10,5 +10,8 @@ export default class SocialComponent {
         this.childrenIds = new Set();
         this.attractiveness = Math.random() * 100;
         this.lastSocialInteraction = 0;
+        this.lastBirth = 0;
+        this.isBreeding = false;
+        this.breedingTimer = 0;
     }
 }

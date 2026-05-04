@@ -22,10 +22,17 @@ export default class TargetManager {
      * 저주기로 호출되어 대기 중인 요청들을 처리
      */
     update(dt) {
+        // 🚀 [Stability] 오래된 요청(5초 이상)은 큐에서 제거하여 무한 누적 방지
+        const now = Date.now();
+        this.pendingRequests = this.pendingRequests.filter(req => {
+            if (!req.timestamp) req.timestamp = now;
+            return (now - req.timestamp) < 5000;
+        });
+
         if (this.pendingRequests.length === 0) return;
 
-        // 한 프레임에 처리할 최대 요청 수 제한 (성능 조절)
-        const processCount = Math.min(this.pendingRequests.length, 20);
+        // 🚀 [Optimization] 프레임당 처리 요청 수를 대폭 줄여 프레임 드랍 방지 (20 -> 5)
+        const processCount = Math.min(this.pendingRequests.length, 5);
         const requests = this.pendingRequests.splice(0, processCount);
 
         for (const req of requests) {
@@ -45,28 +52,40 @@ export default class TargetManager {
 
         switch (targetType) {
             case 'RESOURCE':
-                bestTargetId = this._findBestResource(transform, criteria, entityId);
+                bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent);
                 break;
+            case 'STORAGE':
             case 'STORAGE_DEPOSIT':
-                bestTargetId = this._findBestStorageForDeposit(transform, criteria, entityId);
+                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, true);
                 break;
             case 'STORAGE_WITHDRAW':
-                bestTargetId = this._findBestStorageForWithdraw(transform, criteria, entityId);
+                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, false);
                 break;
             case 'BLUEPRINT':
-                bestTargetId = this._findBestBlueprint(transform, criteria, entityId);
+                bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity);
+                break;
+            case 'WANDER':
+                // 배회는 별도 타겟 없이 위치만 결정 (State에서 처리)
                 break;
         }
 
         if (bestTargetId) {
             const aiState = entity.components.get('AIState');
             if (aiState) {
+                // 🛑 [Blacklist Safety] 도달 불가 타겟이면 즉시 포기
+                if (aiState.unreachableTargets && aiState.unreachableTargets.has(bestTargetId)) {
+                    this.eventBus.emit('TARGET_NOT_FOUND', { entityId, targetType, intent: req.intent });
+                    return;
+                }
+
                 // 할당 성공 시 요청 상태 해제
                 aiState.isTargetRequested = false;
                 aiState.targetRequestFailed = false;
 
-                // 건설 중 자원을 가지러 가는 경우, 메인 타겟(청사진)은 유지하고 서브 타겟(창고)에 주입
-                if (targetType === 'STORAGE_WITHDRAW' && req.intent === 'build') {
+                // 🏗️ [Architect Protection] 건설 중인 개체는 메인 타겟(청사진)을 보호해야 함
+                // 모든 자원/창고 관련 요청은 서브 타겟(storageTargetId)에 할당하여 메인 타겟 유실 방지
+                const isSubTask = ['STORAGE', 'RESOURCE', 'STORAGE_WITHDRAW'].includes(targetType);
+                if (req.intent === 'build' && isSubTask) {
                     aiState.storageTargetId = bestTargetId;
                 } else {
                     aiState.targetId = bestTargetId;
@@ -118,55 +137,39 @@ export default class TargetManager {
         }
     }
 
-    _findBestResource(pos, criteria, requesterId) {
-        const resourceType = (criteria.resourceType || '').toLowerCase();
-        const nodes = this.blackboard.resourceNodes.get(resourceType) || [];
+    _findBestResource(x, y, resourceType, entity, intent) {
+        const type = (resourceType || '').toLowerCase();
+        const nodes = this.blackboard.resourceNodes.get(type) || [];
+        const MAX_RADIUS_SQ = 1200 * 1200; // 🚀 [Optimization] 최대 탐색 반경 제한
+        
         let minDistSq = Infinity;
         let bestId = null;
-
-        // 구역 정보 가져오기
-        let zoneBounds = null;
-        if (criteria.zoneId !== undefined) {
-            const zm = this.entityManager.engine?.systemManager?.zoneManager;
-            const zone = zm?.getZone(criteria.zoneId);
-            if (zone) zoneBounds = zone.bounds;
-        }
+        const aiState = entity.components.get('AIState');
 
         for (const node of nodes) {
-            // 구역 필터링
-            if (zoneBounds) {
-                if (node.x < zoneBounds.minX || node.x > zoneBounds.maxX ||
-                    node.y < zoneBounds.minY || node.y > zoneBounds.maxY) continue;
-            }
-
-            const dx = node.x - pos.x;
-            const dy = node.y - pos.y;
+            const dx = node.x - x;
+            const dy = node.y - y;
             const distSq = dx * dx + dy * dy;
 
-            if (distSq < minDistSq) {
-                // 🛑 [Blacklist Check] 도달 불가능하다고 판명된 타겟은 제외
-                const aiState = this.entityManager.entities.get(requesterId)?.components.get('AIState');
-                if (aiState && aiState.unreachableTargets && aiState.unreachableTargets.has(node.id)) {
-                    continue;
-                }
+            if (distSq > MAX_RADIUS_SQ || distSq >= minDistSq) continue;
 
-                const ent = this.entityManager.entities.get(node.id);
-                if (ent) {
-                    const res = ent.components.get('Resource');
-                    if (res && res.value > 0 && !res.isFalling) {
-                        // 🔒 [Ghost Claim Resolution]
-                        // 예약자가 있지만, 그 예약자가 이미 죽었거나 다른 일을 하고 있다면 예약을 해제합니다.
-                        if (res.claimedBy && res.claimedBy !== requesterId) {
-                            const claimer = this.entityManager.entities.get(res.claimedBy);
-                            if (!claimer || claimer.components.get('AIState')?.targetId !== node.id) {
-                                res.claimedBy = null; // 예약 해제
-                            }
-                        }
+            if (aiState && aiState.unreachableTargets && aiState.unreachableTargets.has(node.id)) continue;
 
-                        if (!res.claimedBy || res.claimedBy === requesterId) {
-                            minDistSq = distSq;
-                            bestId = node.id;
-                        }
+            const ent = this.entityManager.entities.get(node.id);
+            if (ent) {
+                const res = ent.components.get('Resource');
+                const drop = ent.components.get('DroppedItem');
+                
+                // ⛏️ [Logic Enhancement] 자원 채집 시 살아있는 자원(나무 등)이 없으면 드롭된 아이템이라도 찾도록 허용
+                if (res && res.value > 0 && !res.isFalling) {
+                    if (!res.claimedBy || res.claimedBy === entity.id) {
+                        minDistSq = distSq;
+                        bestId = node.id;
+                    }
+                } else if (drop) {
+                    if (!drop.claimedBy || drop.claimedBy === entity.id) {
+                        minDistSq = distSq;
+                        bestId = node.id;
                     }
                 }
             }
@@ -174,82 +177,77 @@ export default class TargetManager {
         return bestId;
     }
 
-    _findBestStorageForDeposit(pos, criteria) {
+    _findBestStorage(x, y, resourceType, isDeposit) {
         const storages = this.blackboard.storages;
         let minDistSq = Infinity;
         let bestId = null;
 
         for (const s of storages) {
-            const dx = s.x - pos.x;
-            const dy = s.y - pos.y;
+            const dx = s.x - x;
+            const dy = s.y - y;
             const distSq = dx * dx + dy * dy;
 
             if (distSq < minDistSq) {
                 const ent = this.entityManager.entities.get(s.id);
-                const storageComp = ent?.components.get('Storage');
-                if (storageComp && !storageComp.isFull) {
-                    minDistSq = distSq;
-                    bestId = s.id;
+                if (!ent) continue;
+
+                const storageComp = ent.components.get('Storage');
+                const structureComp = ent.components.get('Structure');
+                const civComp = ent.components.get('Civilization');
+                const reqCiv = entity.components.get('Civilization');
+
+                // 🏗️ [Strict Validation] 
+                // 1. Storage 컴포넌트가 반드시 있어야 함
+                // 2. Structure가 있다면 반드시 완공(isComplete) 상태여야 함 (청사진 제외)
+                // 3. 요청자와 같은 마을 소속이어야 함
+                const isComplete = !structureComp || structureComp.isComplete;
+                const isSameVillage = civComp && reqCiv && civComp.villageId === reqCiv.villageId;
+
+                if (!storageComp || !isComplete || !isSameVillage) continue;
+
+                if (isDeposit) {
+                    if (!storageComp.isFull) {
+                        minDistSq = distSq;
+                        bestId = s.id;
+                    }
+                } else {
+                    if ((storageComp.items[resourceType] || 0) >= 5) { // 최소 5개 이상 있을 때만
+                        minDistSq = distSq;
+                        bestId = s.id;
+                    }
                 }
             }
         }
         return bestId;
     }
 
-    _findBestStorageForWithdraw(pos, criteria) {
-        if (!this.blackboard.storages) return null;
-        const { resourceType, amount = 1 } = criteria;
-        const storages = this.blackboard.storages;
-        let minDistSq = Infinity;
-        let bestId = null;
-
-        for (const s of storages) {
-            const dx = s.x - pos.x;
-            const dy = s.y - pos.y;
-            const distSq = dx * dx + dy * dy;
-
-            if (distSq < minDistSq) {
-                const ent = this.entityManager.entities.get(s.id);
-                const storageComp = ent?.components.get('Storage');
-                if (storageComp && (storageComp.items[resourceType] || 0) >= amount) {
-                    minDistSq = distSq;
-                    bestId = s.id;
-                }
-            }
-        }
-        return bestId;
-    }
-
-    _findBestBlueprint(pos, criteria, requesterId) {
-        let minDistSq = Infinity;
-        let bestId = null;
+    _findBestBlueprint(x, y, entity) {
         const blueprints = this.blackboard.blueprints || [];
+        let bestId = null;
+        let minDistSq = Infinity;
 
+        // 1. Blackboard 캐시 활용 (우선순위)
         for (const bp of blueprints) {
-            const id = bp.id;
-            const entity = this.entityManager.entities.get(id);
-            if (!entity) continue;
+            const bpEntity = this.entityManager.entities.get(bp.id);
+            if (!bpEntity) continue;
+            const t = bpEntity.components.get('Transform');
+            if (!t) continue;
 
-            const structure = entity.components.get('Structure');
-            const transform = entity.components.get('Transform');
-            
-            if (structure && structure.isBlueprint && transform && !structure.isComplete) {
-                // 🛑 [Blacklist Check] 도달 불가능 타겟 제외
-                const aiState = this.entityManager.entities.get(requesterId)?.components.get('AIState');
-                if (aiState && aiState.unreachableTargets && aiState.unreachableTargets.has(id)) {
-                    continue;
-                }
-
-                const dx = transform.x - pos.x;
-                const dy = transform.y - pos.y;
-                const distSq = dx * dx + dy * dy;
-
-                if (distSq < minDistSq) {
-                    minDistSq = distSq;
-                    bestId = id;
-                }
+            const distSq = (t.x - x) ** 2 + (t.y - y) ** 2;
+            if (distSq < minDistSq) {
+                minDistSq = distSq;
+                bestId = bp.id;
             }
         }
+
+        // 🚀 [Critical Fix] 전수 조사를 원천 차단하고 SpatialHash 기반 근거리 탐색만 수행
+        if (!bestId) {
+            bestId = this.entityManager.findNearestEntityWithComponent(x, y, 500, (ent) => {
+                const struc = ent.components.get('Structure');
+                return struc && struc.isBlueprint && !struc.isComplete;
+            }); // spatialHash는 내부적으로 사용됨
+        }
+
         return bestId;
     }
 }

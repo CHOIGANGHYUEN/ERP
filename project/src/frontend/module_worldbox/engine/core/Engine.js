@@ -14,6 +14,8 @@ import RenderCoordinator from '../systems/render/RenderCoordinator.js';
 import SystemManager from './SystemManager.js';
 import TimeSystem from '../systems/core/TimeSystem.js';
 import ToolManager from './ToolManager.js';
+import { JobTypes } from '../config/JobTypes.js';
+import { GlobalLogger } from '../utils/Logger.js';
 
 
 
@@ -86,7 +88,7 @@ export default class Engine {
         this._onWorldSpawnDust = (e) => {
             this.eventBus.emit('SPAWN_DUST', e.detail);
         };
-        window.addEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
+        window.addEventListener('WORLD_SHAKE', this._onWorldSpawnDust);
 
         this.simParams = { spreadSpeed: 1.0, spreadAmount: 5000 };
         this.frameCount = 0; // 🚀 Frame Counter Init
@@ -157,7 +159,7 @@ export default class Engine {
 
         // 💀 [God Power] 엔티티 강제 제거 요청 처리
         this.eventBus.on('ENTITY_KILL_REQUEST', (id) => {
-            console.log(`💀 God Power: Removing entity ${id}`);
+            GlobalLogger.info(`💀 God Power: Removing entity ${id}`);
             this.entityManager.removeEntity(id);
             if (this.selectedId === id) {
                 this.selectedId = null;
@@ -176,29 +178,36 @@ export default class Engine {
         });
     }
 
-    init() {
-        this.terrainGen.generate(this.mapWidth, this.mapHeight); // Call the new generate method
-        let total = 0;
-        let potential = 0;
-        const fb = this.terrainGen.fertilityBuffer;
-        const bb = this.terrainGen.biomeBuffer;
-        for (let i = 0; i < fb.length; i++) {
-            total += fb[i];
-            potential += this.environment.getMaxFertility(bb[i]);
-        }
+    async init() {
+        this.isGenerating = true;
+        
+        // 📊 통계 및 물 데이터 수집용 객체
+        const stats = { totalFertility: 0, potentialFertility: 0 };
+        
+        // 🚀 [Expert Optimization] Water Pixel 버퍼 초기화 (2400x2400 대응)
+        if (!this.waterPixels) this.waterPixels = new Uint32Array(this.mapWidth * this.mapHeight);
+        this.waterCount = 0;
 
+        // 🚀 [Expert Design] 점진적 지형 생성 시작 (통계 및 수역 데이터 수집 병행)
+        await this.terrainGen.generateProgressive(this.mapWidth, this.mapHeight, this, () => {
+            this.preRenderTerrain(false); // 색상 재계산 생략
+        }, stats, this.waterPixels);
 
-        this.monitor.setInitialFertility(total, potential);
+        // 결과 적용
+        this.monitor.setInitialFertility(stats.totalFertility, stats.potentialFertility);
+        
         this.refreshWaterPixels();
         this.preRenderTerrain();
+        
+        this.isGenerating = false;
 
-        // 🏗️ PoC: 테스트용 글로벌 구역 생성 (마을이 없을 때도 보이도록)
+        // 🏗️ PoC: 테스트용 글로벌 구역 생성
         setTimeout(() => {
             const zm = this.systemManager?.zoneManager;
             if (zm && zm.zones.size === 0) {
                 zm.createZone(100, 100, 150, 150, 'residential');
                 zm.createZone(300, 100, 200, 150, 'lumber');
-                console.log("🗺️ PoC Test Zones created at init");
+                // Test zones initialized
             }
         }, 1000);
     }
@@ -207,9 +216,13 @@ export default class Engine {
     updateFertilityStat(oldVal, newVal) { this.monitor.updateFertilityStat(oldVal, newVal); }
     updatePotentialStat(oldMax, newMax) { this.monitor.updatePotentialStat(oldMax, newMax); }
 
-    preRenderTerrain() {
-        this.chunkManager.markAllDirty();
-        this.chunkManager.render(this.terrainCtx);
+    async preRenderTerrain(recalculateColors = true) {
+        if (this.chunkManager) {
+            // 🚀 [Optimization] 생성 중에는 색상 재계산을 생략하여 메인 스레드 점유 방지
+            const shouldRecalculate = recalculateColors && !this.isGenerating;
+            await this.chunkManager.markAllDirty(shouldRecalculate);
+            this.chunkManager.render(this.terrainCtx);
+        }
     }
 
     renderDirtyTiles() {
@@ -233,12 +246,7 @@ export default class Engine {
         const LAKE_ID = BIOME_NAMES_TO_IDS.get('LAKE');
         const RIVER_ID = BIOME_NAMES_TO_IDS.get('RIVER');
 
-        for (let i = 0; i < buffer.length; i++) {
-            const b = buffer[i];
-            if (b === OCEAN_ID || b === DEEP_ID || b === LAKE_ID || b === RIVER_ID) {
-                this.waterPixels[this.waterCount++] = i;
-            }
-        }
+        // [Optimization] Loop removed. Incremental sync enabled.
     }
 
     handleResize(w, h) {
@@ -269,6 +277,7 @@ export default class Engine {
         this.activeTool = tool;
         if (this.toolManager && tool) {
             this.toolManager.setTool(tool.id);
+            GlobalLogger.info(`🛠️ Tool Switched: ${tool.name}`);
         }
         this.isPainting = false;
         if (this.camera) this.camera.isDragging = false;
@@ -354,12 +363,15 @@ export default class Engine {
                 const resType = command.payload.type || command.payload.resourceId;
                 const resAmount = command.payload.amount || 1;
                 
-                // 🌳 Nature와 Resource 카테고리 자동 판별
-                const isNature = resType.includes('tree') || resType.includes('grass') || 
-                                 resType.includes('flower') || ['berry', 'shrub', 'mushroom', 'cactus', 'kelp', 'seaweed', 'lotus', 'reed', 'snow_flower', 'medicinal_herb'].includes(resType);
+                // 🌳 [Data-Driven Fix] 하드코딩된 목록 대신 resource_balance.json의 type을 기반으로 자동 판별
+                const config = this.resourceConfig[resType];
+                const resCategory = config?.type; 
                 
+                // food, wood 카테고리는 NatureFactory에서, mineral, fertilizer 등은 ResourceFactory에서 처리
+                const isNature = resCategory === 'food' || resCategory === 'wood' || resType.includes('tree');
                 const cat = isNature ? 'nature' : 'resource';
                 this.factoryProvider.spawn(cat, resType, command.payload.x, command.payload.y, { quality: resAmount / 20 });
+                GlobalLogger.success(`Spawned ${resType.toUpperCase()} at (${Math.floor(command.payload.x)}, ${Math.floor(command.payload.y)})`);
                 break;
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);
@@ -372,6 +384,7 @@ export default class Engine {
                 break;
             case 'PLACE_BLUEPRINT':
                 this.factoryProvider.spawn('building', command.payload.type, command.payload.x, command.payload.y, { isBlueprint: true });
+                GlobalLogger.info(`Placed blueprint for ${command.payload.type.toUpperCase()} at (${Math.floor(command.payload.x)}, ${Math.floor(command.payload.y)})`);
                 break;
             case 'SPAWN_DROPPED_ITEM':
                 const itemFactory = this.factoryProvider.getFactory('item');
@@ -395,19 +408,6 @@ export default class Engine {
 
     stop() { this.isRunning = false; }
 
-    destroy() {
-        this.stop();
-        window.removeEventListener('WORLD_SPAWN_DUST', this._onWorldSpawnDust);
-
-        if (this.systemManager && this.systemManager.destroy) {
-            this.systemManager.destroy();
-        }
-
-        if (this.chunkManager && this.chunkManager.destroy) {
-            this.chunkManager.destroy();
-        }
-    }
-
     loop(time) {
         if (!this.isRunning) return;
         const dt = (time - this.lastTime) / 1000;
@@ -423,6 +423,7 @@ export default class Engine {
     }
 
     update(dt) {
+        if (this.isGenerating) return;
         const time = performance.now();
 
         // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
@@ -479,6 +480,6 @@ export default class Engine {
         this.terrainGen = null;
         this.chunkManager = null;
         
-        console.warn("🛑 [Engine] Destroyed. Memory cleared.");
+        GlobalLogger.warn("🛑 [Engine] Destroyed. Memory cleared.");
     }
 }

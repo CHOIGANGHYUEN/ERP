@@ -1,6 +1,7 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 import Pathfinder from '../../../utils/Pathfinder.js';
+import { GlobalLogger } from '../../../utils/Logger.js';
 
 /**
  * 📦 DepositState
@@ -96,6 +97,8 @@ export default class DepositState extends State {
                     type: 'deposit', // UI에서 색상 등을 구분하기 위한 타입 지정
                     duration: 2000
                 });
+                
+                GlobalLogger.success(`Citizen ${entityId} deposited resources: ${depositedItemsText.join(', ')}`);
             }
 
             // 인수인계 완료 후 개체의 인벤토리를 비움
@@ -107,6 +110,7 @@ export default class DepositState extends State {
                 Object.keys(inventory.items).forEach(k => delete inventory.items[k]);
             }
             state.targetId = null;
+            if (state.unreachableTargets) state.unreachableTargets.clear();
             return AnimalStates.IDLE;
         } else {
             // 🚀 [2단계 대응] Pathfinder.followPath를 통해 이동 로직 처리

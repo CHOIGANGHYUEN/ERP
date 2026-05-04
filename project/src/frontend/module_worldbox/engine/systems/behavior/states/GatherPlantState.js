@@ -1,6 +1,7 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 import Pathfinder from '../../../utils/Pathfinder.js';
+import { GlobalLogger } from '../../../utils/Logger.js';
 
 /**
  * 🧺 GatherPlantState
@@ -40,7 +41,8 @@ export default class GatherPlantState extends State {
             if (!state.isTargetRequested) {
                 const targetManager = this.system.engine.systemManager.targetManager;
                 if (targetManager) {
-                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: 'food' }, 'gather_plant');
+                    const reqType = state.targetResourceType || 'food';
+                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: reqType }, 'gather_plant');
                     state.isTargetRequested = true;
                 }
             }
@@ -95,11 +97,11 @@ export default class GatherPlantState extends State {
             if (state.timer >= 0.8) {
                 // 📦 [User Request] 인벤토리에 즉시 넣지 않고 바닥에 드랍함
                 const itemFactory = this.system.engine.factoryProvider.getFactory('item');
-                const amount = res.value || 5;
-                
-                if (itemFactory) {
+                if (itemFactory && tPos) {
                     const dropType = res.type || 'food';
-                    itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amount);
+                    const amountGained = 5 + Math.floor(Math.random() * 3);
+                    itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amountGained);
+                    GlobalLogger.info(`Citizen ${entityId} harvested ${dropType.toUpperCase()}.`);
                 }
 
                 // 파티클 효과 (잎사귀 비산)

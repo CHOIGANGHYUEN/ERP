@@ -1,5 +1,6 @@
 import System from '../../core/System.js';
 import { AnimalStates } from '../../components/behavior/State.js';
+import { GlobalLogger } from '../../utils/Logger.js';
 
 export default class DeathProcessor extends System {
     constructor(entityManager, eventBus, engine) {
@@ -80,8 +81,7 @@ export default class DeathProcessor extends System {
         if (inventory && inventory.items) {
             for (const [itemType, count] of Object.entries(inventory.items)) {
                 if (count > 0) {
-                    // 고기(meat)는 아래에서 별도로 생성하므로 중복 방지
-                    if (itemType === 'meat') continue; 
+                    // 모든 아이템 타입을 드랍하도록 허용 (성능을 위해 5개 제한 유지)
                     
                     for (let i = 0; i < Math.min(5, count); i++) { // 너무 많이 드랍하면 성능 저하되므로 최대 5개 제한
                         this.eventBus.emit('SPAWN_ENTITY', { 
@@ -132,19 +132,37 @@ export default class DeathProcessor extends System {
             const config = this.engine.speciesConfig[animal.type] || {};
             dropType = config.dropItemType || (animal.type === 'bee' ? null : 'meat');
             dropAmount = config.dropAmount || 1;
+            GlobalLogger.warn(`${animal.type.toUpperCase()} (ID: ${entity.id}) has died.`);
         } else if (resource) {
-            const config = this.engine.resourceConfig[resource.type] || {};
-            dropType = config.dropItemType;
+            const rType = resource.type;
+            const config = this.engine.resourceConfig[rType] || {};
+            GlobalLogger.info(`${rType.toUpperCase()} (ID: ${entity.id}) has been destroyed.`);
+            
+            // 🎯 [Simplified Logic] 설정 파일 데이터를 최우선하며, 없을 경우에만 최소한의 정규화 수행
+            dropType = config.dropItemType || rType;
             dropAmount = config.dropAmount || 1;
         } else if (building) {
-            dropType = 'wood'; // 건물 파괴 시 기본적으로 목재 드랍
-            dropAmount = 3;
+            // 🏗️ 건물의 종류에 따라 적절한 파편 드랍
+            const bType = building.type;
+            if (bType === 'storage' || bType === 'house') {
+                dropType = 'wood';
+                dropAmount = 3;
+            } else if (bType === 'bonfire') {
+                dropType = 'coal';
+                dropAmount = 2;
+            } else {
+                dropType = 'stone';
+                dropAmount = 2;
+            }
         }
 
         if (dropType) {
             const itemFactory = this.engine.factoryProvider.getFactory('item');
-            if (itemFactory) {
+            if (itemFactory && dropType && dropType !== 'none') {
                 itemFactory.spawnDrop(transform.x, transform.y, dropType, dropAmount);
+                GlobalLogger.success(`Resource Yield: Dropped ${dropAmount}x ${dropType.toUpperCase()} from ${entity.id}`);
+            } else {
+                console.warn(`[DeathProcessor] No valid dropType for entity ${entity.id} (${dropType})`);
             }
         }
 

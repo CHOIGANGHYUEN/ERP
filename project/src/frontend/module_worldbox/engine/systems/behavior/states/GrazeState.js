@@ -1,5 +1,6 @@
 import { AnimalStates } from '../../../components/behavior/State.js';
 import Pathfinder from '../../../utils/Pathfinder.js';
+import { GlobalLogger } from '../../../utils/Logger.js';
 
 /**
  * 🌿 GrazeState
@@ -57,6 +58,9 @@ export default class GrazeState {
                 const damage = 10;
                 const isDead = health.takeDamage(damage);
                 
+                const targetVisual = target.components.get('Visual');
+                GlobalLogger.info(`${animal.type.toUpperCase()} is grazing on ${targetVisual?.type || 'resource'}.`);
+                
                 // 시각 효과 (풀 조각 튀기)
                 if (this.bs.eventBus) {
                     this.bs.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
@@ -65,7 +69,7 @@ export default class GrazeState {
                 }
 
                 if (isDead) {
-                    // 풀이 죽으면 아이템이 드랍될 것임 -> ForageState로 전이하여 아이템 섭취 유도
+                    // 🌿 [FIX] 아이템 드롭 책임은 DeathProcessor로 일원화 (중복 및 하드코딩 제거)
                     state.targetId = null;
                     return AnimalStates.FORAGE;
                 }
@@ -94,8 +98,12 @@ export default class GrazeState {
             const resource = entity.components.get('Resource');
             const health = entity.components.get('Health');
             
-            // 살아있는 풀 계열 자원인지 확인
-            if (resource && (resource.type === 'grass' || resource.type === 'pasture_grass' || resource.type === 'flower')) {
+            if (!resource) continue;
+
+            // 살아있는 식물 계열 자원인지 확인 (정상화된 모든 식용 자원 포함)
+            const type = resource.type;
+            const config = this.bs.engine.resourceConfig[type];
+            if ((config?.edible || type.includes('grass') || type.includes('flower') || type.includes('plant') || type.includes('reed') || type.includes('vine') || type.includes('shrub'))) {
                 if (health && health.currentHp > 0) {
                     const resTransform = entity.components.get('Transform');
                     const dx = transform.x - resTransform.x;

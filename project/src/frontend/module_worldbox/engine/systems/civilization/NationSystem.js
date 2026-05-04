@@ -1,4 +1,5 @@
 import System from '../../core/System.js';
+import { GlobalLogger } from '../../utils/Logger.js';
 
 /**
  * 👑 NationSystem
@@ -32,7 +33,7 @@ export default class NationSystem extends System {
             totalPopulation: 0
         };
         this.nations.set(id, nation);
-        console.log(`🚩 Nation Created: ${nation.name}`);
+        GlobalLogger.success(`🚩 Nation Created: ${nation.name}`);
         return id;
     }
 
@@ -65,6 +66,7 @@ export default class NationSystem extends System {
             const king = this.entityManager.entities.get(nation.kingId);
             const state = king?.components.get('AIState');
             if (!king || (state && state.mode === 'die')) {
+                GlobalLogger.info(`👑 King ${nation.kingId} has died in ${nation.name}.`);
                 nation.kingId = null;
             }
         }
@@ -99,7 +101,7 @@ export default class NationSystem extends System {
             if (civ) {
                 civ.isKing = true;
                 civ.title = 'King';
-                console.log(`👑 ${nation.name} has a new KING: Entity ${candidateId}`);
+                GlobalLogger.success(`👑 ${nation.name} has a new KING: Entity ${candidateId}`);
                 this.eventBus.emit('KING_ELECTED', { nationId: nation.id, kingId: candidateId });
             }
         }

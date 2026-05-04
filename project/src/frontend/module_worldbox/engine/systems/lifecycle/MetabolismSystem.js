@@ -1,19 +1,20 @@
 import System from '../../core/System.js';
+import { GlobalLogger } from '../../utils/Logger.js';
 import { BIOME_PROPERTIES_MAP, BIOME_NAMES_TO_IDS } from '../../world/TerrainGen.js';
 
 export default class MetabolismSystem extends System {
     constructor(entityManager, eventBus, engine, terrainGen) {
         super(entityManager, eventBus);
         this.engine = engine; // Engine 참조 저장
-        this.terrainGen = terrainGen; 
-        this.excreteThreshold = 15.0; 
+        this.terrainGen = terrainGen;
+        this.excreteThreshold = 15.0;
         this.updateAccumulator = 0; // 🚀 [Optimization]
     }
 
     update(dt, time) {
         this.updateAccumulator += dt;
         if (this.updateAccumulator < 0.1) return;
-        
+
         const effectiveDt = this.updateAccumulator;
         this.updateAccumulator = 0;
 
@@ -37,16 +38,16 @@ export default class MetabolismSystem extends System {
             if (!stats || !animal || !transform) continue;
 
             // 🚀 [Expert Optimization] 대사 LOD 적용
-            const isVisible = camera && (transform.x > viewX && transform.x < viewX + viewW && 
-                                         transform.y > viewY && transform.y < viewY + viewH);
-            
+            const isVisible = camera && (transform.x > viewX && transform.x < viewX + viewW &&
+                transform.y > viewY && transform.y < viewY + viewH);
+
             // 화면 밖 개체는 1초에 한 번만 대사 처리 (effectiveDt 보정)
             if (!isVisible) {
                 // 개체 ID와 시간을 조합하여 업데이트 타이밍 분산 (Staggered Update)
                 const updateInterval = 1.0; // 1초
                 const lastUpdate = entity._lastMetabolismUpdate || 0;
                 if (time - lastUpdate < updateInterval * 1000) continue;
-                
+
                 // 밀린 시간만큼 한꺼번에 처리하기 위해 dt 보정
                 const lodDt = (time - lastUpdate) / 1000;
                 entity._lastMetabolismUpdate = time;
@@ -58,14 +59,23 @@ export default class MetabolismSystem extends System {
             }
         }
 
-        // 💩 6. 배설물 분해 (10Hz로 최적화)
+        // 💩 6. 배설물 분해 (10Hz로 최적화 및 대상 제한)
+        // 전수 조사 대신 분해 대상이 될 수 있는 리소스들만 필터링 (향후 전용 Set 관리 권장)
+        let processedCount = 0;
+        const maxProcessPerTick = 50; // 한 틱에 최대 50개만 처리
+
         for (const id of em.resourceIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
+            
             const resource = entity.components.get('Resource');
-            const transform = entity.components.get('Transform');
-            if (resource && resource.isFertilizer && transform) {
-                this.processDecomposition(id, entity, resource, transform, effectiveDt);
+            if (resource && resource.isFertilizer) {
+                const transform = entity.components.get('Transform');
+                if (transform) {
+                    this.processDecomposition(id, entity, resource, transform, effectiveDt);
+                    processedCount++;
+                    if (processedCount >= maxProcessPerTick) break;
+                }
             }
         }
     }
@@ -81,14 +91,14 @@ export default class MetabolismSystem extends System {
         // ⏳ 1. 허기 및 피로도 감쇄 (effectiveDt 사용)
         const hungerDecay = (config.hungerDecayRate || 0.1) * effectiveDt;
         const fatigueIncrease = (config.fatigueIncreaseRate || 0.05) * effectiveDt;
-        
+
         stats.hunger = Math.max(0, stats.hunger - hungerDecay);
         stats.fatigue = Math.min(stats.maxFatigue || 100, stats.fatigue + fatigueIncrease);
 
         // 👴 2. 노화 처리 (effectiveDt 사용)
         if (age) {
-            age.currentAge += effectiveDt * 0.0013889; 
-            
+            age.currentAge += effectiveDt * 0.0013889;
+
             // 🔄 수명 단계(Stage) 업데이트 (애니메이션/크기 변화 반영)
             if (Math.random() < 0.05) age.updateStage(entity); // 5% 확률로 정기 업데이트
 
@@ -99,17 +109,17 @@ export default class MetabolismSystem extends System {
 
         // 💀 3. 아사 처리 (effectiveDt 사용)
         if (stats.hunger <= 0) {
-            const damage = effectiveDt * 2.0; 
-            stats.health -= damage; 
-            
+            const damage = effectiveDt * 2.0;
+            stats.health -= damage;
+
             if (stats.health <= 0) {
-                console.log(`💀 [Death] Entity ${id} (${animal.type}) died of STARVATION.`);
+                GlobalLogger.warn(`💀 [Death] Entity ${id} (${animal.type}) died of STARVATION.`);
             }
         }
 
         // 👴 노화 사망 로그
         if (age && age.currentAge >= age.maxAge && stats.health <= 0) {
-            console.log(`👵 [Death] Entity ${id} (${animal.type}) died of OLD AGE.`);
+            GlobalLogger.warn(`👵 [Death] Entity ${id} (${animal.type}) died of OLD AGE.`);
         }
 
         // 🆘 4. 생존 인터럽트 트리거 (JobController 보유 시)
@@ -149,15 +159,19 @@ export default class MetabolismSystem extends System {
         // 배설 로직: 저장된 비옥도가 임계치를 넘으면 배설물 생성
         const ix = Math.floor(transform.x);
         const iy = Math.floor(transform.y);
+        
+        // 🗺️ 맵 경계 체크 (배설 시 인덱스 오류 방지)
+        if (ix < 0 || ix >= this.terrainGen.mapWidth || iy < 0 || iy >= this.terrainGen.mapHeight) return;
+
         const idx = iy * this.terrainGen.mapWidth + ix;
         const currentBiomeId = this.terrainGen.biomeBuffer[idx];
         const isInWater = [0, 1, 2, 3].includes(currentBiomeId); // OCEAN, RIVER 등
 
         if (!isInWater && metabolism.storedFertility >= this.excreteThreshold) {
             metabolism.isPooping = true;
-            this.eventBus.emit('SPAWN_POOP', { 
-                x: transform.x, 
-                y: transform.y, 
+            this.eventBus.emit('SPAWN_POOP', {
+                x: transform.x,
+                y: transform.y,
                 fertilityAmount: metabolism.storedFertility // 🧪 이미 식사 품질이 반영된 값
             });
             metabolism.storedFertility = 0;
@@ -176,20 +190,20 @@ export default class MetabolismSystem extends System {
 
         if (x >= 0 && x < width && y >= 0 && y < this.terrainGen.mapHeight) {
             const idx = y * width + x;
-            
+
             // 배설물의 영양분을 땅으로 환원 (8비트 정수 체계: 0-255)
             const releaseRate = dt * 100.0; // 초당 100 주입 시도
             const amount = Math.min(resource.fertilityValue || 10, releaseRate);
-            
+
             if (amount > 0) {
                 const current = fb[idx] || 0;
                 // 🚀 [Scale Fix] 최대 255까지 비옥도 누적 가능
                 const next = Math.min(255, current + amount);
-                
+
                 if (Math.floor(next) > current) {
                     fb[idx] = Math.floor(next);
                     if (resource.fertilityValue) resource.fertilityValue -= amount;
-                    
+
                     this.eventBus.emit('CACHE_PIXEL_UPDATE', { x, y, reason: 'fertility_change' });
                 } else if (resource.fertilityValue) {
                     resource.fertilityValue -= amount;

@@ -4,6 +4,7 @@ export const useWorldboxStore = defineStore('worldbox', {
   state: () => ({
     selectedEntity: null,
     villages: [], // 🏘️ 마을 정보 목록
+    showVillageInfo: false, // 📋 마을 상세 정보창 표시 여부
   }),
   actions: {
     updateVillageStats(villages) {

@@ -89,6 +89,10 @@ export default class SystemManager {
     }
 
     update(dt, time) {
+        // 🚀 [Expert Optimization] 프레임 시작 시 동적 해시 초기화
+        // 모든 시스템이 동일한 프레임 내에서 일관된 공간 데이터를 참조하도록 보장합니다.
+        if (this.spatialHash) this.spatialHash.clearDynamic();
+
         // [Phase 1] 환경 및 입력 업데이트 (Polling)
         this.wind.update(time);
         this.environment.update(dt, time);

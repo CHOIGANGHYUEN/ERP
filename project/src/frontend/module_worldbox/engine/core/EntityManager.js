@@ -80,6 +80,7 @@ export default class EntityManager {
                 if (component.type === 'wood' || component.isTree) name = 'Resource';
                 else if (component.edible || component.type === 'food') name = 'Resource';
                 else if (component.isBlueprint || component.progress !== undefined) name = 'Structure';
+                else if (component.villageId !== undefined || component.maxHealth !== undefined) name = 'Building';
             }
 
             entity.components.set(name, component);
@@ -89,7 +90,7 @@ export default class EntityManager {
                 if (component.type === 'human') this.humanIds.add(entityId);
             }
             if (name === 'Resource' || name === 'DroppedItem') this.resourceIds.add(entityId);
-            if (name === 'Building') this.buildingIds.add(entityId);
+            if (name === 'Building' || name === 'Structure') this.buildingIds.add(entityId);
         }
     }
 

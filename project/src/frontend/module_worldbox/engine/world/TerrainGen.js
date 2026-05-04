@@ -103,17 +103,218 @@ export default class TerrainGen {
         }
     }
 
-    generate(mapWidth, mapHeight) {
+    /** ⚡ [Ultra-Fast Optimization] Permutation Table for Perlin Noise */
+    _p = new Uint8Array(512);
+    _initNoise() {
+        const p = new Uint8Array(256);
+        for(let i=0; i<256; i++) p[i] = i;
+        for(let i=255; i>0; i--) {
+            const r = Math.floor(Math.random() * (i + 1));
+            [p[i], p[r]] = [p[r], p[i]];
+        }
+        for(let i=0; i<512; i++) this._p[i] = p[i & 255];
+    }
+
+    _perlin(x, y) {
+        const X = Math.floor(x) & 255;
+        const Y = Math.floor(y) & 255;
+        x -= Math.floor(x);
+        y -= Math.floor(y);
+        const u = x * x * x * (x * (x * 6 - 15) + 10);
+        const v = y * y * y * (y * (y * 6 - 15) + 10);
+        const p = this._p;
+        const A = p[X] + Y, AA = p[A], AB = p[A + 1];
+        const B = p[X + 1] + Y, BA = p[B], BB = p[B + 1];
+
+        const grad2 = (hash, x, y) => {
+            const h = hash & 15;
+            const u = h < 8 ? x : y;
+            const v = h < 4 ? y : h === 12 || h === 14 ? x : 0;
+            return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+        };
+
+        return (1 + (1 - v) * ((1 - u) * grad2(p[AA], x, y) + u * grad2(p[BA], x - 1, y)) +
+               v * ((1 - u) * grad2(p[AB], x, y - 1) + u * grad2(p[BB], x - 1, y - 1))) * 0.5;
+    }
+
+    /** 🎨 [Ultra-Fast] Color LUT 생성 (지형/바이옴/비옥도 조합 캐싱) */
+    colorLUT = new Uint32Array(8 * 16 * 16); 
+    _initColorLUT() {
+        for(let t=0; t<8; t++) {
+            for(let b=0; b<16; b++) {
+                const biome = BIOME_PROPERTIES_MAP.get(b);
+                for(let f=0; f<16; f++) {
+                    const fertility = f * 17; // 0-255
+                    let r = 0, g = 0, bl = 0;
+                    switch(t) {
+                        case 0: r = 10; g = 30; bl = 100; break;
+                        case 1: r = 30; g = 80; bl = 180; break;
+                        case 4: r = 210; g = 190; bl = 130; break;
+                        case 5: r = 120; g = 90; bl = 60; break;
+                        case 6: r = 100; g = 100; bl = 100; break;
+                        case 7: r = 180; g = 180; bl = 180; break;
+                        default: r = 50; g = 50; bl = 50;
+                    }
+                    if (t === 4 || t === 5) {
+                        if (biome) {
+                            const fRatio = fertility / 100;
+                            const cLow = biome.colorLow || [120, 100, 80];
+                            const cHigh = biome.colorHigh || [60, 180, 40];
+                            const br = cLow[0] + (cHigh[0] - cLow[0]) * fRatio;
+                            const bg = cLow[1] + (cHigh[1] - cLow[1]) * fRatio;
+                            const bb = cLow[2] + (cHigh[2] - cLow[2]) * fRatio;
+                            r = Math.floor(r * 0.2 + br * 0.8);
+                            g = Math.floor(g * 0.2 + bg * 0.8);
+                            bl = Math.floor(bl * 0.2 + bb * 0.8);
+                        }
+                    }
+                    this.colorLUT[(t << 8) | (b << 4) | f] = (255 << 24) | (bl << 16) | (g << 8) | r;
+                }
+            }
+        }
+    }
+
+    async generateProgressive(mapWidth, mapHeight, engine, onProgress, outStats, waterPixels) {
         this.mapWidth = mapWidth;
         this.mapHeight = mapHeight;
         
-        // 🏗️ [Memory Optimization] Float32(4B) -> Uint8(1B)로 전면 교체 (75% 절감)
+        // 1. 버퍼 초기화
         this.terrain = new TerrainLayer(mapWidth, mapHeight);
         this.biomes = new BiomeLayer(mapWidth, mapHeight);
-        
         this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight); // ⚡ Optimized
-        this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight); // ⚡ Optimized
+        this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
+        this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
+        this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
+
+        const seedAlt = Math.random() * 100;
+        const seedHum = Math.random() * 100;
+        const seedTemp = Math.random() * 100;
+
+        // 🚀 [Expert Optimization] 노이즈 및 컬러 시스템 초기화
+        this._initNoise();
+        this._initColorLUT();
+        
+        const maxFertilityTable = new Uint8Array(256);
+        BIOMES.forEach(b => {
+            maxFertilityTable[b.id] = b.maxFertility || 0;
+        });
+
+        const colorLUT = this.colorLUT;
+
+        const steps = [16, 4, 1];
+        const cm = engine.chunkManager;
+        const cmBuffer = cm.buffer;
+        
+        const terrainBuf = this.terrain.buffer;
+        const biomeBuf = this.biomes.buffer;
+        const fertBuf = this.fertilityBuffer;
+        const wqBuf = this.waterQualityBuffer;
+        const mdBuf = this.mineralDensityBuffer;
+
+        for (const step of steps) {
+            const batchSize = step === 1 ? 64 : 256; 
+
+            for (let y = 0; y < mapHeight; y += step) {
+                const ny = y / mapHeight;
+                const cy = ny - 0.5;
+
+                for (let x = 0; x < mapWidth; x += step) {
+                    const idx = y * mapWidth + x;
+                    const nx = x / mapWidth;
+                    const cx = nx - 0.5;
+
+                    // 🏎️ [Ultra-Fast Perlin] Trig 제거
+                    let altitude = this._perlin(nx * 4 + seedAlt, ny * 4 + seedAlt) * 0.5 +
+                                   this._perlin(nx * 8 + seedAlt, ny * 8 + seedAlt) * 0.25 +
+                                   this._perlin(nx * 16 + seedAlt, ny * 16 + seedAlt) * 0.125;
+                    
+                    const distSq = cx * cx + cy * cy;
+                    const mask = Math.max(0, 1.0 - Math.pow(distSq * 4.0, 0.75));
+                    altitude *= mask;
+
+                    const humidity = this._perlin(nx * 3 + seedHum, ny * 3 + seedHum) * 0.5 + 0.5;
+                    const temperature = this._perlin(nx * 2 + seedTemp, ny * 2 + seedTemp) * 0.5 + 0.5;
+
+                    let terrainId = 5; // SOIL
+                    if (altitude < 0.25) terrainId = 0; // DEEP
+                    else if (altitude < 0.40) terrainId = 1; // OCEAN
+                    else if (altitude < 0.45) terrainId = 4; // SAND
+                    else if (altitude > 0.80) terrainId = 7; // HIGH
+                    else if (altitude > 0.65) terrainId = 6; // LOW
+
+                    terrainBuf[idx] = terrainId;
+
+                    let biomeId = 5; 
+                    if (terrainId === 6) biomeId = 8;
+                    else if (terrainId === 7) biomeId = 9;
+                    else if (terrainId === 4) biomeId = 4;
+                    else if (terrainId <= 1) biomeId = terrainId; 
+                    else {
+                        if (humidity > 0.7 && temperature > 0.6) biomeId = 7;
+                        else if (humidity > 0.4) biomeId = 6;
+                    }
+                    biomeBuf[idx] = biomeId;
+
+                    const fert = (terrainId === 4 || terrainId === 5) ? Math.floor(25 + Math.random() * 200) : 0;
+                    fertBuf[idx] = fert;
+                    wqBuf[idx] = (terrainId <= 1) ? 200 : 0;
+                    mdBuf[idx] = (terrainId >= 6) ? 230 : 0;
+
+                    // 📊 [Optimization] 최종 단계(Step 1)에서 통계 및 수역 데이터 합산 병행
+                    if (step === 1) {
+                        if (outStats) {
+                            outStats.totalFertility += fert;
+                            outStats.potentialFertility += maxFertilityTable[biomeId];
+                        }
+                        if (waterPixels && (biomeId <= 3)) {
+                            waterPixels[engine.waterCount++] = idx;
+                        }
+                    }
+
+                    // 🎨 [Ultra-Fast] Direct Buffer Write using LUT
+                    const fIdx = fert >> 4; // 0-15
+                    const color = colorLUT[(terrainId << 8) | (biomeId << 4) | fIdx];
+                    
+                    // Fill ChunkManager buffer directly
+                    if (step === 1) {
+                        cmBuffer[idx] = color;
+                    } else {
+                        for (let dy = 0; dy < step && y + dy < mapHeight; dy++) {
+                            const rOff = (y + dy) * mapWidth;
+                            for (let dx = 0; dx < step && x + dx < mapWidth; dx++) {
+                                const nIdx = rOff + (x + dx);
+                                cmBuffer[nIdx] = color;
+                                if (dx === 0 && dy === 0) continue;
+                                terrainBuf[nIdx] = terrainId;
+                                biomeBuf[nIdx] = biomeId;
+                                fertBuf[nIdx] = fert;
+                                wqBuf[nIdx] = wqBuf[idx];
+                                mdBuf[nIdx] = mdBuf[idx];
+                            }
+                        }
+                    }
+                }
+
+                if (y % batchSize === 0) {
+                    if (onProgress) onProgress();
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                }
+            }
+            if (onProgress) onProgress();
+            await new Promise(resolve => setTimeout(resolve, 20)); 
+        }
+    }
+
+    generate(mapWidth, mapHeight) {
+        // 동기식 생성 로직 (레거시 지원 및 즉시 생성이 필요한 경우)
+        this.mapWidth = mapWidth;
+        this.mapHeight = mapHeight;
+        
+        this.terrain = new TerrainLayer(mapWidth, mapHeight);
+        this.biomes = new BiomeLayer(mapWidth, mapHeight);
+        this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight);
+        this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
+        this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
         this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
 
         const seedAlt = Math.random() * 100;

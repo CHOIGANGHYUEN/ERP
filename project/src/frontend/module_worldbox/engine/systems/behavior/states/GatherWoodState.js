@@ -1,4 +1,5 @@
 import GatherState from './GatherState.js';
+import { GlobalLogger } from '../../../utils/Logger.js';
 
 /**
  * 🪓 GatherWoodState
@@ -126,6 +127,7 @@ export default class GatherWoodState extends GatherState {
                 const dropType = resourceNode.type || 'wood';
                 const amountGained = 5 + Math.floor(Math.random() * 3);
                 itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amountGained);
+                GlobalLogger.info(`Citizen ${entity.id} chopped ${dropType.toUpperCase()}. Gained ${amountGained} units.`);
             }
 
             // 🪓 나무 팰 때마다 나무 파편(파티클) 튀는 타격감 추가
@@ -156,6 +158,7 @@ export default class GatherWoodState extends GatherState {
                 // 비동기 타이머 대신 상태 기계로 위임하여 게임 루프가 쓰러짐 연출과 삭제를 완벽히 통제하도록 함
                 state.fallingTargetId = targetId;
                 state.fallTimer = 0;
+                GlobalLogger.warn(`Timber! Tree at (${Math.floor(tPos.x)}, ${Math.floor(tPos.y)}) is falling.`);
             }
         }
     }
