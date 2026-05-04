@@ -124,45 +124,66 @@ export default class DeathProcessor extends System {
             });
         }
 
-        // 3. 📦 [Item Factory Integration] 사망 시 아이템 드랍
-        let dropType = null;
-        let dropAmount = 1;
+        // 3. 📦 [Item Factory Integration] 사망 시 아이템 드랍 (다중 드랍 지원)
+        const itemFactory = this.engine.factoryProvider.getFactory('item');
+        if (itemFactory) {
+            let drops = [];
 
-        if (animal) {
-            const config = this.engine.speciesConfig[animal.type] || {};
-            dropType = config.dropItemType || (animal.type === 'bee' ? null : 'meat');
-            dropAmount = config.dropAmount || 1;
-            GlobalLogger.warn(`${animal.type.toUpperCase()} (ID: ${entity.id}) has died.`);
-        } else if (resource) {
-            const rType = resource.type;
-            const config = this.engine.resourceConfig[rType] || {};
-            GlobalLogger.info(`${rType.toUpperCase()} (ID: ${entity.id}) has been destroyed.`);
-            
-            // 🎯 [Simplified Logic] 설정 파일 데이터를 최우선하며, 없을 경우에만 최소한의 정규화 수행
-            dropType = config.dropItemType || rType;
-            dropAmount = config.dropAmount || 1;
-        } else if (building) {
-            // 🏗️ 건물의 종류에 따라 적절한 파편 드랍
-            const bType = building.type;
-            if (bType === 'storage' || bType === 'house') {
-                dropType = 'wood';
-                dropAmount = 3;
-            } else if (bType === 'bonfire') {
-                dropType = 'coal';
-                dropAmount = 2;
-            } else {
-                dropType = 'stone';
-                dropAmount = 2;
+            if (animal) {
+                const config = this.engine.speciesConfig[animal.type] || {};
+                if (config.drops) {
+                    drops = config.drops;
+                } else {
+                    // Fallback to legacy single drop
+                    const dropType = config.dropItemType || (animal.type === 'bee' ? null : 'meat');
+                    if (dropType) drops.push({ type: dropType, amount: config.dropAmount || 1, chance: 1.0 });
+                }
+                GlobalLogger.warn(`${animal.type.toUpperCase()} (ID: ${entity.id}) has died.`);
+            } else if (resource) {
+                const rType = resource.type;
+                const config = this.engine.resourceConfig[rType] || {};
+                if (config.drops) {
+                    drops = config.drops;
+                } else {
+                    // Fallback to legacy single drop
+                    const dropType = config.dropItemType || rType;
+                    if (dropType) drops.push({ type: dropType, amount: config.dropAmount || 1, chance: 1.0 });
+                }
+                GlobalLogger.info(`${rType.toUpperCase()} (ID: ${entity.id}) has been destroyed.`);
+            } else if (building) {
+                const bType = building.type;
+                if (bType === 'storage' || bType === 'house') {
+                    drops.push({ type: 'wood', amount: 3, chance: 1.0 });
+                } else if (bType === 'bonfire') {
+                    drops.push({ type: 'coal', amount: 2, chance: 1.0 });
+                } else {
+                    drops.push({ type: 'stone', amount: 2, chance: 1.0 });
+                }
             }
-        }
 
-        if (dropType) {
-            const itemFactory = this.engine.factoryProvider.getFactory('item');
-            if (itemFactory && dropType && dropType !== 'none') {
-                itemFactory.spawnDrop(transform.x, transform.y, dropType, dropAmount);
-                GlobalLogger.success(`Resource Yield: Dropped ${dropAmount}x ${dropType.toUpperCase()} from ${entity.id}`);
-            } else {
-                console.warn(`[DeathProcessor] No valid dropType for entity ${entity.id} (${dropType})`);
+            // 🎲 드랍 실행 루프
+            const isFromConfig = !!(resource && this.engine.resourceConfig[resource.type]?.drops);
+            
+            for (const drop of drops) {
+                if (!drop.type || drop.type === 'none') continue;
+                
+                // 확률 체크
+                const chance = drop.chance !== undefined ? drop.chance : 1.0;
+                if (Math.random() > chance) continue;
+
+                // 수량 결정
+                let amount = 1;
+                if (drop.min !== undefined && drop.max !== undefined) {
+                    amount = Math.floor(Math.random() * (drop.max - drop.min + 1)) + drop.min;
+                } else {
+                    amount = drop.amount || 1;
+                }
+
+                if (amount > 0) {
+                    itemFactory.spawnDrop(transform.x, transform.y, drop.type, amount);
+                    const logSuffix = isFromConfig ? 'From Config' : 'Fallback/Manual';
+                    GlobalLogger.success(`Resource Yield: Dropped ${amount}x ${drop.type.toUpperCase()} from ${entity.id} (${logSuffix})`);
+                }
             }
         }
 

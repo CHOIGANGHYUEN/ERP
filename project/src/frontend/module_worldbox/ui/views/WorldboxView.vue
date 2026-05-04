@@ -83,7 +83,7 @@
 
       <!-- 🚀 [Expert Design] Intro / Start Screen -->
       <Transition name="fade-scale">
-        <div v-if="!isGameStarted" class="intro-screen">
+        <div v-if="!isGameStarted && !showMapSettings" class="intro-screen">
           <div class="intro-content">
             <div class="logo-wrapper">
               <h1 class="logo-text">WORLD<span>BOX</span></h1>
@@ -95,7 +95,7 @@
               Create biomes, nurture life, and observe the rise of empires.
             </div>
 
-            <button class="start-btn" @click="startGame">
+            <button class="start-btn" @click="showMapSettings = true">
               <span class="btn-shine"></span>
               <span class="btn-text">INITIALIZE UNIVERSE</span>
               <span class="btn-icon">⚡</span>
@@ -105,7 +105,17 @@
           </div>
         </div>
       </Transition>
-    </div>
+
+    </div> <!-- End of UI Overlay -->
+
+    <!-- 🗺️ Map Settings Modal - Moved outside overlay for better isolation -->
+    <Transition name="fade">
+      <MapSettings 
+        v-if="showMapSettings" 
+        @cancel="showMapSettings = false"
+        @confirm="handleMapConfirm"
+      />
+    </Transition>
   </div>
 </template>
 
@@ -119,11 +129,14 @@ import { DefaultTools } from '../../engine/core/ToolRegistry.js';
 import { useWorldboxStore } from '../store/worldboxStore';
 import EntityStatusPanel from '../components/EntityStatusPanel.vue';
 import VillageDetailPanel from '../components/VillageDetailPanel.vue';
+import MapSettings from '../components/MapSettings.vue';
 
 const worldboxContainer = ref(null);
 const gameCanvas = ref(null);
 const isMenuOpen = ref(false);
 const activeTool = ref('move_hand');
+const showMapSettings = ref(false);
+const isGameStarted = ref(false);
 const brushSize = ref(15);
 const spreadSpeed = ref(10);
 const spreadAmount = ref(3000);
@@ -225,17 +238,16 @@ const toggleMenu = () => {
 
 const store = useWorldboxStore();
 
-const isGameStarted = ref(false);
-const startGame = () => {
-  if (isGameStarted.value) return;
+const handleMapConfirm = (settings) => {
+  showMapSettings.value = false;
   isGameStarted.value = true;
-  initEngine();
+  initEngine(settings);
 };
 
-const initEngine = () => {
+const initEngine = (mapSettings = {}) => {
   if (!gameCanvas.value || !worldboxContainer.value) return;
   
-  engine.value = new Engine(gameCanvas.value);
+  engine.value = new Engine(gameCanvas.value, mapSettings);
   allTools.value = DefaultTools(engine.value);
   
   // 🌍 Global access for UI components

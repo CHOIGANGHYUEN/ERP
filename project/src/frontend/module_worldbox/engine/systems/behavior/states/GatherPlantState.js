@@ -95,13 +95,22 @@ export default class GatherPlantState extends State {
             // 채집 시간 (0.8초)
             state.timer = (state.timer || 0) + dt;
             if (state.timer >= 0.8) {
-                // 📦 [User Request] 인벤토리에 즉시 넣지 않고 바닥에 드랍함
+                // 🔍 [Config-Driven Drops] 설정 파일의 'drops' 배열을 기반으로 아이템 생성
                 const itemFactory = this.system.engine.factoryProvider.getFactory('item');
                 if (itemFactory && tPos) {
-                    const dropType = res.type || 'food';
-                    const amountGained = 5 + Math.floor(Math.random() * 3);
-                    itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amountGained);
-                    GlobalLogger.info(`Citizen ${entityId} harvested ${dropType.toUpperCase()}.`);
+                    const config = this.system.engine.resourceConfig[res.id] || 
+                                   this.system.engine.resourceConfig[res.type] || {};
+                    const hasConfig = !!config.drops;
+                    const drops = config.drops || [{ type: 'food', amount: 5 }];
+
+                    drops.forEach(drop => {
+                        if (Math.random() <= (drop.chance || 1.0)) {
+                            const amount = drop.amount || 1;
+                            itemFactory.spawnDrop(tPos.x, tPos.y, drop.type, amount);
+                            const logSuffix = hasConfig ? 'From Config' : 'Fallback';
+                            GlobalLogger.info(`Citizen ${entityId} harvested ${drop.type.toUpperCase()} from ${res.id} (${logSuffix}).`);
+                        }
+                    });
                 }
 
                 // 파티클 효과 (잎사귀 비산)

@@ -23,24 +23,41 @@ export default class ItemFactory extends IEntityFactory {
         // 🎯 [Priority Fix] 식물 및 식품 계열 판정을 목재보다 먼저 수행하여 오판 방지
         if (lowerType.includes('grass') || lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('pasture') || lowerType.includes('leaf') || lowerType.includes('herb') || lowerType.includes('shrub') || lowerType.includes('bush') || lowerType.includes('fiber') || lowerType.includes('reed') || lowerType.includes('vine')) { color = '#4caf50'; icon = '🌿'; }
         else if (lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('apple')) { color = '#e91e63'; icon = '🍎'; }
+        else if (lowerType.includes('honey')) { color = '#ffb300'; icon = '🍯'; }
+        else if (lowerType.includes('beehive')) { color = '#ff6f00'; icon = '🛖'; }
         else if (lowerType.includes('meat')) { color = '#ff5252'; icon = '🥩'; }
         else if (lowerType.includes('food') || lowerType.includes('bread')) { color = '#8bc34a'; icon = '🍖'; }
         else if (lowerType.includes('wood') || lowerType.includes('tree') || lowerType.includes('log')) { color = '#8d6e63'; icon = '🪵'; }
+        else if (lowerType.includes('stick')) { color = '#a1887f'; icon = '🦯'; }
         else if (lowerType.includes('stone') || lowerType.includes('rock') || lowerType.includes('ore') || lowerType.includes('mineral')) { color = '#9e9e9e'; icon = '🪨'; }
         else if (lowerType.includes('gold')) { color = '#fbc02d'; icon = '🟡'; }
         else if (lowerType.includes('coal')) { color = '#212121'; icon = '⬛'; }
         else if (lowerType.includes('iron')) { color = '#757575'; icon = '⛓️'; }
         else { color = '#ffffff'; icon = '📦'; } // 기본값
 
-        // 🔍 [Data Connection] 설정 파일에서 실제 이름 가져오기 (1회성 처리)
-        const config = this.engine.resourceConfig[type];
-        let displayName = config?.name;
-        
-        // 대소문자 무시 검색 (방어적 설계)
-        if (!displayName) {
+        // 🔍 [Data Connection] 설정 파일에서 실제 이름 및 속성 가져오기
+        let config = this.engine.resourceConfig[type];
+        if (!config) {
+            // 대소문자 무시 검색 (방어적 설계)
             const matchingKey = Object.keys(this.engine.resourceConfig).find(k => k.toLowerCase() === lowerType);
-            if (matchingKey) displayName = this.engine.resourceConfig[matchingKey].name;
+            if (matchingKey) config = this.engine.resourceConfig[matchingKey];
         }
+
+        // 🏷️ [Final Identification] 설정 우선, 없으면 타입 기반 추론, 그마저도 없으면 'resource'
+        const displayName = config?.name || type || 'Unknown Item';
+        
+        let category = config?.type;
+        if (!category) {
+            if (lowerType.includes('wood') || lowerType.includes('tree') || lowerType.includes('log')) category = 'wood';
+            else if (lowerType.includes('grass') || lowerType.includes('pasture') || lowerType.includes('hay')) category = 'grass';
+            else if (lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('shrub') || lowerType.includes('leaf')) category = 'plant';
+            else if (lowerType.includes('meat')) category = 'food';
+            else if (lowerType.includes('food') || lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('bread')) category = 'food';
+            else if (lowerType.includes('stone') || lowerType.includes('rock') || lowerType.includes('ore') || lowerType.includes('mineral')) category = 'mineral';
+            else category = 'resource';
+        }
+        
+        const finalDecayTime = config?.decayTime || options.decayTime || 600;
 
         builder.withTransform(x, y)
             .withVisual({
@@ -50,7 +67,7 @@ export default class ItemFactory extends IEntityFactory {
                 icon: icon,
                 size: 2 + Math.min(amount * 0.05, 2)
             })
-            .addComponent('DroppedItem', new DroppedItem(type, amount, decayTime, displayName));
+            .addComponent('DroppedItem', new DroppedItem(type, amount, category, finalDecayTime, displayName));
 
         const id = Number(builder.id);
         if (isNaN(id)) {

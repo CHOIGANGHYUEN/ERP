@@ -107,8 +107,11 @@ export default class EatState extends State {
                         nutrition = Number(config.nutrition) || 15;
                     }
                 } else if (resource) {
-                    // 🌿 살아있는 자원(식물 등) 직접 섭취
-                    if (resource.value > 0) {
+                    // 🌿 살아있는 자원(식물/풀 등) 직접 섭취
+                    const cat = resource.category || 'resource';
+                    const isEdible = (cat === 'food' || cat === 'plant' || cat === 'grass' || resource.edible);
+
+                    if (resource.value > 0 && isEdible) {
                         resource.value -= 1;
                         itemType = resource.type || 'plant';
                         success = true;

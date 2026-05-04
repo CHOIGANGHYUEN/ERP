@@ -36,7 +36,7 @@ export default class HunterRole extends BaseRole {
         // 🥩 [Priority 1] 주변에 드롭된 고기(Meat/Food)가 있는지 먼저 확인
         const droppedMeatCondition = (ent) => {
             const item = ent.components.get('DroppedItem');
-            if (!item || !['meat', 'food'].includes(item.itemType)) return false;
+            if (!item || item.category !== 'food') return false;
             if (item.claimedBy && item.claimedBy !== entity.id) return false;
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
             return true;

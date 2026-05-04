@@ -8,7 +8,7 @@ export default class Storage extends Component {
     constructor(options = {}) {
         super('Storage');
         this.capacity = options.capacity || 1000;
-        this.items = options.items || {}; // { wood: 10, food: 5, ... }
+        this.items = options.items || {}; // { type: count }
         this.isFull = false;
     }
 
@@ -25,23 +25,16 @@ export default class Storage extends Component {
         return 0;
     }
 
-    removeItem(type, amount) {
-        if (this.items[type] && this.items[type] >= amount) {
-            this.items[type] -= amount;
-            this._updateStatus();
-            return amount;
-        }
-        return 0;
+    has(type, amount) {
+        return (this.items[type] || 0) >= amount;
     }
 
-    /**
-     * 특정 자원을 명시적으로 인출 (소비자용)
-     */
     withdraw(type, amount) {
         const available = this.items[type] || 0;
         const actualWithdraw = Math.min(available, amount);
         if (actualWithdraw > 0) {
             this.items[type] -= actualWithdraw;
+            if (this.items[type] <= 0) delete this.items[type];
             this._updateStatus();
             return actualWithdraw;
         }
@@ -55,9 +48,8 @@ export default class Storage extends Component {
     _updateStatus() {
         const total = this.getTotalItems();
         this.isFull = total >= this.capacity;
-        this.isLow = total < this.capacity * 0.1; // 10% 미만이면 저재고 상태
+        this.isLow = total < this.capacity * 0.1;
         
-        // 전역 이벤트를 통해 재고 변경 알림 (EconomyManager 등이 수신 가능)
         if (this.entity && this.entity.entityManager && this.entity.entityManager.eventBus) {
             this.entity.entityManager.eventBus.emit('STORAGE_CHANGED', { 
                 entityId: this.entity.id, 

@@ -33,7 +33,7 @@ export default class ArchitectRole extends BaseRole {
         // 2. 🪵 [Resource Guard] 해당 건물이 요구하는 자원이 있는지 확인
         const blueprint = this.em.entities.get(targetId);
         const structure = blueprint?.components.get('Structure');
-        
+
         // 작업 완료 체크 (누군가 이미 다 지었을 때)
         if (!structure || structure.isComplete) {
             this.releaseTask(entity, village, task.id, true);
@@ -56,7 +56,10 @@ export default class ArchitectRole extends BaseRole {
             requiredType = 'wood';
         }
 
-        const hasResource = (inventory?.items[requiredType] || 0) > 0;
+        const requiredAmount = 1;
+
+        // 🏷️ [Unified Match] 인벤토리에 필요한 자원(또는 유사 속성 자원)이 있는지 확인
+        const hasResource = inventory && inventory.has(requiredType, requiredAmount);
 
         // 3. 자원이 꽉 찼는데 필요한 자원이 아니라면 창고에 비우러 가야 함
         if (inventory && inventory.getTotal() >= inventory.capacity && !hasResource) {
@@ -73,10 +76,20 @@ export default class ArchitectRole extends BaseRole {
             // 🪨 [Priority 1] 아주 가까운(300px) 곳에 드롭 아이템이 있다면 즉시 줍기
             const droppedCondition = (ent) => {
                 const item = ent.components.get('DroppedItem');
-                if (!item || item.itemType !== requiredType) return false;
-                if (item.claimedBy && item.claimedBy !== entity.id) return false;
-                if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
-                return true;
+                if (!item) return false;
+
+                const req = requiredType.toLowerCase();
+                const iCat = (item.category || '').toLowerCase();
+
+                // 🎯 [Exact Type Match] 사용자의 요구대로 아이템의 속성(Type/Category)이 정확히 일치하는지만 확인
+                const isMatch = (iCat === req);
+
+                if (isMatch) {
+                    if (item.claimedBy && item.claimedBy !== entity.id) return false;
+                    if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
+                    return true;
+                }
+                return false;
             };
 
             const veryNearDroppedId = this.em.findNearestEntityWithComponent(
@@ -93,15 +106,26 @@ export default class ArchitectRole extends BaseRole {
             // 🏠 [Priority 2] 마을 창고(Storage)에 재료가 있는지 확인 (완공된 건물만)
             const storage = Array.from(this.em.buildingIds)
                 .map(id => this.em.entities.get(id))
-                .find(ent => {
-                    const civComp = ent?.components.get('Civilization');
-                    const storeComp = ent?.components.get('Storage');
-                    const structComp = ent?.components.get('Structure');
-                    // 창고가 같은 마을 소속이고, 건설 완료된 상태이며, 재고가 있어야 함
-                    return civComp?.villageId === civ.villageId && 
-                           storeComp && 
-                           (!structComp || structComp.isComplete) &&
-                           (storeComp.items[requiredType] || 0) > 0;
+                .find(storeEnt => {
+                    const civComp = storeEnt?.components.get('Civilization');
+                    const structComp = storeEnt?.components.get('Structure');
+
+                    if (civComp?.villageId !== civ.villageId) return false;
+                    if (structComp && !structComp.isComplete) return false;
+
+                    const storeComp = storeEnt.components.get('Storage');
+                    if (!storeComp) return false;
+
+                    // 🏷️ [Unified Match] 창고에 직접적인 ID 또는 유사 속성 자원이 있는지 확인
+                    const lowerReq = requiredType.toLowerCase();
+                    let found = false;
+                    for (const id of Object.keys(storeComp.items)) {
+                        if (id.toLowerCase().includes(lowerReq)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    return found;
                 });
 
             if (storage) {
@@ -125,11 +149,11 @@ export default class ArchitectRole extends BaseRole {
             // 🧺 [Priority 4] 드롭된 게 없으면 직접 수집(벌목/채광 등) 시도
             state.targetId = null;
             state.targetResourceType = requiredType;
-            
+
             // 🪨 돌이나 철광석은 내구도가 있으므로 gather_wood(채광/벌목 로직)를 사용하고,
             // 🌿 풀이나 베리류는 단발성인 gather_plant를 사용합니다.
             const isHeavy = requiredType === 'stone' || requiredType === 'iron_ore' || requiredType === 'wood';
-            return isHeavy ? 'gather_wood' : 'gather_plant'; 
+            return isHeavy ? 'gather_wood' : 'gather_plant';
         }
 
         state.targetId = targetId;

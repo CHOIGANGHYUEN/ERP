@@ -8,8 +8,7 @@
         "lifespan": 15,
         "approachSlowdownRadius": 20,
         "baseHealth": 60,
-        "dropItemType": "meat",
-        "dropAmount": 2
+        "drops": [{ "type": "meat", "amount": 2, "chance": 1.0 }]
     },
     "cow": {
         "diet": "herbivore",
@@ -20,8 +19,7 @@
         "lifespan": 20,
         "approachSlowdownRadius": 25,
         "baseHealth": 120,
-        "dropItemType": "meat",
-        "dropAmount": 4
+        "drops": [{ "type": "meat", "amount": 4, "chance": 1.0 }]
     },
     "wolf": {
         "diet": "carnivore",
@@ -32,8 +30,7 @@
         "lifespan": 12,
         "approachSlowdownRadius": 35,
         "baseHealth": 100,
-        "dropItemType": "meat",
-        "dropAmount": 3
+        "drops": [{ "type": "meat", "amount": 3, "chance": 1.0 }]
     },
     "wild_dog": {
         "diet": "carnivore",
@@ -44,8 +41,7 @@
         "lifespan": 10,
         "approachSlowdownRadius": 30,
         "baseHealth": 80,
-        "dropItemType": "meat",
-        "dropAmount": 2
+        "drops": [{ "type": "meat", "amount": 2, "chance": 1.0 }]
     },
     "hyena": {
         "diet": "carnivore",
@@ -56,8 +52,7 @@
         "lifespan": 14,
         "approachSlowdownRadius": 30,
         "baseHealth": 90,
-        "dropItemType": "meat",
-        "dropAmount": 3
+        "drops": [{ "type": "meat", "amount": 3, "chance": 1.0 }]
     },
     "human": {
         "diet": "omnivore",
@@ -68,8 +63,7 @@
         "lifespan": 80,
         "approachSlowdownRadius": 20,
         "baseHealth": 100,
-        "dropItemType": "meat",
-        "dropAmount": 1
+        "drops": [{ "type": "meat", "amount": 1, "chance": 1.0 }]
     },
     "bee": {
         "diet": "herbivore",
@@ -80,8 +74,7 @@
         "lifespan": 1,
         "approachSlowdownRadius": 5,
         "baseHealth": 5,
-        "dropItemType": "flower",
-        "dropAmount": 1
+        "drops": [{ "type": "flower", "amount": 1, "chance": 1.0 }]
     },
     "tiger": {
         "diet": "carnivore",
@@ -93,8 +86,7 @@
         "damage": 25,
         "baseHealth": 150,
         "approachSlowdownRadius": 30,
-        "dropItemType": "meat",
-        "dropAmount": 5
+        "drops": [{ "type": "meat", "amount": 5, "chance": 1.0 }]
     },
     "lion": {
         "diet": "carnivore",
@@ -106,8 +98,7 @@
         "damage": 28,
         "baseHealth": 160,
         "approachSlowdownRadius": 35,
-        "dropItemType": "meat",
-        "dropAmount": 5
+        "drops": [{ "type": "meat", "amount": 5, "chance": 1.0 }]
     },
     "bear": {
         "diet": "carnivore",
@@ -119,8 +110,7 @@
         "damage": 35,
         "baseHealth": 300,
         "approachSlowdownRadius": 40,
-        "dropItemType": "meat",
-        "dropAmount": 8
+        "drops": [{ "type": "meat", "amount": 8, "chance": 1.0 }]
     },
     "fox": {
         "diet": "carnivore",
@@ -132,8 +122,7 @@
         "damage": 12,
         "baseHealth": 60,
         "approachSlowdownRadius": 20,
-        "dropItemType": "meat",
-        "dropAmount": 2
+        "drops": [{ "type": "meat", "amount": 2, "chance": 1.0 }]
     },
     "crocodile": {
         "diet": "carnivore",
@@ -145,8 +134,7 @@
         "damage": 40,
         "baseHealth": 250,
         "approachSlowdownRadius": 45,
-        "dropItemType": "meat",
-        "dropAmount": 6
+        "drops": [{ "type": "meat", "amount": 6, "chance": 1.0 }]
     },
     "deer": {
         "diet": "herbivore",
@@ -158,8 +146,7 @@
         "damage": 2,
         "baseHealth": 80,
         "approachSlowdownRadius": 25,
-        "dropItemType": "meat",
-        "dropAmount": 3
+        "drops": [{ "type": "meat", "amount": 3, "chance": 1.0 }]
     },
     "rabbit": {
         "diet": "herbivore",
@@ -171,8 +158,7 @@
         "damage": 0,
         "baseHealth": 20,
         "approachSlowdownRadius": 10,
-        "dropItemType": "meat",
-        "dropAmount": 1
+        "drops": [{ "type": "meat", "amount": 1, "chance": 1.0 }]
     },
     "horse": {
         "diet": "herbivore",
@@ -184,8 +170,7 @@
         "damage": 5,
         "baseHealth": 180,
         "approachSlowdownRadius": 30,
-        "dropItemType": "meat",
-        "dropAmount": 4
+        "drops": [{ "type": "meat", "amount": 4, "chance": 1.0 }]
     },
     "elephant": {
         "diet": "herbivore",
@@ -197,8 +182,7 @@
         "damage": 15,
         "baseHealth": 800,
         "approachSlowdownRadius": 50,
-        "dropItemType": "meat",
-        "dropAmount": 15
+        "drops": [{ "type": "meat", "amount": 15, "chance": 1.0 }]
     },
     "goat": {
         "diet": "herbivore",
@@ -210,7 +194,6 @@
         "damage": 4,
         "baseHealth": 90,
         "approachSlowdownRadius": 20,
-        "dropItemType": "meat",
-        "dropAmount": 2
+        "drops": [{ "type": "meat", "amount": 2, "chance": 1.0 }]
     }
 }

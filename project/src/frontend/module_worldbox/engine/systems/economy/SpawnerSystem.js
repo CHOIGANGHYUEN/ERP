@@ -15,8 +15,8 @@ export default class SpawnerSystem extends System {
 
         // 바이옴별 자동 생성 가능 리소스 정의 (확장성 확보)
         this.biomeSpawnTable = new Map([
-            [BIOME_NAMES_TO_IDS.get('GRASS'), ['grass', 'flower', 'berry', 'oak', 'mushroom', 'medicinal_herb']],
-            [BIOME_NAMES_TO_IDS.get('JUNGLE'), ['tropical_fruit_tree', 'mahogany', 'vine', 'shrub', 'wild_mushroom']],
+            [BIOME_NAMES_TO_IDS.get('GRASS'), ['grass', 'flower', 'berry', 'tree_oak', 'mushroom', 'medicinal_herb']],
+            [BIOME_NAMES_TO_IDS.get('JUNGLE'), ['tree_tropical_fruit', 'tree_mahogany', 'vine', 'shrub', 'wild_mushroom']],
             [BIOME_NAMES_TO_IDS.get('DESERT'), ['cactus', 'dry_brush', 'sand']],
             [BIOME_NAMES_TO_IDS.get('OCEAN'), ['seaweed', 'lotus', 'waterweed']],
             [BIOME_NAMES_TO_IDS.get('DEEP_OCEAN'), ['deep_sea_kelp']],
@@ -25,6 +25,82 @@ export default class SpawnerSystem extends System {
         ]);
 
         this._initListeners();
+
+        // 🚀 지형 생성이 완전히 완료된 후 초기 세계 생성 실행
+        this.eventBus.on('WORLD_READY', () => {
+            this.initializeWorld();
+        });
+    }
+
+    /**
+     * 🌍 초기 세계 생성 로직
+     * 사용자 설정(options)에 따라 나무, 자원, 동물을 대량으로 스폰합니다.
+     */
+    initializeWorld() {
+        const options = this.engine.options || {};
+        const natureMult = (options.natureDensity || 100) / 100;
+        const mineralMult = (options.mineralDensity || 100) / 100;
+        const animalMult = (options.animalDensity || 100) / 100;
+        const humanCount = options.humanCount !== undefined ? options.humanCount : 10;
+
+        console.log(`🌌 INITIALIZING WORLD WITH: Nature ${natureMult}x, Mineral ${mineralMult}x, Animal ${animalMult}x, Humans ${humanCount}`);
+
+        const w = this.engine.mapWidth;
+        const h = this.engine.mapHeight;
+
+        // 1. 🌿 식물 및 나무 스폰 (비옥도 기반)
+        const natureTarget = Math.floor((w * h / 500) * natureMult);
+        for (let i = 0; i < natureTarget; i++) {
+            const x = Math.random() * w;
+            const y = Math.random() * h;
+            const idx = this.terrainGen.getIndex(x, y);
+            const fertility = this.terrainGen.fertilityBuffer[idx] / 100;
+            
+            if (fertility > 0.3 && !this.terrainGen.isWater(idx)) {
+                const biomeId = this.terrainGen.biomeBuffer[idx];
+                const pool = this.biomeSpawnTable.get(biomeId) || ['grass'];
+                const resId = pool[Math.floor(Math.random() * pool.length)];
+                this.spawnGenericResource(x, y, resId, false);
+            }
+        }
+
+        // 2. 💎 광석 스폰 (밀도 기반)
+        const mineralTarget = Math.floor((w * h / 2000) * mineralMult);
+        const minerals = ['stone', 'iron', 'gold', 'coal'];
+        for (let i = 0; i < mineralTarget; i++) {
+            const x = Math.random() * w;
+            const y = Math.random() * h;
+            const idx = this.terrainGen.getIndex(x, y);
+            if (this.terrainGen.mineralDensityBuffer[idx] > 100 && !this.terrainGen.isWater(idx)) {
+                const resId = minerals[Math.floor(Math.random() * minerals.length)];
+                this.spawnGenericResource(x, y, resId, false);
+            }
+        }
+
+        // 3. 🐑 동물 스폰
+        const animalTarget = Math.floor(50 * animalMult);
+        const animals = ['sheep', 'rabbit', 'wild_dog', 'wolf'];
+        for (let i = 0; i < animalTarget; i++) {
+            const x = Math.random() * w;
+            const y = Math.random() * h;
+            const idx = this.terrainGen.getIndex(x, y);
+            if (!this.terrainGen.isWater(idx)) {
+                const type = animals[Math.floor(Math.random() * animals.length)];
+                this.spawnEntity({ type, x, y });
+            }
+        }
+
+        // 4. 🧍 인간 개척민 스폰 (맵 중앙 근처)
+        for (let i = 0; i < humanCount; i++) {
+            const x = (w * 0.4) + (Math.random() * w * 0.2);
+            const y = (h * 0.4) + (Math.random() * h * 0.2);
+            const idx = this.terrainGen.getIndex(x, y);
+            if (!this.terrainGen.isWater(idx)) {
+                this.spawnEntity({ type: 'human', x, y });
+            }
+        }
+
+        GlobalLogger.success(`World generation complete: ${natureTarget} nature nodes, ${humanCount} humans initialized.`);
     }
 
     _initListeners() {

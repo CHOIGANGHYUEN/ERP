@@ -4,14 +4,26 @@
  * 명세에 따라 캡슐화 및 자체 파기 로직(이벤트 버스, 엔티티 매니저 호출)이 내재화되었습니다.
  */
 export default class ResourceNode {
-    constructor(type, amount) {
+    constructor(type, amount, category = 'resource') {
         this.type = type;
+        const lowerType = type.toLowerCase();
+
+        // 🌳 [Intelligence] 카테고리가 명시되지 않았거나 기본값일 경우 이름으로 자동 유추 (하위 호환성 및 통일성 보장)
+        if (category === 'resource') {
+            if (lowerType.includes('tree')) category = 'tree';
+            else if (lowerType.includes('wood') || lowerType.includes('log') || lowerType.includes('stick')) category = 'wood';
+            else if (lowerType.includes('grass') || lowerType.includes('pasture') || lowerType.includes('hay')) category = 'grass';
+            else if (lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('shrub') || lowerType.includes('leaf')) category = 'plant';
+            else if (lowerType.includes('food') || lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('meat')) category = 'food';
+            else if (lowerType.includes('stone') || lowerType.includes('ore') || lowerType.includes('mineral')) category = 'mineral';
+        }
+
+        this.category = category; // 🌳 [AI Identification] tree, food, mineral 등 기능적 분류
         this.value = amount;           // 현재 남은 양
         this.maxAmount = amount;
         this.isDepleted = false;
         
         // AI 인지를 위한 플래그 (속성 기반 자동 설정)
-        const lowerType = type.toLowerCase();
         this.isTree = lowerType.includes('tree') || lowerType.includes('wood');
         
         // 동물/인간이 식용 가능한 자원 목록

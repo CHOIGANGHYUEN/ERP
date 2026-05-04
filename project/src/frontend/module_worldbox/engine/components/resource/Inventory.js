@@ -7,7 +7,7 @@ import Component from '../../core/Component.js';
 export default class Inventory extends Component {
     constructor(capacity = 100) {
         super('Inventory');
-        this.items = {}; // 📦 [Flexibility] 특정 키에 얽매이지 않고 동적으로 모든 자원 수용
+        this.items = {}; // { itemId: count } - 이제 itemId는 주로 'wood', 'stone' 등 표준 타입명이 됩니다.
         this.capacity = capacity;
     }
 
@@ -15,7 +15,7 @@ export default class Inventory extends Component {
         const current = this.items[type] || 0;
         const total = this.getTotal();
         const available = this.capacity - total;
-        
+
         const actualAdd = Math.min(amount, available);
         if (actualAdd > 0) {
             this.items[type] = current + actualAdd;
@@ -23,11 +23,16 @@ export default class Inventory extends Component {
         return actualAdd;
     }
 
+    /**
+     * 표준화된 ID(Type)로 자원 존재 여부 확인
+     */
     has(type, amount) {
-        // 🔍 [Expert Logic] 특정 타입이 없으면 유사한 카테고리 자원을 검색할 수도 있음 (향후 확장 가능)
         return (this.items[type] || 0) >= amount;
     }
 
+    /**
+     * 표준화된 ID(Type)로 자원 소모
+     */
     consume(type, amount) {
         if (this.has(type, amount)) {
             this.items[type] -= amount;

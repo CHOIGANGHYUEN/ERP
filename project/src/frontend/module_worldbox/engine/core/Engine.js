@@ -20,8 +20,9 @@ import { GlobalLogger } from '../utils/Logger.js';
 
 
 export default class Engine {
-    constructor(canvas) {
+    constructor(canvas, options = {}) {
         this.canvas = canvas;
+        this.options = options; // 🗺️ Store user map settings
         this.speciesConfig = speciesConfig;
         this.resourceConfig = resourceConfig;
         this.buildingsConfig = buildingsConfig;
@@ -41,9 +42,9 @@ export default class Engine {
         canvas.style.height = '100%';
 
         this.ctx = canvas.getContext('2d', { alpha: false });
-        // 🌍 [Scale Expansion] 대규모 2400x2400 그리드 체제로 확장 (기존 3배)
-        this.mapWidth = 2400;
-        this.mapHeight = 2400;
+        // 🌍 [Scale Expansion] 사용자 설정 맵 크기 적용 (기본값 2400x2400)
+        this.mapWidth = options.width || 2400;
+        this.mapHeight = options.height || 2400;
 
 
         this.terrainCanvas = document.createElement('canvas');
@@ -200,6 +201,10 @@ export default class Engine {
         this.preRenderTerrain();
         
         this.isGenerating = false;
+        console.log("🌍 World Initialization Complete. Ready for life.");
+
+        // 📡 시뮬레이션 준비 완료 알림
+        this.eventBus.emit('WORLD_READY');
 
         // 🏗️ PoC: 테스트용 글로벌 구역 생성
         setTimeout(() => {

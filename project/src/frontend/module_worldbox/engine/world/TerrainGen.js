@@ -201,6 +201,11 @@ export default class TerrainGen {
 
         const colorLUT = this.colorLUT;
 
+        // 🏔️ [Expert Design] 지형 스케일 계산 (기본 100% -> scale 1.0)
+        // 사용자가 '육지 크기'를 키우면(예: 200%), 노이즈 주파수는 낮아져야(예: 0.5) 육지가 커집니다.
+        const landScaleInput = (engine.options && engine.options.landmassScale) || 100;
+        const noiseFreq = 1.0 / (landScaleInput / 100);
+
         const steps = [16, 4, 1];
         const cm = engine.chunkManager;
         const cmBuffer = cm.buffer;
@@ -223,10 +228,10 @@ export default class TerrainGen {
                     const nx = x / mapWidth;
                     const cx = nx - 0.5;
 
-                    // 🏎️ [Ultra-Fast Perlin] Trig 제거
-                    let altitude = this._perlin(nx * 4 + seedAlt, ny * 4 + seedAlt) * 0.5 +
-                                   this._perlin(nx * 8 + seedAlt, ny * 8 + seedAlt) * 0.25 +
-                                   this._perlin(nx * 16 + seedAlt, ny * 16 + seedAlt) * 0.125;
+                    // 🏎️ [Ultra-Fast Perlin] Trig 제거 및 동적 스케일 적용
+                    let altitude = this._perlin(nx * 4 * noiseFreq + seedAlt, ny * 4 * noiseFreq + seedAlt) * 0.5 +
+                                   this._perlin(nx * 8 * noiseFreq + seedAlt, ny * 8 * noiseFreq + seedAlt) * 0.25 +
+                                   this._perlin(nx * 16 * noiseFreq + seedAlt, ny * 16 * noiseFreq + seedAlt) * 0.125;
                     
                     const distSq = cx * cx + cy * cy;
                     const mask = Math.max(0, 1.0 - Math.pow(distSq * 4.0, 0.75));

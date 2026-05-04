@@ -47,6 +47,7 @@ export default class ChunkManager {
 
             // 🚀 [Optimization] 로컬 변수 캐싱으로 가속
             const terrainBuf = tg.terrain.buffer;
+            const biomeBuf = tg.biomeBuffer;
             const fertBuf = tg.fertilityBuffer;
             const wqBuf = tg.waterQualityBuffer;
             const mdBuf = tg.mineralDensityBuffer;

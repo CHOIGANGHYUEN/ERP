@@ -77,9 +77,8 @@ export default class GatheringSystem extends System {
                         const wealth = entity.components.get('Wealth');
                         const resource = target.components.get('Resource');
                         if (inventory && resource) {
-                            const type = resource.type || 'wood';
-                            // 직접 수정 대신 컴포넌트 메서드 사용 (캡슐화 준수)
-                            inventory.add(type, extracted);
+                            const invKey = resource.category || resource.type || 'wood';
+                            inventory.add(invKey, extracted);
                         }
                         if (wealth) wealth.addGold(extracted * 0.1);
                     }

@@ -5,9 +5,10 @@ import Component from '../../core/Component.js';
  * 월드 바닥에 드랍된 아이템의 데이터와 수명을 관리합니다.
  */
 export default class DroppedItem extends Component {
-    constructor(itemType, amount = 1, decaySeconds = 600, displayName = '') {
+    constructor(itemType, amount = 1, category = 'resource', decaySeconds = 600, displayName = '') {
         super('DroppedItem');
         this.itemType = itemType; 
+        this.category = category; // 🏷️ [AI Identification] wood, food, mineral 등 기능적 분류
         this.amount = amount;
         
         // 🏷️ [Cohesion Boost] 아이템 스스로 자신의 이름을 기억함

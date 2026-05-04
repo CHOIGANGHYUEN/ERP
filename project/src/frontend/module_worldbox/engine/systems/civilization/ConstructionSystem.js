@@ -65,7 +65,7 @@ export default class ConstructionSystem extends System {
                         requiredType = 'wood'; // 🪵 사용자의 요청에 따라 창고는 나무로만 건설
                     }
 
-                    const hasResource = (inventory.items && inventory.items[requiredType]) > 0;
+                    const hasResource = inventory.has(requiredType, 1);
 
                     if (hasResource) {
                         const builderComp = entity.components.get('Builder');
@@ -77,9 +77,7 @@ export default class ConstructionSystem extends System {
                         state._buildProgressCounter = (state._buildProgressCounter || 0) + progressPerTick;
                         
                         if (state._buildProgressCounter >= 10) {
-                            const currentRes = inventory.items[requiredType] || 0;
-                            if (currentRes > 0) {
-                                inventory.items[requiredType] -= 1;
+                            if (inventory.consume(requiredType, 1)) {
                                 structure.progress = Math.min(structure.maxProgress, (structure.progress || 0) + 10);
                                 state._buildProgressCounter -= 10;
 

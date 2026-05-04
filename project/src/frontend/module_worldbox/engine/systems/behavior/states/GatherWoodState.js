@@ -121,13 +121,22 @@ export default class GatherWoodState extends GatherState {
             const targetEnt = this.system.entityManager.entities.get(targetId);
             const tPos = targetEnt?.components.get('Transform');
 
-            // 📦 [User Request] 자원 타입에 맞는 아이템을 드롭함 (wood, stone, iron_ore 등)
+            // 🔍 [Config-Driven Drops] 설정 파일의 'drops' 배열을 기반으로 아이템 생성
             const itemFactory = this.system.engine.factoryProvider.getFactory('item');
             if (itemFactory && tPos) {
-                const dropType = resourceNode.type || 'wood';
-                const amountGained = 5 + Math.floor(Math.random() * 3);
-                itemFactory.spawnDrop(tPos.x, tPos.y, dropType, amountGained);
-                GlobalLogger.info(`Citizen ${entity.id} chopped ${dropType.toUpperCase()}. Gained ${amountGained} units.`);
+                const config = this.system.engine.resourceConfig[resourceNode.id] || 
+                               this.system.engine.resourceConfig[resourceNode.type] || {};
+                const hasConfig = !!config.drops;
+                const drops = config.drops || [{ type: 'wood', amount: 5 }]; // 설정 없으면 기본값
+
+                drops.forEach(drop => {
+                    if (Math.random() <= (drop.chance || 1.0)) {
+                        const amount = drop.amount || 1;
+                        itemFactory.spawnDrop(tPos.x, tPos.y, drop.type, amount);
+                        const logSuffix = hasConfig ? 'From Config' : 'Fallback';
+                        GlobalLogger.info(`Citizen ${entity.id} chopped a tree. Dropped ${amount} ${drop.type.toUpperCase()} (${logSuffix}).`);
+                    }
+                });
             }
 
             // 🪓 나무 팰 때마다 나무 파편(파티클) 튀는 타격감 추가

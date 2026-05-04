@@ -49,7 +49,14 @@ export default class HerbivoreBrain {
 
         // 3. 상태 유지 및 전이
         if (state.mode === AnimalStates.IDLE || !state.mode) {
-            state.mode = AnimalStates.WANDER;
+            // 🕒 가만히 서 있다가 가끔씩 방황하도록 변경 (자연스러운 AI 연출)
+            state.idleTimer = (state.idleTimer || 0) + dt;
+            if (state.idleTimer >= (2.0 + Math.random() * 3.0)) {
+                state.mode = AnimalStates.WANDER;
+                state.idleTimer = 0;
+            } else {
+                state.mode = AnimalStates.IDLE;
+            }
         }
     }
 
@@ -60,8 +67,9 @@ export default class HerbivoreBrain {
             radius,
             (ent) => {
                 const item = ent.components.get('DroppedItem');
-                const isPlant = item && ['fruit', 'grass', 'flower', 'wheat'].includes(item.itemType);
-                return isPlant && (!item.claimedBy || item.claimedBy === id);
+                // 🏷️ [Standardized] 하드코딩 리스트 대신 카테고리(food, plant, grass) 활용
+                const isEdible = item && (item.category === 'food' || item.category === 'plant' || item.category === 'grass');
+                return isEdible && (!item.claimedBy || item.claimedBy === id);
             },
             this.spatialHash
         );

@@ -58,8 +58,10 @@ export default class PickupState extends State {
             transform.vx = 0;
             transform.vy = 0;
 
-            // 🧺 아이템 줍기
-            const added = inventory.add(item.itemType, item.amount);
+            // 🧺 아이템 줍기 (고유 ID가 아닌 '카테고리/타입'으로 통합하여 인벤토리에 추가)
+            const finalType = item.category || item.itemType || 'unknown';
+            console.log(`[Pickup] Entity ${entityId} picking up item. ID: ${item.itemType}, Category: ${item.category}, Final: ${finalType}`);
+            const added = inventory.add(finalType, item.amount);
 
             if (added >= item.amount) {
                 // 전체 획득 완료

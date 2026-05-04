@@ -39,7 +39,7 @@ export default class GathererRole extends BaseRole {
         // 🍎 [Priority 1] 주변에 드롭된 식량(Dropped Food/Fruit)이 있는지 먼저 확인
         const droppedFoodCondition = (ent) => {
             const item = ent.components.get('DroppedItem');
-            if (!item || !['food', 'fruit', 'meat', 'berry'].includes(item.itemType)) return false;
+            if (!item || item.category !== 'food') return false;
             if (item.claimedBy && item.claimedBy !== entity.id) return false;
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
             return true;
@@ -59,7 +59,7 @@ export default class GathererRole extends BaseRole {
         // 🧺 [Priority 2] 주변 식물 탐색
         const plantCondition = (ent) => {
             const res = ent.components.get('Resource');
-            if (!res || !res.edible || res.value <= 0) return false;
+            if (!res || res.category !== 'food' || res.value <= 0) return false;
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
             if (res.claimedBy && res.claimedBy !== entity.id) return false;
             return true;

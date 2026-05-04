@@ -179,17 +179,17 @@ export const DefaultTools = (engine) => [
     new BrushTool({ id: 'paint_high_mountain', name: 'High Peak', icon: '🏔️', category: 'Landscape', color: '#fdfefe', biome: 'HIGH_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2 }),
     
     // 🌱 Nature (Trees & Plants - SprayBrush)
-    new SingleSpawnTool({ id: 'single_tree_normal', name: 'Oak (1)', icon: '🌳', category: 'Nature', resourceId: 'oak' }),
+    new SingleSpawnTool({ id: 'single_tree_normal', name: 'Oak (1)', icon: '🌳', category: 'Nature', resourceId: 'tree_oak' }),
     new SingleSpawnTool({ id: 'single_fruit_tree', name: 'Fruit (1)', icon: '🍎', category: 'Nature', resourceId: 'tree_fruit' }),
     new SingleSpawnTool({ id: 'single_beehive_tree', name: 'Beehive (1)', icon: '🍯', category: 'Nature', resourceId: 'tree_beehive' }),
 
     new BrushTool({ id: 'spawn_grass', name: 'Grass', icon: '🌾', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'grass', color: '#c5e1a5', count: 12, strategy: new SprayBrush(engine), brushSize: 15 }),
     new BrushTool({ id: 'spawn_flower', name: 'Flower', icon: '🌸', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'flower', color: '#ff80ab', count: 10, strategy: new SprayBrush(engine), brushSize: 15 }),
-    new BrushTool({ id: 'spawn_tree_normal', name: 'Oak Tree', icon: '🌳', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'oak', color: '#388e3c', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_tree_normal', name: 'Oak Tree', icon: '🌳', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_oak', color: '#388e3c', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
     new BrushTool({ id: 'spawn_fruit_tree', name: 'Fruit Tree', icon: '🍎', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_fruit', color: '#689f38', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
     new BrushTool({ id: 'spawn_beehive_tree', name: 'Beehive Tree', icon: '🍯', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_beehive', color: '#afb42b', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_tropical', name: 'Jungle Tree', icon: '🌴', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tropical_fruit_tree', color: '#1b5e20', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_mahogany', name: 'Mahogany', icon: '🌲', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'mahogany', color: '#2e7d32', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_tropical', name: 'Jungle Tree', icon: '🌴', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_tropical_fruit', color: '#1b5e20', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
+    new BrushTool({ id: 'spawn_mahogany', name: 'Mahogany', icon: '🌲', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'tree_mahogany', color: '#2e7d32', count: 3, strategy: new SprayBrush(engine), brushSize: 20 }),
 
     new BrushTool({ id: 'spawn_berries', name: 'Berries', icon: '🍓', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'berry', color: '#e91e63', count: 6, strategy: new SprayBrush(engine), brushSize: 15 }),
     new BrushTool({ id: 'spawn_mushroom', name: 'Mushroom', icon: '🍄', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'mushroom', color: '#d32f2f', count: 6, strategy: new SprayBrush(engine), brushSize: 15 }),

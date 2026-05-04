@@ -100,10 +100,13 @@ export default class GrazeState {
             
             if (!resource) continue;
 
-            // 살아있는 식물 계열 자원인지 확인 (정상화된 모든 식용 자원 포함)
-            const type = resource.type;
-            const config = this.bs.engine.resourceConfig[type];
-            if ((config?.edible || type.includes('grass') || type.includes('flower') || type.includes('plant') || type.includes('reed') || type.includes('vine') || type.includes('shrub'))) {
+            const config = this.bs.engine.resourceConfig[resource.type];
+            // 🎯 [Balanced Identification] 카테고리가 풀/식물이거나 설정상 edible이면 허용하되, 나무(tree)는 절대 금지
+            const cat = resource.category || config?.type || 'resource';
+            const isTree = (cat === 'tree' || resource.type.toLowerCase().includes('tree'));
+            const isEdible = (cat === 'grass' || cat === 'plant' || cat === 'food' || config?.edible);
+
+            if (isEdible && !isTree) {
                 if (health && health.currentHp > 0) {
                     const resTransform = entity.components.get('Transform');
                     const dx = transform.x - resTransform.x;

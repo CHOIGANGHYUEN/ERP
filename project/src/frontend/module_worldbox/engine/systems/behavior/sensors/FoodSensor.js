@@ -36,7 +36,7 @@ export default class FoodSensor {
             // 📦 [New] 드랍된 아이템 감지
             const droppedItem = entity.components.get('DroppedItem');
             if (droppedItem) {
-                const isEdible = this._checkItemEdibility(diet, droppedItem.itemType);
+                const isEdible = this._checkItemEdibility(diet, droppedItem);
                 if (isEdible) {
                     const dx = tPos.x - x;
                     const dy = tPos.y - y;
@@ -75,9 +75,10 @@ export default class FoodSensor {
         return nearestId;
     }
 
-    _checkItemEdibility(diet, itemType) {
-        if (diet === 'carnivore') return itemType === 'meat';
-        if (diet === 'herbivore') return ['grass', 'flower', 'fruit', 'kelp', 'moss'].includes(itemType);
+    _checkItemEdibility(diet, item) {
+        if (item.category !== 'food') return false;
+        if (diet === 'carnivore') return item.itemType === 'meat';
+        if (diet === 'herbivore') return item.itemType !== 'meat';
         if (diet === 'omnivore') return true; // 잡식은 다 먹음
         return false;
     }
