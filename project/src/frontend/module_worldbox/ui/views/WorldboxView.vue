@@ -241,19 +241,43 @@ const selectTool = (tool) => {
 watch(() => store.showVillageInfo, (isOpen) => {
   if (engine.value) {
     engine.value.viewFlags = engine.value.viewFlags || {};
-    
-    // ❌ 엔진 기본 디버그의 거대한 원형 반경이 그려지는 것을 원천 차단합니다.
     engine.value.viewFlags.showVillageInfo = false;
     engine.value.viewFlags.showVillages = false;
-    // ✅ 오직 예쁜 타일 렌더링 시스템만 작동하도록 VILLAGETILE 플래그를 넘깁니다.
     engine.value.viewFlags.VILLAGETILE = isOpen;
+    if (isOpen) {
+        engine.value.viewFlags.NATIONTILE = false;
+        store.showNationInfo = false;
+    }
+    // 강제 리프레시를 위해 preRenderTerrain 호출 필요할 수 있음 (toggleView 내부 로직 참조)
+    if (engine.value.preRenderTerrain) engine.value.preRenderTerrain();
   }
   
-  // 패널이 열리면 도구 아이콘 활성화, 닫히면 기본 '이동(Hand)' 도구로 완벽 초기화
   if (isOpen) {
-    const villageTool = allTools.value.find(t => t.id.includes('village'));
+    const villageTool = allTools.value.find(t => t.id === 'view_village');
     if (villageTool) activeTool.value = villageTool.id;
-  } else if (activeTool.value.includes('village')) {
+  } else if (activeTool.value === 'view_village') {
+    activeTool.value = 'move_hand';
+    const defaultTool = allTools.value.find(t => t.id === 'move_hand');
+    if (engine.value && defaultTool) engine.value.setActiveTool(defaultTool);
+  }
+});
+
+// 💡 국가 정보창 상태 동기화
+watch(() => store.showNationInfo, (isOpen) => {
+  if (engine.value) {
+    engine.value.viewFlags = engine.value.viewFlags || {};
+    engine.value.viewFlags.NATIONTILE = isOpen;
+    if (isOpen) {
+        engine.value.viewFlags.VILLAGETILE = false;
+        store.showVillageInfo = false;
+    }
+    if (engine.value.preRenderTerrain) engine.value.preRenderTerrain();
+  }
+
+  if (isOpen) {
+    const nationTool = allTools.value.find(t => t.id === 'view_nation');
+    if (nationTool) activeTool.value = nationTool.id;
+  } else if (activeTool.value === 'view_nation') {
     activeTool.value = 'move_hand';
     const defaultTool = allTools.value.find(t => t.id === 'move_hand');
     if (engine.value && defaultTool) engine.value.setActiveTool(defaultTool);

@@ -364,6 +364,21 @@ export default class ChiefRole extends BaseRole {
                 village.territory.add(key);
                 village.territorySize = village.territory.size; // 🗺️ 영토가 확장될 때 UI용 캐시 값 동기화
 
+                // 🗺️ [Engine Buffer Sync] 영토 버퍼 동기화
+                const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
+                if (territoryBuffer) {
+                    const [tx, ty] = key.split(',').map(Number);
+                    for (let dy = 0; dy < 16; dy++) {
+                        const rowOff = (ty * 16 + dy) * this.engine.mapWidth;
+                        for (let dx = 0; dx < 16; dx++) {
+                            const idx = rowOff + (tx * 16 + dx);
+                            if (idx >= 0 && idx < territoryBuffer.length) {
+                                territoryBuffer[idx] = village.id;
+                            }
+                        }
+                    }
+                }
+
                 if (this.engine.eventBus) {
                     this.engine.eventBus.emit('VILLAGE_EXPANDED', { villageId: village.id, tx: bestTile.tx, ty: bestTile.ty });
                 }
