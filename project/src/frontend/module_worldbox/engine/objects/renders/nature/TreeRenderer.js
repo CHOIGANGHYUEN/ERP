@@ -1,164 +1,135 @@
 /**
- * 🌳 TreeRenderer — 절차적 나무 및 식생 렌더링 엔진
- * [Expert Design] 기둥 그라데이션, 다층 잎사귀 클러스터, 벚꽃 및 과실수 연출
+ * 🌳 TreeRenderer — 절차적 나무 및 식생 렌더링 엔진 (최적화 버전)
+ * [Expert Design] 뾰족뾰족한 도트 그래픽 스타일 + 오프스크린 캔버스 캐싱
  */
 export const TreeRenderer = {
+    _cache: new Map(), // 🚀 [Optimization] 성능 향상을 위한 오프스크린 캔버스 캐시
+
     draw(ctx, t, v, size, isWithered, time, wind, isXRay = false, entity = null) {
-        // 🌲 [FALLING] 쓰러지는 나무 애니메이션
+        // 🌲 [FALLING] 쓰러지는 나무 애니메이션 (실시간 연산 필요)
         const res = entity?.components.get('Resource');
-        if (res && res.isFalling) {
+        const isFalling = res && res.isFalling;
+        
+        if (isFalling) {
             const fallAngle = (res.fallProgress || 0) * (Math.PI / 2) * (res.fallDirection || 1);
             ctx.rotate(fallAngle);
             if (res.fallProgress >= 1.0) return;
         }
 
+        // 캐시 키 생성 (모양, 색상, 크기, 시든 상태 조합)
+        // 🎨 [Natural Fix] v.color가 없으면 기본 초록색(#2e7d32) 사용
+        const leafColor = isWithered ? '#5d4037' : (v.color || '#2e7d32');
+        const cacheKey = `${v.subtype || 'normal'}_${size}_${leafColor}_${isWithered}`;
+        let cached = this._cache.get(cacheKey);
+
+        if (!cached) {
+            cached = this.prerenderTree(v, size, isWithered, leafColor);
+            this._cache.set(cacheKey, cached);
+        }
+
+        // 🌬️ 바람에 의한 흔들림 (Sway)
+        const wv = wind ? wind.getSway(t.x, t.y, time) : { x: 0, y: 0 };
+        const sway = isWithered ? 0 : wv.x * (size / 15);
+        
+        // 🤕 [Hit Shake]
+        const health = entity?.components?.get('Health');
+        const hitShake = (health && health.hitTimer > 0) ? Math.sin(time * 0.08) * 1.5 : 0;
+
+        // 중앙 정렬하여 그리기
+        ctx.drawImage(cached, -cached.width / 2 + sway + hitShake, -cached.height + 2);
+
+        // 🐝 벌집 등 동적 요소는 별도로 그림
+        if (v.subtype === 'beehive' && !isWithered) {
+            this.drawBeehive(ctx, Math.max(2, size/4), size, isXRay, entity);
+        }
+    },
+
+    /**
+     * 🌲 [Expert Design] 뾰족뾰족한 도트 그래픽 스타일의 나무 프리에디팅
+     */
+    prerenderTree(v, size, isWithered, leafColor) {
+        const canvas = document.createElement('canvas');
+        const padding = 4;
+        canvas.width = Math.ceil(size * 1.8 + padding * 2);
+        canvas.height = Math.ceil(size * 1.5 + padding * 2);
+        const pCtx = canvas.getContext('2d');
+        
+        const centerX = canvas.width / 2;
+        const bottomY = canvas.height - padding;
+        
         const trunkW = Math.max(2, Math.floor(size / 4));
-        const trunkH = isWithered ? Math.floor(size * 0.7) : size;
+        const trunkH = Math.floor(size * 0.4);
         
-        // 1. 나무 기둥 (Trunk with Gradient)
-        const trunkGrad = ctx.createLinearGradient(-trunkW/2, 0, trunkW/2, 0);
+        // 1. 나무 기둥 (Trunk - Pointy Bottom)
         const trunkCol = isWithered ? '#3e2723' : '#4e342e';
-        trunkGrad.addColorStop(0, this.adjustColor(trunkCol, -20));
-        trunkGrad.addColorStop(0.5, trunkCol);
-        trunkGrad.addColorStop(1, this.adjustColor(trunkCol, -30));
+        pCtx.fillStyle = trunkCol;
+        pCtx.fillRect(centerX - trunkW/2, bottomY - trunkH, trunkW, trunkH);
         
-        ctx.fillStyle = trunkGrad;
-        ctx.fillRect(-trunkW/2, -trunkH, trunkW, trunkH);
+        // 2. 뾰족한 나뭇잎 (Pointy Layers - Pine/Spruce style)
+        const layers = isWithered ? 1 : 3;
+        const layerH = size * 0.45;
+        const layerW = size * 0.9;
         
-        // 뿌리 부분 디테일
-        ctx.beginPath();
-        ctx.moveTo(-trunkW/2, 0);
-        ctx.lineTo(-trunkW/2 - 2, 2);
-        ctx.lineTo(trunkW/2 + 2, 2);
-        ctx.lineTo(trunkW/2, 0);
-        ctx.fill();
-
-        ctx.translate(0, -trunkH);
-        const cSize = isWithered ? Math.floor(size * 0.6) : size;
-        
-        // 2. 나뭇잎 클러스터 (Leaves)
-        if (cSize > 0) {
-            let leafColor = isWithered ? '#795548' : v.color || '#2e7d32';
-            if (v.subtype === 'blossom') leafColor = '#f48fb1'; // 🌸 벚꽃 색상
+        for (let i = 0; i < layers; i++) {
+            const y = bottomY - trunkH - (i * layerH * 0.5);
+            const w = layerW * (1 - i * 0.25);
+            const h = layerH;
             
-            const colors = [
-                this.adjustColor(leafColor, -40), 
-                this.adjustColor(leafColor, -15),
-                leafColor,
-                this.adjustColor(leafColor, 30),
-                this.adjustColor(leafColor, 50)
-            ];
-
-            const drawCluster = (ox, oy, radius, col, hasDetail = false) => {
-                ctx.fillStyle = col;
-                ctx.beginPath();
-                ctx.arc(ox, oy, radius, 0, Math.PI * 2);
-                ctx.fill();
-                
-                if (hasDetail) {
-                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-                    ctx.beginPath();
-                    ctx.arc(ox - radius*0.3, oy - radius*0.3, radius*0.3, 0, Math.PI*2);
-                    ctx.fill();
-                }
-            };
-
-            // 레이어링된 클러스터 배치
-            drawCluster(0, -cSize * 0.1, cSize * 0.75, colors[0]);
-            drawCluster(-cSize * 0.45, -cSize * 0.25, cSize * 0.5, colors[1]);
-            drawCluster(cSize * 0.45, -cSize * 0.25, cSize * 0.5, colors[1]);
-            drawCluster(0, -cSize * 0.4, cSize * 0.65, colors[2]);
-            drawCluster(-cSize * 0.25, -cSize * 0.55, cSize * 0.45, colors[3], true);
-            drawCluster(cSize * 0.2, -cSize * 0.6, cSize * 0.35, colors[4], true);
+            // 그림자 효과를 위한 색상 조절
+            pCtx.fillStyle = this.adjustColor(leafColor, -i * 20);
+            
+            // 뾰족한 삼각형 레이어 (Polygon for pointy look)
+            pCtx.beginPath();
+            pCtx.moveTo(centerX, y - h); // 꼭대기
+            pCtx.lineTo(centerX - w/2, y); // 왼쪽 아래
+            pCtx.lineTo(centerX + w/2, y); // 오른쪽 아래
+            pCtx.closePath();
+            pCtx.fill();
+            
+            // 도트 느낌을 위한 하이라이트 (테두리 느낌)
+            pCtx.strokeStyle = 'rgba(0,0,0,0.15)';
+            pCtx.lineWidth = 0.5;
+            pCtx.stroke();
         }
 
-        // 3. 서브타입 데코레이션
+        // 과일 장식
         if (v.subtype === 'fruit' && !isWithered) {
-            // 🍎 사과 열매
-            ctx.fillStyle = '#ff1744';
-            const fruits = [
-                {x: -cSize * 0.3, y: -cSize * 0.2},
-                {x: cSize * 0.4, y: -cSize * 0.3},
-                {x: -cSize * 0.1, y: -cSize * 0.5},
-                {x: cSize * 0.2, y: -cSize * 0.1}
-            ];
-            fruits.forEach(f => {
-                ctx.beginPath();
-                ctx.arc(f.x, f.y, 2, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = 'rgba(255,255,255,0.4)';
-                ctx.fillRect(f.x - 0.5, f.y - 1, 1, 1);
-                ctx.fillStyle = '#ff1744';
+            pCtx.fillStyle = '#ff1744';
+            const fPos = [ {x:-3,y:-8}, {x:4,y:-12}, {x:0,y:-18}, {x:-2, y:-14} ];
+            fPos.forEach(p => {
+                pCtx.fillRect(centerX + p.x, bottomY - trunkH + p.y, 2, 2);
             });
-        } else if (v.subtype === 'blossom' && !isWithered) {
-            // 🌸 꽃잎 디테일 (흩날리는 꽃잎 효과는 파티클에서 담당)
-            ctx.fillStyle = '#fce4ec';
-            for(let i=0; i<6; i++) {
-                const bx = (Math.sin(i * 1.2) * cSize * 0.4);
-                const by = (Math.cos(i * 1.2) * cSize * 0.3) - cSize * 0.3;
-                ctx.beginPath();
-                ctx.arc(bx, by, 1.5, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        } else if (v.subtype === 'beehive' && !isWithered) {
-            this.drawBeehive(ctx, trunkW, size, isXRay, entity);
         }
+
+        return canvas;
     },
 
     drawBeehive(ctx, trunkW, size, isXRay, entity) {
         const bx = trunkW/2 + 2;
         const by = -size * 0.15;
-        const C = { out: '#3e2723', base: '#fbc02d', ring: '#f9a825', high: '#fff176', hole: '#1a0f0d' };
-
-        ctx.fillStyle = C.out;
+        ctx.fillStyle = '#fbc02d';
         ctx.beginPath();
-        ctx.ellipse(bx, by, 4, 6, 0, 0, Math.PI*2);
+        ctx.ellipse(bx, by, 3, 4, 0, 0, Math.PI*2);
         ctx.fill();
-
-        ctx.fillStyle = C.base;
+        ctx.fillStyle = '#1a0f0d';
         ctx.beginPath();
-        ctx.ellipse(bx, by, 3.2, 5, 0, 0, Math.PI*2);
+        ctx.arc(bx, by + 1, 1, 0, Math.PI*2);
         ctx.fill();
-
-        // 고리 무늬
-        ctx.strokeStyle = C.ring;
-        ctx.lineWidth = 1;
-        for(let i=-2; i<=2; i++) {
-            ctx.beginPath();
-            ctx.moveTo(bx - 3, by + i*1.5);
-            ctx.lineTo(bx + 3, by + i*1.5);
-            ctx.stroke();
-        }
-
-        // 입구
-        ctx.fillStyle = C.hole;
-        ctx.beginPath();
-        ctx.arc(bx, by + 2, 1.5, 0, Math.PI*2);
-        ctx.fill();
-
-        if (isXRay && entity) {
-            const hive = entity.components.get('Hive');
-            if (hive) {
-                ctx.save();
-                ctx.scale(0.8, 0.8);
-                ctx.font = 'bold 10px Inter, Arial';
-                ctx.textAlign = 'left';
-                const tx = bx + 8;
-                const ty = by - 15;
-                ctx.fillStyle = '#ffc107'; ctx.fillText(`🍯 ${Math.floor(hive.honey)}/${hive.maxHoney}`, tx, ty);
-                ctx.fillStyle = '#ffffff'; ctx.fillText(`🐝 ${hive.beeCount} ${hive.hasQueen?'👑':'💀'}`, tx, ty + 12);
-                ctx.restore();
-            }
-        }
     },
 
     adjustColor(color, amount) {
         if (!color || typeof color !== 'string' || !color.startsWith('#')) return color;
-        const num = parseInt(color.slice(1), 16);
-        const r = Math.min(255, Math.max(0, (num >> 16) + amount));
-        const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
-        const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
-        return `#${(g | (r << 8) | (b << 16)).toString(16).padStart(6, '0')}`;
+        const hex = color.slice(1);
+        const num = parseInt(hex, 16);
+        
+        let r = (num >> 16) + amount;
+        let g = ((num >> 8) & 0x00FF) + amount;
+        let b = (num & 0x0000FF) + amount;
+        
+        r = Math.min(255, Math.max(0, r));
+        g = Math.min(255, Math.max(0, g));
+        b = Math.min(255, Math.max(0, b));
+        
+        return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
     }
 };
-

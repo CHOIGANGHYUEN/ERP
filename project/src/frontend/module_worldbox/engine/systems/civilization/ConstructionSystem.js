@@ -189,7 +189,8 @@ export default class ConstructionSystem extends System {
 
                 GlobalLogger.success(`✅ Construction Complete: ${structure.type.toUpperCase()}`);
 
-                this.eventBus.emit('BUILDING_COMPLETE', { id: targetId, type: structure.type });
+                const civ = target.components.get('Civilization');
+                this.eventBus.emit('BUILDING_COMPLETE', { id: targetId, type: structure.type, villageId: civ?.villageId });
                 this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: targetPos.x, y: targetPos.y, count: 30, type: 'EFFECT', color: '#ffeb3b', speed: 8
                 });

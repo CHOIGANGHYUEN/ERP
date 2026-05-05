@@ -4,10 +4,11 @@
  * 개체가 타겟을 요청하면 최적의 대상을 찾아 직접 주입합니다.
  */
 export default class TargetManager {
-    constructor(entityManager, eventBus, blackboard) {
+    constructor(entityManager, eventBus, blackboard, engine) {
         this.entityManager = entityManager;
         this.eventBus = eventBus;
         this.blackboard = blackboard;
+        this.engine = engine;
         this.pendingRequests = []; // [ { entityId, type, criteria } ]
     }
 
@@ -50,40 +51,43 @@ export default class TargetManager {
 
         let bestTargetId = null;
 
+        // 🚀 [Expert Logic] 구역(Zone) 우선 탐색 후, 없으면 전역 탐색(Fallback) 수행
         switch (targetType) {
             case 'RESOURCE':
-                bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent);
+                bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent, false);
+                if (!bestTargetId) {
+                    bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent, true);
+                }
                 break;
             case 'STORAGE':
             case 'STORAGE_DEPOSIT':
-                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, true);
+                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, true, entity);
                 break;
             case 'STORAGE_WITHDRAW':
-                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, false);
+                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, false, entity);
                 break;
             case 'BLUEPRINT':
-                bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity);
+                bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity, req.intent, false);
+                if (!bestTargetId) {
+                    bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity, req.intent, true);
+                }
                 break;
             case 'WANDER':
-                // 배회는 별도 타겟 없이 위치만 결정 (State에서 처리)
                 break;
         }
 
         if (bestTargetId) {
             const aiState = entity.components.get('AIState');
             if (aiState) {
-                // 🛑 [Blacklist Safety] 도달 불가 타겟이면 즉시 포기
-                if (aiState.unreachableTargets && aiState.unreachableTargets.has(bestTargetId)) {
+                // 🚫 [Blacklist Check] 최근에 실패한 타겟은 무시
+                if (aiState.isBlacklisted && aiState.isBlacklisted(bestTargetId)) {
                     this.eventBus.emit('TARGET_NOT_FOUND', { entityId, targetType, intent: req.intent });
                     return;
                 }
 
-                // 할당 성공 시 요청 상태 해제
                 aiState.isTargetRequested = false;
                 aiState.targetRequestFailed = false;
 
-                // 🏗️ [Architect Protection] 건설 중인 개체는 메인 타겟(청사진)을 보호해야 함
-                // 모든 자원/창고 관련 요청은 서브 타겟(storageTargetId)에 할당하여 메인 타겟 유실 방지
                 const isSubTask = ['STORAGE', 'RESOURCE', 'STORAGE_WITHDRAW'].includes(targetType);
                 if (req.intent === 'build' && isSubTask) {
                     aiState.storageTargetId = bestTargetId;
@@ -91,7 +95,6 @@ export default class TargetManager {
                     aiState.targetId = bestTargetId;
                 }
 
-                // 🔒 할당받은 자원/엔티티에 예약 정보 기록 (Claiming) 및 이름 추출
                 const targetEnt = this.entityManager.entities.get(bestTargetId);
                 if (targetEnt) {
                     const res = targetEnt.components.get('Resource');
@@ -100,11 +103,9 @@ export default class TargetManager {
                     if (res) res.claimedBy = entityId;
                     if (anim) anim.claimedBy = entityId;
 
-                    // UI 표시용 이름 저장
                     aiState.targetName = (struc?.type || res?.type || anim?.type || 'Entity').toUpperCase();
                 }
 
-                // 할당받은 타겟의 용도를 명시 (인텐트 복구)
                 if (req.intent) aiState.mode = req.intent;
 
                 this.eventBus.emit('TARGET_ASSIGNED', {
@@ -114,7 +115,6 @@ export default class TargetManager {
                 });
             }
 
-            // JobController가 있는 경우에도 처리
             const jobCtrl = entity.components.get('JobController');
             if (jobCtrl && req.intent === jobCtrl.currentJob) {
                 if (targetType === 'STORAGE_WITHDRAW' && req.intent === 'build') {
@@ -125,7 +125,6 @@ export default class TargetManager {
                 jobCtrl.isTargetRequested = false;
             }
         } else {
-            // ❌ 타겟을 실제로 찾지 못한 경우에만 실행
             const aiState = entity.components.get('AIState');
             if (aiState) {
                 aiState.isTargetRequested = false;
@@ -133,33 +132,82 @@ export default class TargetManager {
                 aiState.lastRequestTime = Date.now();
             }
 
+            const jobCtrl = entity.components.get('JobController');
+            if (jobCtrl && jobCtrl.zoneId && !['WANDER'].includes(targetType)) {
+                this.eventBus.emit('ZONE_RESOURCE_EXHAUSTED', {
+                    entityId,
+                    zoneId: jobCtrl.zoneId,
+                    targetType,
+                    resourceType: criteria?.resourceType
+                });
+            }
+
             this.eventBus.emit('TARGET_NOT_FOUND', { entityId, targetType, intent: req.intent });
         }
     }
 
-    _findBestResource(x, y, resourceType, entity, intent) {
+    _isInZone(x, y, zone) {
+        if (!zone) return true;
+        return zone.contains(x, y);
+    }
+
+    _getZone(entity, intent) {
+        const isSurvivalCrisis = ['eat', 'forage', 'sleep'].includes(intent);
+        if (isSurvivalCrisis) return null;
+
+        const jobCtrl = entity.components.get('JobController');
+        const zm = this.engine.systemManager?.zoneManager;
+        if (!zm) return null;
+
+        // 1. 구체적인 구역이 할당된 경우 최우선
+        if (jobCtrl && jobCtrl.zoneId) {
+            return zm.getZone(jobCtrl.zoneId);
+        }
+
+        // 2. 구체적인 구역이 없더라도 마을 소속이라면 마을의 주요 구역을 자동 추천
+        const civ = entity.components.get('Civilization');
+        if (civ && civ.villageId !== -1) {
+            const vs = this.engine.systemManager?.villageSystem;
+            const village = vs?.getVillage(civ.villageId);
+            if (village) {
+                // 인텐트에 따라 적절한 마을 구역 반환 (나무 채집은 벌목 구역, 건설은 주거 구역 등)
+                if (intent === 'gather_wood' || intent === 'forage') return zm.getZone(village.lumberZoneId);
+                if (intent === 'build') return zm.getZone(village.residentialZoneId);
+                return zm.getZone(village.residentialZoneId);
+            }
+        }
+        return null;
+    }
+
+    _findBestResource(x, y, resourceType, entity, intent, forceGlobal = false) {
         const type = (resourceType || '').toLowerCase();
         const nodes = this.blackboard.resourceNodes.get(type) || [];
-        const MAX_RADIUS_SQ = 1200 * 1200; // 🚀 [Optimization] 최대 탐색 반경 제한
-        
+        const MAX_RADIUS_SQ = 1200 * 1200;
+
         let minDistSq = Infinity;
         let bestId = null;
         const aiState = entity.components.get('AIState');
+        if (aiState) aiState.searchRange = 1200; // 🔍 [Debug] 탐색 반경 기록
+
+        // forceGlobal이 true면 구역을 무시하고 전역 탐색
+        const zone = forceGlobal ? null : this._getZone(entity, intent);
 
         for (const node of nodes) {
+            if (!this._isInZone(node.x, node.y, zone)) continue;
+
             const dx = node.x - x;
             const dy = node.y - y;
             const distSq = dx * dx + dy * dy;
 
             if (distSq > MAX_RADIUS_SQ || distSq >= minDistSq) continue;
 
-            if (aiState && aiState.unreachableTargets && aiState.unreachableTargets.has(node.id)) continue;
+            if (aiState && aiState.isBlacklisted && aiState.isBlacklisted(node.id)) continue;
 
             const ent = this.entityManager.entities.get(node.id);
             if (ent) {
                 const res = ent.components.get('Resource');
                 const drop = ent.components.get('DroppedItem');
-                
+
                 // ⛏️ [Logic Enhancement] 자원 채집 시 살아있는 자원(나무 등)이 없으면 드롭된 아이템이라도 찾도록 허용
                 if (res && res.value > 0 && !res.isFalling) {
                     if (!res.claimedBy || res.claimedBy === entity.id) {
@@ -167,7 +215,10 @@ export default class TargetManager {
                         bestId = node.id;
                     }
                 } else if (drop) {
-                    if (!drop.claimedBy || drop.claimedBy === entity.id) {
+                    const reqCiv = entity.components.get('Civilization');
+                    const isOwner = drop.villageId === -1 || (reqCiv && drop.villageId === reqCiv.villageId);
+
+                    if (isOwner && (!drop.claimedBy || drop.claimedBy === entity.id)) {
                         minDistSq = distSq;
                         bestId = node.id;
                     }
@@ -177,7 +228,7 @@ export default class TargetManager {
         return bestId;
     }
 
-    _findBestStorage(x, y, resourceType, isDeposit) {
+    _findBestStorage(x, y, resourceType, isDeposit, entity) {
         const storages = this.blackboard.storages;
         let minDistSq = Infinity;
         let bestId = null;
@@ -221,10 +272,16 @@ export default class TargetManager {
         return bestId;
     }
 
-    _findBestBlueprint(x, y, entity) {
+    _findBestBlueprint(x, y, entity, intent, forceGlobal = false) {
         const blueprints = this.blackboard.blueprints || [];
         let bestId = null;
         let minDistSq = Infinity;
+        
+        const aiState = entity.components.get('AIState');
+        if (aiState) aiState.searchRange = 500; // 🔍 [Debug] 청사진 탐색 반경
+
+        // forceGlobal이 true면 구역을 무시하고 전역 탐색
+        const zone = forceGlobal ? null : this._getZone(entity, intent);
 
         // 1. Blackboard 캐시 활용 (우선순위)
         for (const bp of blueprints) {
@@ -232,6 +289,9 @@ export default class TargetManager {
             if (!bpEntity) continue;
             const t = bpEntity.components.get('Transform');
             if (!t) continue;
+
+            // 🗺️ [Zone System] 구역 제한 검사 (구역 내 청사진만 탐색)
+            if (!this._isInZone(t.x, t.y, zone)) continue;
 
             const distSq = (t.x - x) ** 2 + (t.y - y) ** 2;
             if (distSq < minDistSq) {
@@ -244,6 +304,8 @@ export default class TargetManager {
         if (!bestId) {
             bestId = this.entityManager.findNearestEntityWithComponent(x, y, 500, (ent) => {
                 const struc = ent.components.get('Structure');
+                const t = ent.components.get('Transform');
+                if (t && !this._isInZone(t.x, t.y, zone)) return false;
                 return struc && struc.isBlueprint && !struc.isComplete;
             }); // spatialHash는 내부적으로 사용됨
         }

@@ -135,6 +135,31 @@
         </div>
       </template>
 
+      <!-- 🏘️ Village Info (전문 분야 및 버프 표시) -->
+      <template v-if="entity.village">
+        <div class="divider"></div>
+        <div class="village-section">
+          <div class="section-header">
+            <span class="label">Village:</span>
+            <span class="value village-name">{{ entity.village.name }}</span>
+          </div>
+          <div class="specialization-badge" :class="entity.village.type">
+            {{ getSpecializationLabel(entity.village.type) }}
+          </div>
+          <div class="buff-grid" v-if="entity.village.buffs">
+            <div class="buff-item" v-if="entity.village.buffs.woodGatherRate > 1">
+              🪓 Wood x{{ entity.village.buffs.woodGatherRate }}
+            </div>
+            <div class="buff-item" v-if="entity.village.buffs.foodGatherRate > 1">
+              🍎 Food x{{ entity.village.buffs.foodGatherRate }}
+            </div>
+            <div class="buff-item" v-if="entity.village.buffs.stoneGatherRate > 1">
+              🪨 Stone x{{ entity.village.buffs.stoneGatherRate }}
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- 🎒 인벤토리 섹션 (새로 추가) -->
       <template v-if="entity.inventory">
         <div class="divider"></div>
@@ -237,6 +262,16 @@ const getIcon = (type, subType) => {
 const getPercentage = (val, max) => {
   if (!max) return 0;
   return Math.min(100, Math.max(0, (val / max) * 100));
+};
+
+const getSpecializationLabel = (type) => {
+  const labels = {
+    'agricultural': '🌿 Agricultural',
+    'lumbering': '🪓 Lumbering',
+    'mining': '⛏️ Mining',
+    'general': '🏢 General'
+  };
+  return labels[type] || 'Unknown';
 };
 
 const getItemEmoji = (type) => {
@@ -491,6 +526,39 @@ const getItemEmoji = (type) => {
 
 .kill-icon {
   font-size: 1rem;
+}
+
+.village-name { color: #81d4fa; }
+.specialization-badge {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.specialization-badge.agricultural { background: rgba(76, 175, 80, 0.2); color: #81c784; border-color: rgba(76, 175, 80, 0.4); }
+.specialization-badge.lumbering { background: rgba(121, 85, 72, 0.2); color: #a1887f; border-color: rgba(121, 85, 72, 0.4); }
+.specialization-badge.mining { background: rgba(158, 158, 158, 0.2); color: #e0e0e0; border-color: rgba(158, 158, 158, 0.4); }
+.specialization-badge.general { background: rgba(33, 150, 243, 0.2); color: #64b5f6; border-color: rgba(33, 150, 243, 0.4); }
+
+.buff-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-top: 5px;
+}
+.buff-item {
+  font-size: 0.75rem;
+  color: #fff9c4;
+  background: rgba(255, 235, 59, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 @keyframes blink {

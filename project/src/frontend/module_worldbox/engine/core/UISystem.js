@@ -163,9 +163,25 @@ export default class UISystem extends System {
         const stats = {
             population: 0,
             villages: 0,
+            nations: [],
             animals: 0,
             resources: { food: 0, wood: 0, stone: 0, iron_ore: 0 }
         };
+
+        const ns = this.engine.systemManager?.nationSystem;
+        if (ns) {
+            for (const nation of ns.nations.values()) {
+                stats.nations.push({
+                    id: nation.id,
+                    name: nation.name,
+                    color: nation.color,
+                    population: nation.totalPopulation,
+                    villageCount: nation.villages.size,
+                    resources: { ...nation.resources },
+                    prestige: Math.floor(nation.prestige || 0)
+                });
+            }
+        }
 
         // 🛡️ [Performance Safety] 엔티티가 너무 많으면 집계를 건너뛰거나 샘플링
         const entityCount = this.entityManager.entities.size;
@@ -194,32 +210,49 @@ export default class UISystem extends System {
                 <span style="font-size: 10px; opacity: 0.6;">LIVE</span>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
                 <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; text-align: center;">
                     <div style="font-size: 10px; opacity: 0.5;">POPULATION</div>
-                    <div style="font-size: 18px; font-weight: 800; color: #4fc3f7;">${stats.population}</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #4fc3f7;">${stats.population}</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; text-align: center;">
                     <div style="font-size: 10px; opacity: 0.5;">VILLAGES</div>
-                    <div style="font-size: 18px; font-weight: 800; color: #f48fb1;">${stats.villages}</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #f48fb1;">${stats.villages}</div>
                 </div>
             </div>
 
-            <div style="margin-bottom: 15px;">
-                <div style="font-size: 11px; margin-bottom: 6px; color: #81c784; font-weight: 700;">🐾 WILDLIFE</div>
-                <div style="display: flex; justify-content: space-between; font-size: 13px; background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: 6px;">
-                    <span>Total Animals</span>
-                    <span style="font-weight: 800;">${stats.animals}</span>
+            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; font-size: 11px; background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: 6px;">
+                <span style="color: #81c784; font-weight: 700;">🐾 WILDLIFE</span>
+                <span style="font-weight: 800;">${stats.animals}</span>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 11px; margin-bottom: 6px; color: #ffeb3b; font-weight: 700;">🚩 NATIONS</div>
+                <div style="display: grid; gap: 6px;">
+                    ${stats.nations.map(n => `
+                        <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; border-left: 3px solid ${n.color};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-weight: 700; font-size: 12px;">${n.name}</span>
+                                <span style="font-size: 10px; background: rgba(255,215,0,0.2); color: #ffd700; padding: 1px 4px; border-radius: 4px;">🏆 ${n.prestige}</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; font-size: 9px; opacity: 0.7;">
+                                <span>👥 ${n.population}</span>
+                                <span>🏘️ ${n.villageCount}</span>
+                                <span>🪵 ${Math.floor(n.resources.wood)}</span>
+                                <span>🍎 ${Math.floor(n.resources.food)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
 
             <div>
                 <div style="font-size: 11px; margin-bottom: 6px; color: #ffb74d; font-weight: 700;">📦 GLOBAL STORAGE</div>
-                <div style="display: grid; gap: 4px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
                     ${Object.entries(stats.resources).map(([type, val]) => `
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; padding: 2px 0;">
                             <span style="opacity: 0.7;">${type.toUpperCase()}</span>
-                            <span style="font-weight: 700; color: ${val > 100 ? '#fff' : '#ff5252'}">${Math.floor(val)}</span>
+                            <span style="font-weight: 700;">${Math.floor(val)}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -430,6 +463,20 @@ export default class UISystem extends System {
             };
         }
 
+        let villageData = null;
+        if (civ && civ.villageId !== -1) {
+            const vs = this.engine.systemManager?.villageSystem;
+            const village = vs?.getVillage(civ.villageId);
+            if (village) {
+                villageData = {
+                    id: village.id,
+                    name: village.name,
+                    type: village.type,
+                    buffs: { ...village.buffs }
+                };
+            }
+        }
+
         return {
             id: target.id, type: type, subType: subType, name: name, state: state,
             hunger: s ? s.hunger : m?.stomach,
@@ -450,7 +497,8 @@ export default class UISystem extends System {
             age: ageComp?.currentAge,
             growthStage: ageComp?.growthStage,
             modeStackCount: stateComp?.modeStack?.length || 0,
-            diet: a?.diet || s?.diet || null
+            diet: a?.diet || s?.diet || null,
+            village: villageData // 🏘️ 마을 정보 추가
         };
     }
 

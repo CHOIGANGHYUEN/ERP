@@ -61,6 +61,11 @@
             <div class="section-title">INFRASTRUCTURE</div>
             <div class="infra-stats">
               <div class="infra-item">
+                <span class="infra-icon">🗺️</span>
+                <span class="infra-label">Territory</span>
+                <span class="infra-count">{{ v.territorySize || 1 }} Tiles</span>
+              </div>
+              <div class="infra-item">
                 <span class="infra-icon">🏠</span>
                 <span class="infra-label">Houses</span>
                 <span class="infra-count">{{ v.houses }}</span>
@@ -70,6 +75,20 @@
                 <span class="infra-label">Buildings</span>
                 <span class="infra-count">{{ v.buildings?.length || 0 }}</span>
               </div>
+            </div>
+          </div>
+
+          <!-- 🗺️ Territory Mini Map (Vue 패널 내부 타일 시각화) -->
+          <div class="stats-section" v-if="v.territoryList && v.territoryList.length">
+            <div class="section-title">TERRITORY MAP</div>
+            <div class="territory-map-container">
+              <svg class="mini-map-svg" :viewBox="getTerritoryViewBox(v.territoryList)">
+                <rect v-for="(t, i) in getTerritoryCoords(v.territoryList)" :key="i"
+                      :x="t.x" :y="t.y" width="1" height="1" rx="0.1"
+                      fill="rgba(76, 175, 80, 0.4)" stroke="#81c784" stroke-width="0.05" />
+                <!-- 마을 중심점(촌장) -->
+                <circle v-if="v.centerX" :cx="v.centerX / 16" :cy="v.centerY / 16" r="0.3" fill="#ffca28" stroke="#333" stroke-width="0.05"/>
+              </svg>
             </div>
           </div>
 
@@ -112,15 +131,48 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useWorldboxStore } from '../store/worldboxStore';
 
 const store = useWorldboxStore();
 const villages = computed(() => store.villages);
 const isOpen = computed(() => store.showVillageInfo);
 
+// 💡 사용자의 정확한 지적대로, 패널 내부에서 직접 엔진 렌더링 플래그를 통제합니다!
+watch(isOpen, (val) => {
+  if (window.gameEngine) {
+    window.gameEngine.viewFlags = window.gameEngine.viewFlags || {};
+    // ❌ 원형 디버그 뷰를 이 패널에서 강제로 완전히 꺼버립니다.
+    window.gameEngine.viewFlags.showVillageInfo = false;
+    window.gameEngine.viewFlags.showVillages = false;
+    // ✅ 오직 타일 렌더링(VILLAGETILE)만 작동하도록 지시합니다.
+    window.gameEngine.viewFlags.VILLAGETILE = val;
+  }
+}, { immediate: true });
+
 const close = () => {
-  store.showVillageInfo = false;
+  store.closeVillageInfo();
+};
+
+const getTerritoryCoords = (list) => {
+  if(!list) return [];
+  return list.map(t => {
+    const [x, y] = t.split(',').map(Number);
+    return { x, y };
+  });
+};
+
+const getTerritoryViewBox = (list) => {
+  if(!list || !list.length) return "0 0 10 10";
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  list.forEach(t => {
+    const [x, y] = t.split(',').map(Number);
+    if(x<minX) minX=x; if(y<minY) minY=y;
+    if(x>maxX) maxX=x; if(y>maxY) maxY=y;
+  });
+  const width = Math.max(4, maxX - minX + 2);
+  const height = Math.max(4, maxY - minY + 2);
+  return `${minX - 0.5} ${minY - 0.5} ${width} ${height}`;
 };
 
 const getTaskIcon = (type) => {
@@ -165,6 +217,7 @@ const getPriorityClass = (p) => {
   flex-direction: column;
   color: #fff;
   z-index: 1080;
+  pointer-events: auto; /* 🚀 UI 상호작용 활성화 */
   box-shadow: 0 20px 50px rgba(0,0,0,0.8), 
               inset 0 0 20px rgba(255,255,255,0.02);
   overflow: hidden;
@@ -258,10 +311,29 @@ const getPriorityClass = (p) => {
 .res-item.critical .res-values { color: #ff5252; }
 .res-item.critical .res-progress-bg { background: rgba(255, 82, 82, 0.1); }
 
-.infra-stats { display: flex; gap: 20px; }
-.infra-item { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px; flex: 1; }
-.infra-label { font-size: 0.7rem; color: #888; flex: 1; }
-.infra-count { font-weight: bold; font-size: 0.9rem; }
+.infra-stats { display: flex; gap: 10px; }
+.infra-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(255,255,255,0.03); padding: 10px 5px; border-radius: 8px; flex: 1; text-align: center; }
+.infra-label { font-size: 0.65rem; color: #888; font-weight: bold; text-transform: uppercase; }
+.infra-count { font-weight: 900; font-size: 0.85rem; color: #fff; }
+
+.territory-map-container {
+  width: 100%;
+  height: 120px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  box-sizing: border-box;
+}
+.mini-map-svg {
+  width: 100%;
+  height: 100%;
+  max-height: 110px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
 
 .task-summary {
   display: grid;

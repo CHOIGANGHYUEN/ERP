@@ -54,9 +54,20 @@ export default class InputSystem extends System {
                     }
                 }
 
-                // 🖐️ move_hand 도구가 선택되었거나 도구가 없을 때 카메라 조작
-                if (!activeTool || activeTool.id === 'move_hand') {
-                    this.camera.handleMouseDown(e);
+                // 🖐️ move_hand 도구 혹은 'view_' 계열(관찰용) 도구가 선택되었을 때 카메라 조작 허용
+                const isViewTool = activeTool && activeTool.id.startsWith('view_');
+                if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
+                    // 🗺️ [Zone System] 클릭한 좌표에 구역(Zone)이 있는지 확인
+                    let isZoneClicked = false;
+                    const zoneManager = this.engine.systemManager?.zoneManager;
+                    if (zoneManager && typeof zoneManager.handleClick === 'function') {
+                        isZoneClicked = zoneManager.handleClick(world.x, world.y);
+                    }
+
+                    // 구역을 클릭하지 않았을 때만 화면 패닝(카메라 이동) 시작
+                    if (!isZoneClicked) {
+                        this.camera.handleMouseDown(e);
+                    }
                 }
             } else if (e.button === 2) {
                 // 🖱️ [Right Click] 선택 해제 (Deselect)
@@ -95,7 +106,8 @@ export default class InputSystem extends System {
             }
 
             const activeTool = this.engine.toolManager?.activeTool;
-            if (!activeTool || activeTool.id === 'move_hand') {
+            const isViewTool = activeTool && activeTool.id.startsWith('view_');
+            if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
                 this.camera.handleMouseMove(e);
             }
         });
@@ -120,7 +132,8 @@ export default class InputSystem extends System {
             }
 
             const activeTool = this.engine.toolManager?.activeTool;
-            if (!activeTool || activeTool.id === 'move_hand') {
+            const isViewTool = activeTool && activeTool.id.startsWith('view_');
+            if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
                 this.camera.handleMouseUp();
             }
         });

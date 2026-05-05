@@ -20,7 +20,9 @@ export default class KinematicSystem {
         const viewW = (camera.width / camera.zoom) + (margin * 2);
         const viewH = (camera.height / camera.zoom) + (margin * 2);
 
-        for (const id of em.animalIds) {
+        // 👤 [Unified Physics] 중복 없이 동물과 인간 모두 관성 제거 및 물리 연산 적용
+        const combinedIds = new Set([...em.animalIds, ...em.humanIds]);
+        for (const id of combinedIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
 
@@ -49,19 +51,10 @@ export default class KinematicSystem {
             let nextX = transform.x + transform.vx * dt;
             let nextY = transform.y + transform.vy * dt;
 
-            // 🛑 [Stability] 상호작용 중에는 급제동 (관성 제거)
-            let friction = 0.92;
-            const interactionStates = ['eat', 'sleep', 'gather_wood', 'gather_plant', 'build', 'pickup', 'deposit', 'socializing'];
-            if (aiState && interactionStates.includes(aiState.mode)) {
-                friction = 0.5; // 급격한 속도 감쇄
-            }
-
-            transform.vx *= friction;
-            transform.vy *= friction;
-
-            // 정지 임계값 처리 (미세하게 떨리는 현상 방지)
-            if (Math.abs(transform.vx) < 0.1) transform.vx = 0;
-            if (Math.abs(transform.vy) < 0.1) transform.vy = 0;
+            // 🛑 [Natural Fix] 관성(Inertia) 제거: 
+            // 1. 마찰력(Friction)에 의한 서서히 멈추는 현상을 제거합니다.
+            // 2. 브레인에서 속도를 0으로 설정하면 즉시 멈춥니다.
+            // (LOD를 위해 이전 프레임의 속도를 유지하되, 브레인이 0을 주입하는 순간 정지)
 
             // 3. 지형 검사 (Navigable)
             if (this.engine.terrainGen && !this.engine.terrainGen.isNavigable(nextX, nextY)) {
@@ -104,9 +97,9 @@ export default class KinematicSystem {
                             nextX += (dx / dist) * (overlap + 0.5);
                             nextY += (dy / dist) * (overlap + 0.5);
                             
-                            // 속도 상쇄
-                            transform.vx *= 0.5;
-                            transform.vy *= 0.5;
+                            // 속도 상쇄 (관성 제거를 위해 즉시 정지)
+                            transform.vx = 0;
+                            transform.vy = 0;
                         }
                     }
                 }

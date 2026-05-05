@@ -33,6 +33,7 @@ export default class TerrainGen {
     waterQualityBuffer = null;
     mineralDensityBuffer = null;
     occupancyBuffer = null;
+    territoryBuffer = null; // 🏘️ Faction/Village ownership (Uint16Array)
 
     constructor(entityManager) {
         this.entityManager = entityManager;
@@ -185,6 +186,7 @@ export default class TerrainGen {
         this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
         this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
         this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
+        this.territoryBuffer = new Uint16Array(mapWidth * mapHeight);
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -321,6 +323,7 @@ export default class TerrainGen {
         this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
         this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
         this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
+        this.territoryBuffer = new Uint16Array(mapWidth * mapHeight);
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -416,12 +419,41 @@ export default class TerrainGen {
         return (Math.sin(x + seed) + Math.cos(y + seed) + Math.sin((x + y) * 1.4 + seed) + Math.cos((x - y) * 1.4 + seed)) / 4 + 0.5;
     }
 
-    getTerrainColor(idx, viewFlags) {
+    getTerrainColor(idx, viewFlags, systems = {}) {
         const terrainId = this.terrain.getValue(idx);
         const biomeId = this.biomes.getValue(idx);
         const fertility = this.fertilityBuffer[idx];
         
         let r = 0, g = 0, b = 0;
+        
+        // 🏘️ [Village/Nation View] 지형 위에 영토 색상 입히기
+        const villageId = this.territoryBuffer[idx];
+        if (viewFlags.VILLAGETILE && villageId > 0) {
+            const village = systems.villageSystem?.getVillage(villageId - 1);
+            if (village) {
+                const c = village.color || '#ffffff';
+                // 16진수 색상을 RGB로 변환
+                r = parseInt(c.slice(1, 3), 16);
+                g = parseInt(c.slice(3, 5), 16);
+                b = parseInt(c.slice(5, 7), 16);
+                return (r << 16) | (g << 8) | b;
+            }
+        }
+
+        if (viewFlags.NATIONTILE && villageId > 0) {
+            const village = systems.villageSystem?.getVillage(villageId - 1);
+            if (village && village.nationId !== -1) {
+                const nation = systems.nationSystem?.getNation(village.nationId);
+                if (nation) {
+                    const c = nation.color || '#ffffff';
+                    r = parseInt(c.slice(1, 3), 16);
+                    g = parseInt(c.slice(3, 5), 16);
+                    b = parseInt(c.slice(5, 7), 16);
+                    return (r << 16) | (g << 8) | b;
+                }
+            }
+        }
+
         switch(terrainId) {
             case TERRAIN_TYPES.DEEP_OCEAN: r = 10; g = 30; b = 100; break;
             case TERRAIN_TYPES.OCEAN: r = 30; g = 80; b = 180; break;

@@ -37,6 +37,8 @@ export default class HunterRole extends BaseRole {
         const droppedMeatCondition = (ent) => {
             const item = ent.components.get('DroppedItem');
             if (!item || item.category !== 'food') return false;
+            // 🏘️ [Ownership] 자국 아이템이거나 무소속 아이템만 수집
+            if (item.villageId !== -1 && item.villageId !== civ.villageId) return false;
             if (item.claimedBy && item.claimedBy !== entity.id) return false;
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
             return true;

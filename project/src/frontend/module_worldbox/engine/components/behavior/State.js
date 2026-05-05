@@ -54,9 +54,42 @@ export default class State extends Component {
         // 🧠 [Ecological Cycle Update] 상태 스택 (인터럽트 대응)
         this.modeStack = [];
 
-        // 🚫 [Pathfinding Optimization] 경로 탐색 실패 관리
         this.failedPathCount = 0;      // 현재 타겟에 대한 경로 탐색 실패 횟수
         this.blacklist = new Map();    // { targetId: expirationTime } - 일시적 무시 대상 목록
+        this.unreachableTargets = new Set(); // 🚫 [Stability] 경로 탐색 실패 타겟 캐시 (Set 유지)
+
+        // 🔍 [Debug Visualization] 탐색 범위를 시각화하기 위한 데이터
+        this.searchRange = 0;          // 최근 탐색 반경
+        this.targetName = null;        // 현재 타겟의 명칭 (UI/디버그용)
+    }
+
+    /** 🚫 타겟을 일시적 블랙리스트에 추가 */
+    addToBlacklist(targetId, duration = 10) {
+        const expiration = Date.now() + (duration * 1000);
+        this.blacklist.set(targetId, expiration);
+        this.unreachableTargets.add(targetId);
+    }
+
+    /** 🔍 블랙리스트 여부 확인 (만료 체크 포함) */
+    isBlacklisted(targetId) {
+        if (!this.blacklist.has(targetId)) return false;
+        if (Date.now() > this.blacklist.get(targetId)) {
+            this.blacklist.delete(targetId);
+            this.unreachableTargets.delete(targetId);
+            return false;
+        }
+        return true;
+    }
+
+    /** 🧹 만료된 블랙리스트 항목 정리 */
+    pruneBlacklist() {
+        const now = Date.now();
+        for (const [id, expiry] of this.blacklist.entries()) {
+            if (now > expiry) {
+                this.blacklist.delete(id);
+                this.unreachableTargets.delete(id);
+            }
+        }
     }
 
     /**

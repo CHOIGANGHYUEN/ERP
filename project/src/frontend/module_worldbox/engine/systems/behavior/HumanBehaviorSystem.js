@@ -70,12 +70,8 @@ export default class HumanBehaviorSystem extends System {
                 // 🧠 [Stable AI Transition] 브레인은 '권장' 상태만 제안함 (직접 주입하지 않음)
                 const suggestedMode = this.humanBrain.decide(entity, state, stats, emotion, inventory, effectiveDt);
                 
-                // 🛑 [Blacklist Maintenance] 도달 불가능 타겟 주기적 초기화 (60초마다)
-                state.blacklistClearTimer = (state.blacklistClearTimer || 0) + effectiveDt;
-                if (state.blacklistClearTimer >= 60.0) {
-                    if (state.unreachableTargets) state.unreachableTargets.clear();
-                    state.blacklistClearTimer = 0;
-                }
+                // 🛑 [Blacklist Maintenance] 도달 불가능 타겟 주기적 정리 (만료된 항목 제거)
+                state.pruneBlacklist();
 
                 this.updateHumanAI(id, entity, state, transform, animal, stats, effectiveDt, emotion, inventory, suggestedMode);
                 

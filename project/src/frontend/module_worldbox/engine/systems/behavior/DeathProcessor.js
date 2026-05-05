@@ -128,6 +128,22 @@ export default class DeathProcessor extends System {
         const itemFactory = this.engine.factoryProvider.getFactory('item');
         if (itemFactory) {
             let drops = [];
+            
+            // 🎯 [Expert Logic] 드랍 아이템의 소유 마을 결정
+            let sourceVillageId = -1;
+            const civ = entity.components.get('Civilization');
+            if (civ && civ.villageId !== -1) {
+                sourceVillageId = civ.villageId;
+            } else {
+                const aiState = entity.components.get('AIState');
+                if (aiState && aiState.killerId !== undefined) {
+                    const killer = this.entityManager.entities.get(aiState.killerId);
+                    const killerCiv = killer?.components.get('Civilization');
+                    if (killerCiv && killerCiv.villageId !== -1) {
+                        sourceVillageId = killerCiv.villageId;
+                    }
+                }
+            }
 
             if (animal) {
                 const config = this.engine.speciesConfig[animal.type] || {};
@@ -180,9 +196,9 @@ export default class DeathProcessor extends System {
                 }
 
                 if (amount > 0) {
-                    itemFactory.spawnDrop(transform.x, transform.y, drop.type, amount);
+                    itemFactory.spawnDrop(transform.x, transform.y, drop.type, amount, sourceVillageId);
                     const logSuffix = isFromConfig ? 'From Config' : 'Fallback/Manual';
-                    GlobalLogger.success(`Resource Yield: Dropped ${amount}x ${drop.type.toUpperCase()} from ${entity.id} (${logSuffix})`);
+                    GlobalLogger.success(`Resource Yield: Dropped ${amount}x ${drop.type.toUpperCase()} from ${entity.id} (${logSuffix}) for Village ${sourceVillageId}`);
                 }
             }
         }

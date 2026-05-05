@@ -82,10 +82,9 @@ export default class BuildState extends State {
                 state.animTimer = 0;
             }
         } else if (isReached === -1) {
-            // 길찾기 실패 시 블랙리스트 등록 후 포기
-            if (!state.unreachableTargets) state.unreachableTargets = new Set();
-            state.unreachableTargets.add(blueprintId);
+            // 🔨 [Blueprint Fix] 청사진은 블랙리스트에 넣지 않고 타겟만 초기화 (재시도 허용)
             state.targetId = null;
+            state.failedPathCount = 0;
             this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '🚫?', duration: 1000 });
             return AnimalStates.IDLE;
         }

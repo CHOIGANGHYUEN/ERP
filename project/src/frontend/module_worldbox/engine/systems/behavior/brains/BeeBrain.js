@@ -121,8 +121,8 @@ export default class BeeBrain {
                     // 벌집에서 너무 멀어지면 (40px) 벌집 쪽으로 강하게 끌어당김
                     if (distToHive > 40) {
                         const pullStrength = (distToHive - 40) * 10;
-                        transform.vx += (dx / distToHive) * pullStrength * dt;
-                        transform.vy += (dy / distToHive) * pullStrength * dt;
+                        transform.vx = (dx / distToHive) * 20;
+                        transform.vy = (dy / distToHive) * 20;
                         
                         // 방향도 벌집 쪽으로 서서히 틀어줌
                         state.wanderAngle = Math.atan2(dy, dx) + (Math.random() - 0.5);
@@ -133,8 +133,8 @@ export default class BeeBrain {
                     state.wanderAngle += (Math.random() - 0.5) * Math.PI;
                 }
                 const mass = transform.mass || 1;
-                transform.vx += (Math.cos(state.wanderAngle) * 400 * dt) / mass;
-                transform.vy += (Math.sin(state.wanderAngle) * 400 * dt) / mass;
+                transform.vx = Math.cos(state.wanderAngle) * 30;
+                transform.vy = Math.sin(state.wanderAngle) * 30;
 
                 // 근처의 꿀(꽃) 찾기
                 if (animal.nectar < 10 && Math.random() < 0.1) {
@@ -171,7 +171,7 @@ export default class BeeBrain {
                 }
                 else {
                     const mass = transform.mass || 1;
-                    transform.vx += (dx / dist) * 600 * dt / mass; transform.vy += (dy / dist) * 600 * dt / mass;
+                    transform.vx = (dx / dist) * 35; transform.vy = (dy / dist) * 35;
                 }
             } else if (state.mode === 'bee_return') {
                 if (!hive) { state.mode = 'bee_wander'; return; }
@@ -190,7 +190,7 @@ export default class BeeBrain {
                     transform.vx = 0; transform.vy = 0;
                 } else {
                     const mass = transform.mass || 1;
-                    transform.vx += (dx / dist) * 800 * dt / mass; transform.vy += (dy / dist) * 800 * dt / mass;
+                    transform.vx = (dx / dist) * 45; transform.vy = (dy / dist) * 45;
                 }
             }
         }

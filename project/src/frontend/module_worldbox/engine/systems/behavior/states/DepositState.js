@@ -76,11 +76,12 @@ export default class DepositState extends State {
 
                 for (const [resType, amount] of itemsToTransfer) {
                     if (amount > 0) {
-                        // 안전한 자원 추가 (storage.add 함수가 없으면 직접 객체 프로퍼티 증가)
-                        if (typeof storage.add === 'function') {
-                            storage.add(resType, amount);
+                        // 📦 [Fix] Storage 컴포넌트의 addItem 메서드를 호출하여 자원 동기화 트리거
+                        if (typeof storage.addItem === 'function') {
+                            storage.addItem(resType, amount);
                         } else if (storage.items) {
                             storage.items[resType] = (storage.items[resType] || 0) + amount;
+                            // 수동으로 변경한 경우 이벤트를 발생시켜야 할 수 있음 (Storage.js 참고)
                         }
 
                         const emoji = emojiMap[resType.toLowerCase()] || '📦';

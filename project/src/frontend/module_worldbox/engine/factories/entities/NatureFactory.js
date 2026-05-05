@@ -1,6 +1,7 @@
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
 import ResourceNode from '../../components/resource/ResourceNode.js';
+import { BIOME_PROPERTIES_MAP } from '../../world/TerrainGen.js';
 import Health from '../../components/stats/Health.js';
 
 /**
@@ -20,7 +21,7 @@ export default class NatureFactory extends IEntityFactory {
         builder.withTransform(x, y);
 
         if (type.includes('tree')) {
-            this._setupTree(builder, type, quality, options, config);
+            this._setupTree(builder, x, y, type, quality, options, config);
         } else if (type.includes('grass') || type.includes('flower') || type.includes('berry') || type.includes('shrub') || type.includes('herb') || type.includes('moss') || type.includes('kelp') || type.includes('seaweed') || ['lotus', 'reed', 'vine', 'cactus', 'weeds', 'mushroom'].includes(type)) {
             this._setupPlant(builder, type, quality, config);
         } else {
@@ -40,19 +41,32 @@ export default class NatureFactory extends IEntityFactory {
         return id;
     }
 
-    _setupTree(builder, type, quality, options, config) {
+    _setupTree(builder, x, y, type, quality, options, config) {
         // 🌱 [생태계 복원] 명시적으로 성목 스폰을 요청하지 않은 이상 모든 나무는 묘목(작은 크기)부터 시작합니다.
         const isGrown = options.isGrown === true;
         const targetSize = 15 + (quality * 10);
         const targetAmount = Math.floor(quality * 100) + 50;
-
-        const initialSize = isGrown ? targetSize : 5;
-        const initialAmount = isGrown ? targetAmount : 5;
+        
+        // 🌍 [Natural Arrangement] 바이옴에 따른 나무 색상 결정
+        let treeColor = '#2e7d32'; // 기본 짙은 녹색
+        if (this.engine.terrainGen) {
+            const biomeId = this.engine.terrainGen.getBiomeAt(x, y);
+            const biome = BIOME_PROPERTIES_MAP.get(biomeId);
+            if (biome) {
+                // 바이옴의 High 컬러를 기반으로 나무 색상 추출 및 변주
+                if (biome.colorHigh) {
+                    const [r, g, b] = biome.colorHigh;
+                    // 나무는 지형보다 약간 더 짙게 설정 (자연스러운 대비)
+                    treeColor = `#${Math.max(0, r-20).toString(16).padStart(2, '0')}${Math.max(0, g-10).toString(16).padStart(2, '0')}${Math.max(0, b-20).toString(16).padStart(2, '0')}`;
+                }
+            }
+        }
 
         const visual = {
             type: 'tree',
-            size: targetSize, // 🌲 [Stability] 타이머 기반 생장 대신 즉시 성목으로 생성
+            size: targetSize,
             quality: quality,
+            color: treeColor,
             subtype: options.subtype || 'normal'
         };
 

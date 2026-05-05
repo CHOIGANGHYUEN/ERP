@@ -520,6 +520,12 @@ export default class EntityRenderer {
                 ctx.lineTo(targetPos.x, targetPos.y);
             }
             ctx.stroke();
+            
+            // 🎯 타겟 명칭 표시
+            if (targetPos && state.targetName) {
+                ctx.fillStyle = isHuman ? '#00f2ff' : '#ffffff';
+                ctx.fillText(state.targetName, targetPos.x, targetPos.y - 10);
+            }
 
             if (state.path && state.path.length > 0) {
                 ctx.setLineDash([]);
@@ -545,6 +551,18 @@ export default class EntityRenderer {
             ctx.lineTo(tx - head * Math.cos(state.wanderAngle + 0.5), ty - head * Math.sin(state.wanderAngle + 0.5));
             ctx.stroke();
         }
+
+        // 🔍 [Search Range Visualization]
+        if (state.searchRange > 0 && !state.targetId) {
+            const pulse = (Math.sin(this.engine.time * 0.005) + 1) * 0.5;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, state.searchRange, 0, Math.PI * 2);
+            ctx.strokeStyle = isHuman ? `rgba(0, 242, 255, ${0.1 + pulse * 0.1})` : `rgba(255, 255, 255, ${0.05 + pulse * 0.05})`;
+            ctx.setLineDash([10, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
         ctx.restore();
     }
 }

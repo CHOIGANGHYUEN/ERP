@@ -67,7 +67,7 @@ export default class ItemFactory extends IEntityFactory {
                 icon: icon,
                 size: 2 + Math.min(amount * 0.05, 2)
             })
-            .addComponent('DroppedItem', new DroppedItem(type, amount, category, finalDecayTime, displayName));
+            .addComponent('DroppedItem', new DroppedItem(type, amount, category, finalDecayTime, displayName, options.villageId || -1));
 
         const id = Number(builder.id);
         if (isNaN(id)) {
@@ -83,7 +83,7 @@ export default class ItemFactory extends IEntityFactory {
         return Number(id);
     }
 
-    spawnDrop(x, y, itemType, amount) {
+    spawnDrop(x, y, itemType, amount, villageId = -1) {
         // 🚀 [Optimization] 드랍 시 약간의 랜덤 위치 오프셋 추가 (겹침 방지 강화)
         const jX = x + (Math.random() - 0.5) * 12;
         const jY = y + (Math.random() - 0.5) * 12;
@@ -97,8 +97,8 @@ export default class ItemFactory extends IEntityFactory {
                 const ent = this.engine.entityManager.entities.get(id);
                 const drop = ent?.components.get('DroppedItem');
 
-                // 같은 타입이고, 아직 최대 스택에 도달하지 않은 아이템만 병합
-                if (drop && drop.itemType === itemType && drop.amount < MAX_STACK) {
+                // 같은 타입, 같은 마을 소속이고 아직 최대 스택에 도달하지 않은 아이템만 병합
+                if (drop && drop.itemType === itemType && drop.villageId === villageId && drop.amount < MAX_STACK) {
                     // 병합 성공!
                     drop.merge(amount);
 
@@ -111,6 +111,6 @@ export default class ItemFactory extends IEntityFactory {
         }
 
         // 2. 🆕 병합할 대상이 없으면 새로 생성 (편차가 적용된 위치에)
-        return this.create(itemType, jX, jY, { amount });
+        return this.create(itemType, jX, jY, { amount, villageId });
     }
 }

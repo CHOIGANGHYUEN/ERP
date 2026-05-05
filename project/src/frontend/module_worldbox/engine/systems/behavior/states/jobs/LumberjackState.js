@@ -120,6 +120,8 @@ export default class LumberjackState extends BaseJobState {
             const res = target.components.get('Resource');
             const inv = entity.components.get('Inventory');
             
+            const civ = entity.components.get('Civilization');
+            
             if (res && inv) {
                 // 🪓 나무에서 5개씩 추출 (인벤토리에 추가 대신 바닥에 드랍)
                 const extracted = res.extract(5);
@@ -129,7 +131,8 @@ export default class LumberjackState extends BaseJobState {
 
                     if (itemFactory && tPos) {
                         const dropType = res.type || 'wood';
-                        itemFactory.spawnDrop(tPos.x, tPos.y, dropType, extracted);
+                        const vId = civ ? civ.villageId : -1;
+                        itemFactory.spawnDrop(tPos.x, tPos.y, dropType, extracted, vId);
                     }
                     
                     // 타격 파티클

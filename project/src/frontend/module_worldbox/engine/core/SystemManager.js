@@ -73,7 +73,7 @@ export default class SystemManager {
 
         // 🧠 Central Dispatch & Economy
         this.blackboard = new Blackboard();
-        this.targetManager = new TargetManager(em, eb, this.blackboard);
+        this.targetManager = new TargetManager(em, eb, this.blackboard, engine);
         this.economyManager = new EconomyManager(em, eb, this.blackboard);
 
         // Phase 3: Physics

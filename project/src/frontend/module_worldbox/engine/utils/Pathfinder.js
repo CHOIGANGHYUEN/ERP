@@ -308,10 +308,16 @@ export default class Pathfinder {
         return path;
     }
 
-    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcInterval = 2000, targetIdOverride = null) {
+    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcIntervalOverride = null, targetIdOverride = null) {
         const now = Date.now();
         const currentTargetId = targetIdOverride || state.targetId;
         
+        // 🚀 [Expert Optimization] 상태별 경로 재계산 주기 차등화
+        // 도망(Flee), 허기(Eat/Forage), 피로(Sleep) 등 긴급 상황만 수시로 재계산
+        const isEmergency = ['flee', 'eat', 'forage', 'sleep', 'hunt', 'attack'].includes(state.mode);
+        const defaultInterval = isEmergency ? 500 : 30000; // 긴급 시 0.5초, 평시 30초(사실상 목표 도달까지 유지)
+        const recalcInterval = recalcIntervalOverride || defaultInterval;
+
         let needsRecalc = !state.path || 
                           state.pathTargetId !== currentTargetId || 
                           (now - (state.lastPathCalcTime || 0) > recalcInterval);

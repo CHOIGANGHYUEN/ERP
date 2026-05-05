@@ -30,6 +30,7 @@
       </div>
 
       <VillageDetailPanel />
+      <NationDetailPanel />
 
       <div class="top-bar">
         <h1>Worldbox Simulation</h1>
@@ -129,6 +130,7 @@ import { DefaultTools } from '../../engine/core/ToolRegistry.js';
 import { useWorldboxStore } from '../store/worldboxStore';
 import EntityStatusPanel from '../components/EntityStatusPanel.vue';
 import VillageDetailPanel from '../components/VillageDetailPanel.vue';
+import NationDetailPanel from '../components/NationDetailPanel.vue';
 import MapSettings from '../components/MapSettings.vue';
 
 const worldboxContainer = ref(null);
@@ -148,6 +150,8 @@ const totalMaxFertility = ref(0);
 const engine = ref(null);
 const allTools = ref([]);
 let resizeObserver = null;
+
+const store = useWorldboxStore();
 
 const handleMouseMove = (e) => {
   if (engine.value) {
@@ -216,6 +220,9 @@ const selectTool = (tool) => {
     if (tool.id === 'view_village') {
       store.showVillageInfo = !store.showVillageInfo;
     }
+    if (tool.id === 'view_nation') {
+      store.showNationInfo = !store.showNationInfo;
+    }
     if (engine.value) engine.value.toggleView(tool.id);
     return;
   }
@@ -230,13 +237,33 @@ const selectTool = (tool) => {
   }
 };
 
+// 💡 Store의 마을 정보창 상태를 감지하여 렌더링 타일 플래그와 UI 도구 상태를 자동 동기화
+watch(() => store.showVillageInfo, (isOpen) => {
+  if (engine.value) {
+    engine.value.viewFlags = engine.value.viewFlags || {};
+    
+    // ❌ 엔진 기본 디버그의 거대한 원형 반경이 그려지는 것을 원천 차단합니다.
+    engine.value.viewFlags.showVillageInfo = false;
+    engine.value.viewFlags.showVillages = false;
+    // ✅ 오직 예쁜 타일 렌더링 시스템만 작동하도록 VILLAGETILE 플래그를 넘깁니다.
+    engine.value.viewFlags.VILLAGETILE = isOpen;
+  }
+  
+  // 패널이 열리면 도구 아이콘 활성화, 닫히면 기본 '이동(Hand)' 도구로 완벽 초기화
+  if (isOpen) {
+    const villageTool = allTools.value.find(t => t.id.includes('village'));
+    if (villageTool) activeTool.value = villageTool.id;
+  } else if (activeTool.value.includes('village')) {
+    activeTool.value = 'move_hand';
+    const defaultTool = allTools.value.find(t => t.id === 'move_hand');
+    if (engine.value && defaultTool) engine.value.setActiveTool(defaultTool);
+  }
+});
 
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value;
 };
-
-const store = useWorldboxStore();
 
 const handleMapConfirm = (settings) => {
   showMapSettings.value = false;
@@ -280,6 +307,9 @@ const initEngine = (mapSettings = {}) => {
     // 🏘️ Store 동기화
     if (stats.villages) {
       store.updateVillageStats(stats.villages);
+    }
+    if (stats.nations) {
+      store.updateNationStats(stats.nations);
     }
   };
 
@@ -788,5 +818,3 @@ input[type="range"] {
   filter: blur(20px);
 }
 </style>
-
-

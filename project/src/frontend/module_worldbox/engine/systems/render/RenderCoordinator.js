@@ -89,7 +89,13 @@ export default class RenderCoordinator extends System {
 
         offCtx.restore();
 
-        // [레이어 3] UI 및 툴팁 (Screen Space)
+        // [레이어 3] 마을 및 구역 타일 오버레이 (World Space)
+        const zm = engine.systemManager?.zoneManager;
+        if (zm) {
+            zm.render(offCtx, camera);
+        }
+
+        // [레이어 4] UI 및 툴팁 (Screen Space)
         this.renderTimeHUD(offCtx); // ⏳ 시간 HUD 추가
         
         if (engine.viewFlags.fertilityValue && engine.inputSystem && engine.inputSystem.mouseWorld) {
@@ -100,11 +106,11 @@ export default class RenderCoordinator extends System {
             this.renderEntityNamesTooltip(offCtx);
         }
 
-        if (engine.viewFlags.village) {
+        if (engine.viewFlags.village || engine.viewFlags.showVillageInfo) {
             this.renderVillageView(offCtx);
         }
         
-        if (engine.viewFlags.zone) {
+        if (engine.viewFlags.zone || engine.viewFlags.showZones) {
             this.renderZoneView(offCtx);
         }
 
@@ -300,14 +306,9 @@ export default class RenderCoordinator extends System {
                 continue;
             }
 
-            ctx.beginPath();
-            ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(100, 200, 255, 0.15)';
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.4)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
+            // 🚀 [Tile Fix] 원형 영역 대신 타일 시스템이 렌더링하도록 위임했으므로, 
+            // 여기서는 마을 정보 박스(Tooltip)만 렌더링합니다.
+            
             const pop = village.members.size;
             
             ctx.font = 'bold 12px "Courier New", monospace';
@@ -429,23 +430,8 @@ export default class RenderCoordinator extends System {
                 continue;
             }
 
-            // 구역 타입별 색상 지정 (가독성을 위해 채도 상향)
-            let color = 'rgba(255, 255, 255, 0.25)';
-            if (zone.type === 'residential') color = 'rgba(65, 105, 225, 0.35)'; // Royal Blue
-            else if (zone.type === 'lumber' || zone.type === 'logger') color = 'rgba(160, 82, 45, 0.4)'; // Sienna
-            else if (zone.type === 'farm') color = 'rgba(34, 139, 34, 0.35)'; // Forest Green
-            else if (zone.type === 'industrial') color = 'rgba(105, 105, 105, 0.4)'; // Dim Gray
-
-            // 1. 구역 배경 사각형
-            ctx.fillStyle = color;
-            ctx.fillRect(screenX, screenY, screenW, screenH);
-            
-            // 2. 구역 테두리 (가독성 강화)
-            ctx.setLineDash([15, 5]);
-            ctx.strokeStyle = color.replace('0.3', '0.9').replace('0.4', '0.9');
-            ctx.lineWidth = 3;
-            ctx.strokeRect(screenX, screenY, screenW, screenH);
-            ctx.setLineDash([]); 
+            // 🚀 [Tile Fix] 사각형 영역 대신 타일 시스템이 렌더링하도록 위임했으므로,
+            // 여기서는 구역 라벨과 정보만 렌더링합니다.
 
             // 3. 구역 라벨 (배경 상자 추가)
             ctx.font = 'bold 11px "Courier New", monospace';

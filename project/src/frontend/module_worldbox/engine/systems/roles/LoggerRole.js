@@ -49,6 +49,9 @@ export default class LoggerRole extends BaseRole {
             const isWood = (iCat === 'wood' || iType.includes('wood') || iType.includes('log') || iType.includes('stick'));
             if (!isWood) return false;
 
+            // 🏘️ [Ownership] 자국 아이템이거나 무소속 아이템만 수집
+            if (item.villageId !== -1 && item.villageId !== civ.villageId) return false;
+
             if (item.claimedBy && item.claimedBy !== entity.id) return false;
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
             return true;

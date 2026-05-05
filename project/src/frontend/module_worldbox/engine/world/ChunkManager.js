@@ -22,7 +22,10 @@ export default class ChunkManager {
         
         // Update the pixel in the master buffer directly
         const idx = y * this.mapWidth + x;
-        const color = this.engine.terrainGen.getTerrainColor(idx, this.engine.viewFlags);
+        const color = this.engine.terrainGen.getTerrainColor(idx, this.engine.viewFlags, {
+            villageSystem: this.engine.systemManager?.villageSystem,
+            nationSystem: this.engine.systemManager?.nationSystem
+        });
         
         const r = (color >> 16) & 0xff;
         const g = (color >> 8) & 0xff;
@@ -51,14 +54,20 @@ export default class ChunkManager {
             const fertBuf = tg.fertilityBuffer;
             const wqBuf = tg.waterQualityBuffer;
             const mdBuf = tg.mineralDensityBuffer;
+            const territoryBuf = tg.territoryBuffer; // 🏘️ 추가
+
+            const vs = this.engine.systemManager?.villageSystem;
+            const ns = this.engine.systemManager?.nationSystem;
 
             // 🎯 정책 결정 (루프 외부에서 단 한 번)
             let mode = 'normal';
-            if (viewFlags.fertility) mode = 'fertility';
+            if (viewFlags.VILLAGETILE) mode = 'village';
+            else if (viewFlags.NATIONTILE) mode = 'nation';
+            else if (viewFlags.fertility) mode = 'fertility';
             else if (viewFlags.water) mode = 'water';
             else if (viewFlags.mineral) mode = 'mineral';
 
-            const batchSize = 256; // 🚀 처리량을 4배로 증가 (최적화가 잘 되어 있어 가능)
+            const batchSize = 256; 
 
             for (let y = 0; y < mapHeight; y += batchSize) {
                 const endY = Math.min(y + batchSize, mapHeight);
@@ -66,8 +75,52 @@ export default class ChunkManager {
                 for (let currY = y; currY < endY; currY++) {
                     const rowOff = currY * mapWidth;
                     
-                    // 🏎️ [Expert Mode] 정책별 전용 루프 (이중 루프 내 조건문 최소화)
-                    if (mode === 'fertility') {
+                    if (mode === 'village') {
+                        for (let x = 0; x < mapWidth; x++) {
+                            const idx = rowOff + x;
+                            const vid = territoryBuf[idx];
+                            if (vid > 0) {
+                                const v = vs?.getVillage(vid - 1);
+                                if (v) {
+                                    const c = v.color || '#ffffff';
+                                    const r = parseInt(c.slice(1, 3), 16);
+                                    const g = parseInt(c.slice(3, 5), 16);
+                                    const b = parseInt(c.slice(5, 7), 16);
+                                    buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
+                                    continue;
+                                }
+                            }
+                            // Default to normal color if no village
+                            const t = terrainBuf[idx];
+                            const b = biomeBuf[idx];
+                            const fIdx = fertBuf[idx] >> 4;
+                            buffer[idx] = tg.colorLUT[(t << 8) | (b << 4) | fIdx];
+                        }
+                    } else if (mode === 'nation') {
+                        for (let x = 0; x < mapWidth; x++) {
+                            const idx = rowOff + x;
+                            const vid = territoryBuf[idx];
+                            if (vid > 0) {
+                                const v = vs?.getVillage(vid - 1);
+                                if (v && v.nationId !== -1) {
+                                    const n = ns?.getNation(v.nationId);
+                                    if (n) {
+                                        const c = n.color || '#ffffff';
+                                        const r = parseInt(c.slice(1, 3), 16);
+                                        const g = parseInt(c.slice(3, 5), 16);
+                                        const b = parseInt(c.slice(5, 7), 16);
+                                        buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
+                                        continue;
+                                    }
+                                }
+                            }
+                            // Default to normal color if no nation
+                            const t = terrainBuf[idx];
+                            const b = biomeBuf[idx];
+                            const fIdx = fertBuf[idx] >> 4;
+                            buffer[idx] = tg.colorLUT[(t << 8) | (b << 4) | fIdx];
+                        }
+                    } else if (mode === 'fertility') {
                         for (let x = 0; x < mapWidth; x++) {
                             const idx = rowOff + x;
                             const t = terrainBuf[idx];

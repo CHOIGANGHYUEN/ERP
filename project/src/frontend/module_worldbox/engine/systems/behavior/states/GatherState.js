@@ -71,6 +71,20 @@ export default class GatherState extends State {
             if (state.chopTimer >= chopInterval) {
                 state.chopTimer = 0; // 타이머 초기화
 
+                // 💎 [Specialization Multiplier] 마을 보너스 계산
+                let multiplier = 1.0;
+                const civ = entity.components.get('Civilization');
+                if (civ && civ.villageId !== -1) {
+                    const vs = this.system.engine.systemManager?.villageSystem;
+                    const village = vs?.getVillage(civ.villageId);
+                    if (village && village.buffs) {
+                        const resType = res.type?.toLowerCase();
+                        if (resType === 'tree') multiplier = village.buffs.woodGatherRate || 1.0;
+                        else if (['stone', 'iron_ore', 'ore'].includes(resType)) multiplier = village.buffs.stoneGatherRate || 1.0;
+                        else if (['berry', 'food'].includes(resType)) multiplier = village.buffs.foodGatherRate || 1.0;
+                    }
+                }
+
                 // ⚔️ [Action Loop] 실제 채집(타격) 로직 실행
                 const extracted = gatherer.performGathering(
                     chopInterval, // 간격만큼의 채집량 적용
@@ -78,7 +92,8 @@ export default class GatherState extends State {
                     state.targetId,
                     em,
                     this.system.eventBus,
-                    transform
+                    transform,
+                    multiplier // 보너스 배율 전달
                 );
 
                 // 자식 클래스에서 오버라이드할 콜백 (애니메이션 연출 등)
@@ -99,11 +114,13 @@ export default class GatherState extends State {
             const moveStatus = Pathfinder.followPath(transform, state, tPos, 55, this.system.engine);
 
             if (moveStatus === -1) {
-                // 🚫 A* 길찾기에 실패한 타겟은 블랙리스트에 등록하여 무한 반복 타겟팅을 방지합니다.
-                if (!state.unreachableTargets) {
-                    state.unreachableTargets = new Set();
+                // 🚫 [Timed Blacklist] 길찾기 실패 시 30초간 무시 (이후 다시 시도 가능)
+                if (state.addToBlacklist) {
+                    state.addToBlacklist(state.targetId, 30);
+                } else {
+                    if (!state.unreachableTargets) state.unreachableTargets = new Set();
+                    state.unreachableTargets.add(state.targetId);
                 }
-                state.unreachableTargets.add(state.targetId);
 
                 state.targetId = null; // 길 없음 (포기)
                 if (this.system.eventBus) {

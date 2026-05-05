@@ -80,12 +80,29 @@ export default class StatsMonitor {
                     }
                 }
 
+                const nationStats = [];
+                const nationSystem = this.engine.systemManager.nationSystem;
+                if (nationSystem && nationSystem.nations) {
+                    for (const nation of nationSystem.nations.values()) {
+                        nationStats.push({
+                            id: nation.id,
+                            name: nation.name,
+                            color: nation.color,
+                            population: nation.totalPopulation,
+                            villageCount: nation.villages.size,
+                            resources: { ...nation.resources },
+                            taxRate: nation.taxRate
+                        });
+                    }
+                }
+
                 this.onUpdate({ 
                     fps: this.fps,
                     entityCount: this.entityCount,
                     totalFertility: this.allocatedFertility,
                     totalMaxFertility: this.maxPotentialFertility,
-                    villages: villageStats
+                    villages: villageStats,
+                    nations: nationStats
                 });
             }
         }
