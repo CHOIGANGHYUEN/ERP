@@ -174,17 +174,27 @@ export default class TerrainGen {
         }
     }
 
+    setSharedMapBuffers(mapBuffers) {
+        if (!mapBuffers) return;
+        this.terrain = new TerrainLayer(this.mapWidth, this.mapHeight, mapBuffers.terrain);
+        this.biomes = new BiomeLayer(this.mapWidth, this.mapHeight, mapBuffers.biome);
+        this.fertilityBuffer = new Uint8Array(mapBuffers.fertility);
+        this.waterQualityBuffer = new Uint8Array(mapBuffers.water);
+        this.mineralDensityBuffer = new Uint8Array(mapBuffers.mineral);
+        this.occupancyBuffer = new Uint8Array(mapBuffers.occupancy);
+    }
+
     async generateProgressive(mapWidth, mapHeight, engine, onProgress, outStats, waterPixels) {
         this.mapWidth = mapWidth;
         this.mapHeight = mapHeight;
         
-        // 1. 버퍼 초기화
-        this.terrain = new TerrainLayer(mapWidth, mapHeight);
-        this.biomes = new BiomeLayer(mapWidth, mapHeight);
-        this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
+        // 1. 버퍼 초기화 (이미 공유 버퍼가 주입되지 않은 경우에만 신규 할당)
+        if (!this.terrain) this.terrain = new TerrainLayer(mapWidth, mapHeight);
+        if (!this.biomes) this.biomes = new BiomeLayer(mapWidth, mapHeight);
+        if (!this.fertilityBuffer) this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight);
+        if (!this.waterQualityBuffer) this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
+        if (!this.mineralDensityBuffer) this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
+        if (!this.occupancyBuffer) this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;

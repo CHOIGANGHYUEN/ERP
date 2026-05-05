@@ -38,25 +38,26 @@ export const HumanRenderer = {
                          || mode === 'deposit' || mode === 'forage'
                          || mode === 'gather_wood' || mode === 'build';
         
-        const isSleeping  = mode === 'sleep';
+        const isSleeping  = mode === 'sleep' || visual?.isSleeping;
         const isEating    = mode === 'eat';
         const isForaging  = mode === 'forage';
         const isDead      = mode === 'die';
-        const isChopping  = mode === 'gather_wood' && aiState?.isChopping;
+        const isChopping  = (mode === 'gather_wood' || mode === 'build') && visual?.isChopping;
         const isBuilding  = mode === 'build';
         const isDepositing = mode === 'deposit';
         const isBerserk   = mode === 'berserk';
         const isHunting   = mode === 'hunt';
 
-        const chopPhase = isChopping ? Math.min(1, (aiState.chopTimer || 0) / 0.4) : 0;
-        const carryingWood = (inventory?.items?.wood || 0) > 0;
-        const carryingFood = (inventory?.items?.food || 0) > 0;
-        const isCarrying   = (inventory?.getTotal() || 0) > 0;
+        const chopPhase = isChopping ? Math.min(1, (aiState?.chopTimer || 0) / 0.4) : 0;
+        const carryingWood = visual?.carryingWood;
+        const carryingFood = visual?.carryingFood;
+        const isCarrying   = carryingWood || carryingFood;
 
-        const gender = animal?.gender || 'male';
-        const isMale = gender === 'male';
+        const gender = visual?.isFemale ? 'female' : 'male';
+        const isMale = !visual?.isFemale;
         const isBaby = visual?.isBaby || false;
-        const isStarving = (metabolism?.hunger ?? 100) < 20;
+        const isStarving = visual?.isStarving;
+        const isKing = visual?.isKing;
 
         // ── 3. 팔레트 설정 ────────────────────────────────────────────
         const C = isMale ? {

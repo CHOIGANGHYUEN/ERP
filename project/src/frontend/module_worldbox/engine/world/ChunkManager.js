@@ -9,9 +9,16 @@ export default class ChunkManager {
         
         // Master buffer for the whole map
         this.buffer = new Uint32Array(this.mapWidth * this.mapHeight);
-        this.imgData = new ImageData(new Uint8ClampedArray(this.buffer.buffer), this.mapWidth, this.mapHeight);
+        this.sharedColorView = new Uint8ClampedArray(this.buffer.buffer);
+        this.imgData = new ImageData(this.mapWidth, this.mapHeight);
         
         this.dirtyChunks = new Set();
+    }
+
+    setSharedBuffer(sharedBuffer) {
+        this.buffer = new Uint32Array(sharedBuffer);
+        this.sharedColorView = new Uint8ClampedArray(sharedBuffer);
+        this.imgData = new ImageData(this.mapWidth, this.mapHeight);
     }
 
     markDirty(x, y) {
@@ -47,7 +54,7 @@ export default class ChunkManager {
 
             // 🚀 [Optimization] 로컬 변수 캐싱으로 가속
             const terrainBuf = tg.terrain.buffer;
-            const biomeBuf = tg.biomeBuffer;
+            const biomeBuf = tg.biomes.buffer;
             const fertBuf = tg.fertilityBuffer;
             const wqBuf = tg.waterQualityBuffer;
             const mdBuf = tg.mineralDensityBuffer;
@@ -131,6 +138,11 @@ export default class ChunkManager {
     }
 
     render(ctx) {
+        // 🚀 [Critical Fix] 렌더링 직전에 공유 버퍼의 최신 데이터를 로컬 ImageData로 고속 복사
+        if (this.sharedColorView && this.imgData) {
+            this.imgData.data.set(this.sharedColorView);
+        }
+
         if (this.dirtyChunks.size === 0) {
             // 강제 전체 렌더링 (점진적 생성 등에서 사용)
             ctx.putImageData(this.imgData, 0, 0);

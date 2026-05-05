@@ -1,6 +1,7 @@
 import System from '../../core/System.js';
 import { GlobalLogger } from '../../utils/Logger.js';
 import { BIOME_PROPERTIES_MAP, BIOME_NAMES_TO_IDS } from '../../world/TerrainGen.js';
+import { VISUAL_FLAGS } from '../../core/Constants.js';
 
 export default class MetabolismSystem extends System {
     constructor(entityManager, eventBus, engine, terrainGen) {
@@ -132,6 +133,11 @@ export default class MetabolismSystem extends System {
         }
 
         // 💩 5. 배설 로직 (effectiveDt 사용)
+        const visual = entity.components.get('Visual');
+        if (visual) {
+            visual.setFlag(VISUAL_FLAGS.IS_STARVING, stats.hunger < 20);
+        }
+
         if (metabolism && transform) {
             metabolism.stomach = (stats.hunger / (stats.maxHunger || 100)) * metabolism.maxStomach;
             metabolism.storedFertility = stats.storedFertility || 0;

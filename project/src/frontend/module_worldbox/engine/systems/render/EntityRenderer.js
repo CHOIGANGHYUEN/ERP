@@ -5,6 +5,8 @@ import { TreeRenderer } from '../../objects/renders/nature/TreeRenderer.js';
 import { BuildRender } from '../../objects/renders/BuildRender.js';
 import { ItemRenderer } from '../../objects/renders/ItemRenderer.js';
 
+import { ID_TO_TYPE_NAME, ENTITY_FLAGS } from '../../core/Constants.js';
+
 /**
  * 🎨 EntityRenderer
  * 월드 내의 모든 개체와 파티클 렌더링을 총괄하는 코디네이터입니다.
@@ -12,7 +14,18 @@ import { ItemRenderer } from '../../objects/renders/ItemRenderer.js';
 export default class EntityRenderer {
     constructor(engine) {
         this.engine = engine;
-        this.spriteCache = new Map(); 
+        this.spriteCache = new Map();
+
+        // 🛰️ Shared Buffer References
+        this.sharedData = null;
+        this.sharedIntData = null;
+        this.stride = 0;
+    }
+
+    setSharedBuffer(buffer, stride) {
+        this.sharedData = new Float32Array(buffer);
+        this.sharedIntData = new Int32Array(buffer);
+        this.stride = stride;
     }
 
     /** 메인 렌더링 루프 */
@@ -27,14 +40,14 @@ export default class EntityRenderer {
         const viewH = (camera.height / camera.zoom) + (margin * 2);
 
         const visibleIds = this.engine.spatialHash.queryRect(viewX, viewY, viewW, viewH);
-        
+
         if (time % 60000 < 20) {
             this.spriteCache.clear();
             AnimalRenders.clearCache();
         }
 
         const renderList = [];
-        const processedIds = new Set(); 
+        const processedIds = new Set();
 
         for (const id of visibleIds) {
             if (processedIds.has(id)) continue;
@@ -52,7 +65,7 @@ export default class EntityRenderer {
         }
 
         renderList.sort((a, b) => a.y - b.y);
- 
+
         // 🔒 [Debug] AIPATH 모드일 때 블랙리스트(도달 불가) 타겟 수집
         const blacklistedIds = new Set();
         if (this.engine.viewFlags.debugAI) {
@@ -85,13 +98,13 @@ export default class EntityRenderer {
 
             const isHighDetail = camera.zoom > 1.5;
             const type = v.type;
-            const isAnimal = entity.components.has('Animal') || 
-                             ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee'].includes(type);
+            const isAnimal = entity.components.has('Animal') ||
+                ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee'].includes(type);
 
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
                 if (this.engine.viewFlags.debugAI && camera.zoom > 0.8 && state) {
-                    this.renderAIDebug(ctx, t, state, id);
+                    this.renderAIDebug(ctx, t, state, id, time);
                 }
             } else {
                 this.renderResource(entity, ctx, time, wind);
@@ -132,13 +145,13 @@ export default class EntityRenderer {
     renderShadow(ctx, t, v, entity, time) {
         const size = v.size || 10;
         const type = v.type;
-        
+
         // 사망하거나 비주얼이 꺼져있으면 그림자 생략
         if (v.alpha === 0) return;
 
         ctx.save();
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        
+
         // 🌀 호흡/모션에 따른 동적 그림자 크기 변화
         let breathScale = 1.0;
         if (entity.components.has('Animal')) {
@@ -164,18 +177,18 @@ export default class EntityRenderer {
     /** 🌊 수면 파동 효과 (타일 기반 감지) */
     renderWaterRipples(ctx, t, entity, time) {
         if (!this.engine.terrainGen) return;
-        
+
         const tx = Math.floor(t.x);
         const ty = Math.floor(t.y);
         const tile = this.engine.terrainGen.getTileAt?.(tx, ty);
-        
+
         // 물 타일(Deep Water, Shallow Water)에서만 활성화
-        if (tile === 0 || tile === 1) { 
+        if (tile === 0 || tile === 1) {
             ctx.save();
             ctx.translate(tx, ty);
             const rippleScale = (Math.sin(time * 0.005 + t.x * 0.1) + 1) * 0.5;
             const alpha = 0.3 * (1 - rippleScale);
-            
+
             ctx.beginPath();
             ctx.ellipse(0, 0, 8 * rippleScale, 3 * rippleScale, 0, 0, Math.PI * 2);
             ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
@@ -193,7 +206,7 @@ export default class EntityRenderer {
         ctx.save();
         ctx.globalAlpha = v.alpha !== undefined ? v.alpha : 1.0;
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        
+
         const type = v.type;
 
         if (type === 'tree') {
@@ -207,7 +220,7 @@ export default class EntityRenderer {
                     return;
                 }
             }
-            ctx.restore(); 
+            ctx.restore();
             this.drawTreeCached(ctx, t, v, entity, time, wind);
             return; // Already restored
         } else if (type === 'item') {
@@ -217,9 +230,9 @@ export default class EntityRenderer {
         } else if (type === 'building') {
             const structure = entity.components.get('Structure');
             // 건물의 경우 내부에서 좌표를 다시 잡으므로 restore 후 호출
-            ctx.restore(); 
+            ctx.restore();
             this.drawBuildingCached(ctx, t, v, structure, time);
-            
+
             const storage = entity.components.get('Storage');
             if (storage && structure && structure.isComplete) {
                 ctx.save();
@@ -239,7 +252,7 @@ export default class EntityRenderer {
         if (!storage.items) return;
         let woodCount = storage.items['wood'] || 0;
         let foodCount = storage.items['food'] || 0;
-        
+
         ctx.save();
         if (woodCount > 0) {
             const pileSize = Math.min(woodCount / 50, 5);
@@ -247,8 +260,8 @@ export default class EntityRenderer {
             ctx.fillStyle = '#5d4037';
             ctx.strokeStyle = '#3e2723';
             for (let i = 0; i < pileSize; i++) {
-                ctx.fillRect(-5 + (i%3)*3, -i*2, 10, 4);
-                ctx.strokeRect(-5 + (i%3)*3, -i*2, 10, 4);
+                ctx.fillRect(-5 + (i % 3) * 3, -i * 2, 10, 4);
+                ctx.strokeRect(-5 + (i % 3) * 3, -i * 2, 10, 4);
             }
             ctx.translate(-size * 0.6, -size * 0.4);
         }
@@ -259,7 +272,7 @@ export default class EntityRenderer {
             ctx.strokeStyle = '#8d6e63';
             for (let i = 0; i < pileSize; i++) {
                 ctx.beginPath();
-                ctx.arc(-2 + (i%2)*5, -i*3, 4, 0, Math.PI * 2);
+                ctx.arc(-2 + (i % 2) * 5, -i * 3, 4, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
             }
@@ -326,12 +339,12 @@ export default class EntityRenderer {
     drawBuildingCached(ctx, t, v, structure, time) {
         const size = v.size || 30;
         const type = v.subtype || 'default';
-        
+
         // 1. 캐시 키 생성 (청사진인 경우 진행도 포함)
         const progress = structure ? Math.floor(structure.progress / (structure.maxProgress / 4)) : 4;
         const isComplete = !structure || structure.isComplete;
         const key = `build_${type}_${size}_${isComplete ? 'full' : 'p' + progress}`;
-        
+
         // 2. 캐시된 스프라이트 가져오기 또는 생성
         const sprite = this.getSprite(key, (sCtx) => {
             // 💡 [Fix] 청사진이어도 본체(Body)를 그리도록 overlayOnly=false (기본값)로 호출
@@ -340,10 +353,10 @@ export default class EntityRenderer {
 
         ctx.save();
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        
+
         // 3. 스프라이트 그리기
         ctx.drawImage(sprite, -sprite.width / 2, -(sprite.height - 5));
-        
+
         // 4. 동적 오버레이 및 건설 정보 (캐시하지 않음)
         if (isComplete && (type === 'bonfire' || type === 'house' || type === 'farm')) {
             BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true); // true for overlayOnly
@@ -406,13 +419,13 @@ export default class EntityRenderer {
     renderAnimal(entity, ctx, time, isHighDetail) {
         const health = entity.components.get('Health');
         const t = entity.components.get('Transform');
-        
+
         ctx.save();
         // 🤕 [Hit Feedback] 피격 시 흔들림 및 번쩍임 효과
         if (health && health.hitTimer > 0) {
             const shake = Math.sin(time * 0.05) * 2;
             ctx.translate(shake, 0);
-            
+
             // ⚪ [Optimization] filter 대신 globalAlpha 조절로 번쩍임 유도 (성능 이점)
             if (Math.floor(time / 50) % 2 === 0) {
                 ctx.globalAlpha = 0.7; // 피격 시 깜빡임
@@ -445,7 +458,7 @@ export default class EntityRenderer {
         canvas.width = width;
         canvas.height = height;
         const sCtx = canvas.getContext('2d');
-        sCtx.translate(width / 2, height - 5); 
+        sCtx.translate(width / 2, height - 5);
         drawFn(sCtx);
         this.spriteCache.set(key, canvas);
         return canvas;
@@ -475,24 +488,43 @@ export default class EntityRenderer {
 
     renderSelectionCircle(ctx, t) {
         ctx.save();
-        ctx.beginPath(); 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; 
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.lineWidth = 2;
-        ctx.arc(t.x, t.y, 10, 0, Math.PI * 2); 
+        ctx.arc(t.x, t.y, 10, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
     }
 
-    renderAIDebug(ctx, t, state, id) {
+    renderAIDebug(ctx, t, state, id, time) {
         const entity = this.engine.entityManager.entities.get(id);
         const animalComp = entity?.components.get('Animal');
         const isHuman = animalComp?.type === 'human';
-        
+
         ctx.save();
         ctx.fillStyle = isHuman ? '#00f2ff' : 'rgba(255, 255, 255, 0.9)';
         ctx.font = 'bold 8px Inter, Arial';
         ctx.textAlign = 'center';
         ctx.fillText(state.mode.toUpperCase(), t.x, t.y - 12);
+
+        // 📡 타겟 탐색 중 (Radar Effect)
+        if (state.isTargetRequested || state.mode === 'wait_target') {
+            const maxRadius = 60;
+            const speed = 0.05;
+            const r1 = (time * speed) % maxRadius;
+            const r2 = ((time * speed) + maxRadius / 2) % maxRadius;
+
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, r1, 0, Math.PI * 2);
+            ctx.strokeStyle = isHuman ? `rgba(0, 242, 255, ${Math.max(0, 1 - r1 / maxRadius)})` : `rgba(255, 255, 255, ${Math.max(0, 1 - r1 / maxRadius)})`;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, r2, 0, Math.PI * 2);
+            ctx.strokeStyle = isHuman ? `rgba(0, 242, 255, ${Math.max(0, 1 - r2 / maxRadius)})` : `rgba(255, 255, 255, ${Math.max(0, 1 - r2 / maxRadius)})`;
+            ctx.stroke();
+        }
 
         const target = state.targetId ? this.engine.entityManager.entities.get(state.targetId) : null;
         let targetPos = target ? target.components.get('Transform') : state.fleePos;

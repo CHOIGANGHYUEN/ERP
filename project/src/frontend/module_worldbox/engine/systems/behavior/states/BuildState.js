@@ -1,6 +1,7 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 import Pathfinder from '../../../utils/Pathfinder.js';
+import { VISUAL_FLAGS } from '../../../core/Constants.js';
 
 /**
  * 🔨 BuildState
@@ -46,6 +47,8 @@ export default class BuildState extends State {
 
         if (!blueprint || !structure || !structure.isBlueprint || structure.isComplete) {
             state.targetId = null;
+            const visual = entity.components.get('Visual');
+            if (visual) visual.setFlag(VISUAL_FLAGS.IS_CHOPPING, false);
             return AnimalStates.IDLE;
         }
 
@@ -60,6 +63,9 @@ export default class BuildState extends State {
             // 도착 시 정지 및 연출 (실제 자원 소모와 진행도는 ConstructionSystem에서 처리)
             transform.vx = 0;
             transform.vy = 0;
+            
+            const visual = entity.components.get('Visual');
+            if (visual) visual.setFlag(VISUAL_FLAGS.IS_CHOPPING, true);
 
             state.animTimer = (state.animTimer || 0) + dt;
             if (state.animTimer >= 0.6) {

@@ -1,4 +1,6 @@
-import Component from "../../core/Component";
+import Component from '../../core/Component.js';
+import { MODE_NAME_TO_ID, SHARED_LAYOUT } from '../../core/Constants.js';
+
 /**
  * 🐾 Animal States
  */
@@ -18,8 +20,6 @@ export const AnimalStates = {
     GRABBED: 'grabbed'
 };
 
-
-
 /**
  * 🥩 Diet Types
  */
@@ -31,47 +31,59 @@ export const DietType = {
 
 /**
  * 🧠 AI State Component (FSM Data)
- * 
- * 개체의 현재 행동 상태와 관련 데이터를 저장하는 순수 데이터 컴포넌트.
- * 비즈니스 로직은 포함하지 않으며, AnimalBehaviorSystem 및 개별 FSM State 모듈들이 이 데이터를 읽고 씁니다.
  */
 export default class State extends Component {
     constructor(options = {}) {
         super('AIState');
 
-        // 객체로 전달받거나, 단일 문자열로 전달받는 경우 모두 대응
+        this._mode = AnimalStates.IDLE;
         if (typeof options === 'string') {
-            this.mode = options;
+            this._mode = options;
         } else {
-            this.mode = options.mode || AnimalStates.IDLE;
+            this._mode = options.mode || AnimalStates.IDLE;
         }
 
-        this.targetId = options.targetId || null;         // 상호작용 중인 타겟 Entity ID (사냥감, 채집물 등)
-        this.wanderAngle = Math.random() * Math.PI * 2; // 배회(Wander) 방향 (무작위)
-        this.stateTimer = 0;          // 특정 상태(대기, 휴식 등)에 머문 시간 기록용
-        this.searchCooldown = 0;      // 먹이 탐색 쿨다운
+        this.targetId = options.targetId || null;
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        this.stateTimer = 0;
+        this.searchCooldown = 0;
 
-        // 🧠 [Ecological Cycle Update] 상태 스택 (인터럽트 대응)
         this.modeStack = [];
+        this.failedPathCount = 0;
+        this.blacklist = new Map();
 
-        // 🚫 [Pathfinding Optimization] 경로 탐색 실패 관리
-        this.failedPathCount = 0;      // 현재 타겟에 대한 경로 탐색 실패 횟수
-        this.blacklist = new Map();    // { targetId: expirationTime } - 일시적 무시 대상 목록
+        // 🛰️ Shared Buffer Support
+        this.sharedIntData = null;
+        this.stride = 0;
+        this.index = -1;
     }
 
-    /**
-     * 🚀 현재 상태를 스택에 저장하고 새로운 상태로 전환합니다. (인터럽트)
-     */
+    setSharedData(data, intData, stride, index) {
+        this.sharedIntData = intData;
+        this.stride = stride;
+        this.index = index;
+        this.syncMode();
+    }
+
+    get mode() { return this._mode; }
+    set mode(val) {
+        this._mode = val;
+        this.syncMode();
+    }
+
+    syncMode() {
+        if (this.sharedIntData && this.index !== -1) {
+            this.sharedIntData[this.index * this.stride + SHARED_LAYOUT.MODE_ID] = MODE_NAME_TO_ID[this._mode] || 0;
+        }
+    }
+
     pushMode(nextMode) {
         if (this.mode === nextMode) return;
         this.modeStack.push(this.mode);
         this.mode = nextMode;
-        this.stateTimer = 0; // 타이머 초기화
+        this.stateTimer = 0;
     }
 
-    /**
-     * 🔙 이전 상태로 복구합니다. 스택이 비어있으면 IDLE로 돌아갑니다.
-     */
     popMode() {
         if (this.modeStack.length > 0) {
             this.mode = this.modeStack.pop();

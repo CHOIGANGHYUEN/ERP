@@ -45,7 +45,9 @@ class Logger {
 }
 
 // 🌐 [Singleton Fix] 전역 객체에 바인딩하여 인스턴스 파편화 방지
-if (!window.GlobalLogger) {
-    window.GlobalLogger = new Logger();
+const globalObject = typeof window !== 'undefined' ? window : globalThis;
+
+if (!globalObject.GlobalLogger) {
+    globalObject.GlobalLogger = new Logger();
 }
-export const GlobalLogger = window.GlobalLogger;
+export const GlobalLogger = globalObject.GlobalLogger;

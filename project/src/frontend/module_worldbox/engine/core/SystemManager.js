@@ -43,8 +43,10 @@ export default class SystemManager {
         engine.spatialHash = this.spatialHash;
         engine.entityManager.spatialHash = this.spatialHash;
 
+        const isWorker = typeof window === 'undefined';
+
         // Phase 1: Environment & Input
-        this.inputSystem = new InputSystem(em, eb, engine);
+        this.inputSystem = !isWorker ? new InputSystem(em, eb, engine) : null;
         this.wind = new WindSystem();
         this.environment = new EnvironmentSystem(em, eb, engine);
 
@@ -79,58 +81,82 @@ export default class SystemManager {
         // Phase 3: Physics
         this.kinematics = new KinematicSystem(engine);
 
-        // Phase 4: Render Prep
-        this.spriteManager = new SpriteManager(em, eb);
-        this.particleSystem = new ParticleSystem(em, eb);
-        this.cullingSystem = new CullingSystem(em, eb, engine);
+        // Phase 4: Render Prep (Main Thread Only)
+        this.spriteManager = !isWorker ? new SpriteManager(em, eb) : null;
+        this.particleSystem = !isWorker ? new ParticleSystem(em, eb) : null;
+        this.cullingSystem = !isWorker ? new CullingSystem(em, eb, engine) : null;
 
-        // Phase 5: UI
-        this.uiSystem = new UISystem(em, eb, engine);
+        // Phase 5: UI (Main Thread Only)
+        this.uiSystem = !isWorker ? new UISystem(em, eb, engine) : null;
     }
 
     update(dt, time) {
+        const isWorker = typeof window === 'undefined';
+
         // 🚀 [Expert Optimization] 프레임 시작 시 동적 해시 초기화
-        // 모든 시스템이 동일한 프레임 내에서 일관된 공간 데이터를 참조하도록 보장합니다.
         if (this.spatialHash) this.spatialHash.clearDynamic();
 
-        // [Phase 1] 환경 및 입력 업데이트 (Polling)
+        // [Common] 환경 및 입력 업데이트
+        if (this.inputSystem) this.inputSystem.update(dt);
         this.wind.update(time);
         this.environment.update(dt, time);
 
-        // [Phase 2] 물리 이동 전 객체 상태 및 AI 판단 (AI & Logic)
-        this.combat.update(dt, time); // Event-driven (대기)
-        this.deathProcessor.update(dt, time);
-        this.humanBehavior.update(dt, time);
-        this.behavior.update(dt, time);
-        this.herding.update(dt);
-        this.social.update(dt, time);
-        this.nationSystem.update(dt, time);
-        this.gathering.update(dt, time);
-        this.consumption.update(dt);
-        this.metabolism.update(dt, time);
-        this.reproduction.update(dt, time);
-        this.health.update(dt, time);
-        this.spawner.update(dt, time);
-        this.farming.update(dt, time);
-        this.livestock.update(dt, time);
-        this.emotion.update(dt, time);
-        this.villageSystem.update(dt, time);
-        this.construction.update(dt, time);
+        if (isWorker) {
+            // --- ⚙️ WORKER THREAD ONLY: Logic & Physics ---
+            
+            // [Phase 2] AI & Logic
+            this.combat.update(dt, time);
+            this.deathProcessor.update(dt, time);
+            this.humanBehavior.update(dt, time);
+            this.behavior.update(dt, time);
+            this.herding.update(dt);
+            this.social.update(dt, time);
+            this.nationSystem.update(dt, time);
+            this.gathering.update(dt, time);
+            this.consumption.update(dt);
+            this.metabolism.update(dt, time);
+            this.reproduction.update(dt, time);
+            this.health.update(dt, time);
+            this.spawner.update(dt, time);
+            this.farming.update(dt, time);
+            this.livestock.update(dt, time);
+            this.emotion.update(dt, time);
+            this.villageSystem.update(dt, time);
+            this.construction.update(dt, time);
 
-        // [Phase 2.5] 중앙 관제 및 경제 업데이트 (Low Frequency)
-        this.targetManager.update(dt);
-        this.economyManager.update(dt);
+            // [Phase 2.5] 중앙 관제
+            this.targetManager.update(dt);
+            this.economyManager.update(dt);
 
-        // [Phase 3] 이동 및 물리 연산 반영 (Kinematics)
-        this.kinematics.update(dt);
+            // [Phase 3] Physics
+            this.kinematics.update(dt);
+        } else {
+            // --- 🎨 MAIN THREAD ONLY: Rendering & UI ---
+            
+            // 🚀 [Critical] 메인 스레드에서도 SpatialHash는 최신 상태로 유지되어야 함 (Rendering Culling용)
+            // KinematicSystem의 일부 로직(LOD 체크 및 Hash 삽입)을 메인 스레드용으로 제한적으로 실행하거나 
+            // 아예 메인 전용 Hash 삽입 로직을 추가
+            this.updateMainThreadSpatialHash();
 
-        // [Phase 4] 시각적 표현 및 렌더링 최적화 준비 (Post-Physics)
-        this.cullingSystem.update(dt, time);
-        this.spriteManager.update(dt, time);
-        this.particleSystem.update(dt, time);
+            if (this.cullingSystem) this.cullingSystem.update(dt, time);
+            if (this.spriteManager) this.spriteManager.update(dt, time);
+            if (this.particleSystem) this.particleSystem.update(dt, time);
+            if (this.uiSystem) this.uiSystem.update(dt, time);
+        }
+    }
 
-        // [Phase 5] UI 및 오버레이 처리
-        this.uiSystem.update(dt, time);
+    /**
+     * 🛰️ 메인 스레드용 고속 공간 해시 업데이트
+     * 렌더러가 가시 영역 엔티티를 찾을 수 있도록 프록시 엔티티들의 위치를 해시에 삽입합니다.
+     */
+    updateMainThreadSpatialHash() {
+        const em = this.engine.entityManager;
+        for (const [id, entity] of em.entities) {
+            const transform = entity.components.get('Transform');
+            if (transform) {
+                this.spatialHash.insert(id, transform.x, transform.y, false);
+            }
+        }
     }
 
     destroy() {

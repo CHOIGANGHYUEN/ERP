@@ -3,10 +3,10 @@
  * 인터페이스 정의 및 공통 버퍼 관리 로직을 수행합니다.
  */
 export class BaseLayer {
-    constructor(width, height, ArrayType) {
+    constructor(width, height, ArrayType, sharedBuffer = null) {
         this.width = width;
         this.height = height;
-        this.buffer = new ArrayType(width * height);
+        this.buffer = sharedBuffer ? new ArrayType(sharedBuffer) : new ArrayType(width * height);
     }
 
     isValid(idx) {
@@ -32,8 +32,8 @@ export class BaseLayer {
  * 🧱 TerrainLayer: 지형의 물리적 근본을 결정하는 레이어
  */
 export class TerrainLayer extends BaseLayer {
-    constructor(width, height) {
-        super(width, height, Uint8Array);
+    constructor(width, height, sharedBuffer = null) {
+        super(width, height, Uint8Array, sharedBuffer);
     }
 
     // 지형의 물리적 속성 정의 (Land/Water/Mountain)
@@ -57,8 +57,8 @@ export class TerrainLayer extends BaseLayer {
  * 🌿 BiomeLayer: 지형 위에 얹히는 생태적 오버레이 레이어
  */
 export class BiomeLayer extends BaseLayer {
-    constructor(width, height) {
-        super(width, height, Uint32Array);
+    constructor(width, height, sharedBuffer = null) {
+        super(width, height, Uint8Array, sharedBuffer);
     }
 
     // 바이옴 특화 로직 (식생 속성 등)
