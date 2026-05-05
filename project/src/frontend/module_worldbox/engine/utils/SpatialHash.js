@@ -30,7 +30,7 @@ export default class SpatialHash {
     /**
      * 엔티티를 등록합니다.
      */
-    insert(entityId, x, y, isStatic = false) {
+    insert(entityId, x, y, isStatic = false, skipCheck = false) {
         // 🛡️ [Stability] 유효하지 않은 좌표 차단 (NaN, Infinity 등)
         if (!isFinite(x) || !isFinite(y)) return;
 
@@ -45,8 +45,9 @@ export default class SpatialHash {
             targetCells[key] = [];
         }
         
-        // 중복 삽입 방지 (성능을 위해 includes 체크 수행)
-        if (!targetCells[key].includes(entityId)) {
+        // 🚀 [Optimization] skipCheck가 true이거나 정적 개체가 아니면 중복 체크 생략 가능
+        // (동적 개체는 매 프레임 clearDynamic() 되므로 중복 확률이 낮음)
+        if (skipCheck || !targetCells[key].includes(entityId)) {
             targetCells[key].push(entityId);
         }
     }

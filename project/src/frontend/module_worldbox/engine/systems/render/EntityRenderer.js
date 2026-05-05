@@ -76,52 +76,37 @@ export default class EntityRenderer {
 
         // 3. 🎨 [Main Entities] 실제 개체 렌더링
         for (const item of renderList) {
-            const { id, entity, t, v } = item;
-            const state = entity.components.get('AIState');
+            try {
+                const { id, entity, t, v } = item;
+                const state = entity.components.get('AIState');
 
-            if (id === this.engine.selectedId) {
-                this.renderSelectionCircle(ctx, t);
-            }
-
-            const isHighDetail = camera.zoom > 1.5;
-            const type = v.type;
-            const isAnimal = entity.components.has('Animal') || 
-                             ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee'].includes(type);
-
-            if (isAnimal) {
-                this.renderAnimal(entity, ctx, time, isHighDetail);
-                if (this.engine.viewFlags.debugAI && camera.zoom > 0.8 && state) {
-                    this.renderAIDebug(ctx, t, state, id);
+                if (id === this.engine.selectedId) {
+                    this.renderSelectionCircle(ctx, t);
                 }
-            } else {
-                this.renderResource(entity, ctx, time, wind);
-            }
 
-            // 🏥 [Health Integration] HP바 표시
-            const health = entity.components.get('Health');
-            if (health && health.currentHp < health.maxHp && health.currentHp > 0) {
-                this.renderHealthBar(ctx, health, t, v.size || 10);
-            }
+                const isHighDetail = camera.zoom > 1.5;
+                const type = v.type;
+                const isAnimal = entity.components.has('Animal') || 
+                                ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee', 'tiger', 'lion', 'bear', 'fox', 'crocodile', 'deer', 'rabbit', 'horse', 'elephant', 'goat'].includes(type);
 
-            // 🔒 [Debug] 블랙리스트 타겟 표시
-            if (this.engine.viewFlags.debugAI && blacklistedIds.has(id)) {
-                ctx.save();
-                ctx.font = '12px serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('🔒', t.x, t.y - (v.size || 10) - 15);
-                ctx.restore();
-            }
+                if (isAnimal) {
+                    this.renderAnimal(entity, ctx, time, isHighDetail);
+                    if (this.engine.viewFlags.debugAI && camera.zoom > 0.8 && state) {
+                        this.renderAIDebug(ctx, t, state, id);
+                    }
+                } else {
+                    this.renderResource(entity, ctx, time, wind);
+                }
 
-            // 💕 [Reproduction] 번식 중 하트 아이콘 표시
-            const social = entity.components.get('Social');
-            if (social && social.isBreeding) {
-                ctx.save();
-                ctx.font = '14px serif';
-                ctx.textAlign = 'center';
-                // 하트가 위아래로 둥실거리는 효과
-                const floatY = Math.sin(time * 0.005) * 5;
-                ctx.fillText('❤️', t.x, t.y - (v.size || 10) - 20 + floatY);
-                ctx.restore();
+                // 🏥 [Health Integration] HP바 표시
+                const health = entity.components.get('Health');
+                if (health && health.currentHp < health.maxHp && health.currentHp > 0) {
+                    this.renderHealthBar(ctx, health, t, v.size || 10);
+                }
+            } catch (err) {
+                if (this.engine.frameCount % 60 === 0) {
+                    console.error(`❌ Render Error on Entity ${item.id}:`, err);
+                }
             }
         }
 

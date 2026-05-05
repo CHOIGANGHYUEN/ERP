@@ -5,15 +5,41 @@ import Component from '../../core/Component.js';
  * 엔티티의 체력 상태와 피격 시각 효과 상태를 관리합니다.
  */
 export default class Health extends Component {
-    constructor(maxHp = 100) {
+    constructor(maxHp = null, entityId = -1, bufferManager = null) {
         super('Health');
-        this.maxHp = maxHp;
-        this.currentHp = maxHp;
+        this.entityId = entityId;
+        this.bufferManager = bufferManager;
+
+        if (bufferManager && entityId !== -1) {
+            if (maxHp !== null) {
+                bufferManager.hp[entityId] = maxHp;
+                bufferManager.maxHp[entityId] = maxHp;
+            }
+        } else {
+            this._maxHp = maxHp ?? 100;
+            this._currentHp = this._maxHp;
+        }
         
-        // 🤕 피격 피드백 관련 상태
-        this.isHit = false;     // 현재 프레임에서 타격받았는지 여부
-        this.hitTimer = 0;      // 피격 애니메이션(흔들림, 틴트) 지속 시간
-        this.lastHitTime = 0;   // 마지막 피격 타임스탬프
+        // 🤕 피격 피드백 관련 상태 (로컬 유지 가능)
+        this.isHit = false;
+        this.hitTimer = 0;
+        this.lastHitTime = 0;
+    }
+
+    get currentHp() {
+        return this.bufferManager ? this.bufferManager.hp[this.entityId] : this._currentHp;
+    }
+    set currentHp(val) {
+        if (this.bufferManager) this.bufferManager.hp[this.entityId] = val;
+        else this._currentHp = val;
+    }
+
+    get maxHp() {
+        return this.bufferManager ? this.bufferManager.maxHp[this.entityId] : this._maxHp;
+    }
+    set maxHp(val) {
+        if (this.bufferManager) this.bufferManager.maxHp[this.entityId] = val;
+        else this._maxHp = val;
     }
 
     /**

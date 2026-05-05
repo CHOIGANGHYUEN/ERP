@@ -18,6 +18,15 @@ export default class EventBus {
         this.listeners.get(event).push(callback);
     }
 
+    // 일회성 이벤트 구독
+    once(event, callback) {
+        const wrapper = (data) => {
+            callback(data);
+            this.off(event, wrapper);
+        };
+        this.on(event, wrapper);
+    }
+
     // 이벤트 구독 취소
     off(event, callback) {
         if (!this.listeners.has(event)) return;

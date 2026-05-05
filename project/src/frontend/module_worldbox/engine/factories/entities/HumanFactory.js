@@ -76,7 +76,7 @@ export default class HumanFactory extends IEntityFactory {
                 fatigue: Math.random() * 10,
                 speed: config.moveSpeed || 1.1,
                 strength: 15
-            }))
+            }, id, em.bufferManager))
             .addComponent('Metabolism', {
                 digestionSpeed: config.digestionSpeed || 0.1,
                 stomach: 50, // 초기 위장 상태 (BaseStats와 연동됨)
@@ -84,12 +84,12 @@ export default class HumanFactory extends IEntityFactory {
                 storedFertility: 0,
                 isPooping: false
             })
-            .addComponent('AIState', new State())
+            .addComponent('AIState', new State({}, id, em.bufferManager))
             .addComponent('Age', new Age({
                 currentAge: options.isBaby ? 0 : 18 + Math.random() * 5,
                 maxAge: config.maxLifespan || (60 + Math.random() * 20)
             }))
-            .addComponent('Health', new Health(config.baseHealth || 100))
+            .addComponent('Health', new Health(config.maxHealth || 120, id, em.bufferManager))
             .addComponent('Builder', new Builder())
             .addComponent('Inventory', new Inventory(20))
             .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }));

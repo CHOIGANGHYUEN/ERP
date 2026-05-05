@@ -44,8 +44,10 @@ class Logger {
     }
 }
 
-// 🌐 [Singleton Fix] 전역 객체에 바인딩하여 인스턴스 파편화 방지
-if (!window.GlobalLogger) {
-    window.GlobalLogger = new Logger();
+// 🌐 [Singleton Fix] 모듈 레벨 싱글톤 사용 (Worker 호환)
+const _instance = globalThis.GlobalLogger || new Logger();
+if (!globalThis.GlobalLogger) {
+    globalThis.GlobalLogger = _instance;
 }
-export const GlobalLogger = window.GlobalLogger;
+
+export const GlobalLogger = _instance;

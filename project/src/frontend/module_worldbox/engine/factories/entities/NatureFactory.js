@@ -31,10 +31,21 @@ export default class NatureFactory extends IEntityFactory {
 
         // 🏥 [Health Integration] 모든 자연 개체에 체력 부여
         const maxHp = config.maxHp || 50;
-        builder.addComponent('Health', new Health(maxHp));
+        builder.addComponent('Health', new Health(maxHp, id, em.bufferManager));
+
+        // 🚀 [Bug 2 Fix] 하늘에서 떨어지는 효과 처리
+        let startY = y;
+        if (options.isFalling) {
+            startY = y - 150;
+            em.bufferManager.vy[id] = 200; // 떨어지는 속도
+            em.bufferManager.isFalling[id] = 1;
+            builder.addComponent('TargetY', { y }); // 목표 바닥 좌표 저장
+        }
+        
+        builder.withTransform(x, startY);
 
         if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true); // Static
+            this.engine.spatialHash.insert(id, x, startY, !options.isFalling); // 떨어지는 중엔 Static 아님
         }
 
         return id;
@@ -56,7 +67,7 @@ export default class NatureFactory extends IEntityFactory {
             subtype: options.subtype || 'normal'
         };
 
-        const resource = new ResourceNode(type, targetAmount, config.type || 'tree');
+        const resource = new ResourceNode(type, targetAmount, config.type || 'tree', builder.id, builder.em.bufferManager);
 
         builder.withVisual(visual).addComponent('Resource', resource);
     }
@@ -70,6 +81,6 @@ export default class NatureFactory extends IEntityFactory {
             type: isGrassLike ? 'grass' : (isBerryLike ? 'berry' : 'flower'),
             quality: quality,
             color: isGrassLike ? '#4caf50' : (isBerryLike ? '#e91e63' : '#ff4081')
-        }).addComponent('Resource', new ResourceNode(type, amount, config.type || 'food'));
+        }).addComponent('Resource', new ResourceNode(type, amount, config.type || 'food', builder.id, builder.em.bufferManager));
     }
 }

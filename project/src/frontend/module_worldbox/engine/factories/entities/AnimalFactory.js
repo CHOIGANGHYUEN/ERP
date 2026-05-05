@@ -57,8 +57,17 @@ export default class AnimalFactory extends IEntityFactory {
             }
         }
         
+        // 🚀 [Bug Fix] 하늘에서 떨어지는 효과 처리
+        let startY = spawnY;
+        if (options.isFalling) {
+            startY = spawnY - 150;
+            em.bufferManager.vy[id] = 200; // 떨어지는 속도
+            em.bufferManager.isFalling[id] = 1;
+            builder.addComponent('TargetY', { y: spawnY }); // 목표 바닥 좌표 저장
+        }
+
         builder
-            .withTransform(spawnX, spawnY)
+            .withTransform(spawnX, startY)
             .withVisual({
                 color: config.color || '#ffffff',
                 type: type,
@@ -80,23 +89,23 @@ export default class AnimalFactory extends IEntityFactory {
                 maxHunger: 100,
                 fatigue: Math.random() * 20,
                 speed: config.moveSpeed || 40 // pixels per second
-            }))
+            }, id, em.bufferManager))
             .addComponent('Metabolism', {
                 digestionSpeed: config.digestionSpeed || 0.15,
                 storedFertility: 0,
                 isPooping: false
             })
-            .addComponent('AIState', new State())
+            .addComponent('AIState', new State({}, id, em.bufferManager))
             .addComponent('Age', new Age({
                 currentAge: options.isBaby ? 0 : 5 + Math.random() * 10,
                 maxAge: config.maxLifespan || (20 + Math.random() * 10)
             }))
-            .addComponent('Health', new Health(config.baseHealth || 100))
+            .addComponent('Health', new Health(config.maxHealth || 100, id, em.bufferManager))
             .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: type === 'bee' ? 20.0 : 10.0 }));
 
         // 공간 해시 등록
         if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, false);
+            this.engine.spatialHash.insert(id, spawnX, startY, !options.isFalling);
         }
 
         return id;

@@ -59,7 +59,18 @@ export default class ItemFactory extends IEntityFactory {
         
         const finalDecayTime = config?.decayTime || options.decayTime || 600;
 
-        builder.withTransform(x, y)
+        const id = Number(builder.id);
+
+        // 🚀 [Bug Fix] 하늘에서 떨어지는 효과 처리
+        let startY = y;
+        if (options.isFalling) {
+            startY = y - 150;
+            em.bufferManager.vy[id] = 200; // 떨어지는 속도
+            em.bufferManager.isFalling[id] = 1;
+            builder.addComponent('TargetY', { y }); // 목표 바닥 좌표 저장
+        }
+
+        builder.withTransform(x, startY)
             .withVisual({
                 type: 'item',
                 itemType: type,
@@ -69,7 +80,6 @@ export default class ItemFactory extends IEntityFactory {
             })
             .addComponent('DroppedItem', new DroppedItem(type, amount, category, finalDecayTime, displayName));
 
-        const id = Number(builder.id);
         if (isNaN(id)) {
             console.error("ItemFactory: Generated ID is NaN!", builder.id);
             return null;
@@ -77,7 +87,7 @@ export default class ItemFactory extends IEntityFactory {
 
         // 🚀 [Optimization] 공간 해시에 즉시 등록
         if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true);
+            this.engine.spatialHash.insert(id, x, startY, !options.isFalling);
         }
 
         return Number(id);

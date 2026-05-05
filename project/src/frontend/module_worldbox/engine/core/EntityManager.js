@@ -1,29 +1,35 @@
 import ResourceNode from '../components/resource/ResourceNode.js';
 import Transform from '../components/motion/Transform.js';
-import Visual from '../components/render/Visual.js';
-import resourceConfig from '../config/resource_balance.json'; // resource_balance.json 임포트
+import Visual, { VISUAL_TYPES } from '../components/render/Visual.js';
+import BufferManager from './BufferManager.js';
+import resourceConfig from '../config/resource_balance.json';
 
 export default class EntityManager {
-    constructor() {
+    constructor(bufferManager = null) {
+        // 🚀 [DOD] 버퍼 매니저 주입 또는 생성
+        this.bufferManager = bufferManager || new BufferManager(20000);
+        
         this.entities = new Map();
         this.animalIds = new Set();
-        this.humanIds = new Set(); // 👤 인간 전용 인덱스 추가
+        this.humanIds = new Set();
         this.resourceIds = new Set();
         this.buildingIds = new Set();
         this.nextId = 0;
-        this.entityPool = []; // 🗑️ 쓰레기통(재활용 대기소): 삭제된 엔티티 번호를 모아둠
+        this.entityPool = [];
     }
 
     createEntity() {
-        // 🚀 [재활용] 풀에 남은 게 있다면 새 번호를 발급하지 않고 꺼내서 재사용
+        let id;
         if (this.entityPool.length > 0) {
-            const id = this.entityPool.pop();
-            this.entities.set(id, { id, components: new Map() });
-            return id;
+            id = this.entityPool.pop();
+        } else {
+            id = this.nextId++;
         }
 
-        const id = this.nextId++;
+        // 🚀 [DOD] 엔티티 생성 시 버퍼 데이터 초기화
         this.entities.set(id, { id, components: new Map() });
+        this.bufferManager.initEntity(id); 
+        
         return id;
     }
 
@@ -53,6 +59,7 @@ export default class EntityManager {
             entity.components.clear();
             
             this.entities.delete(id); // 활성 맵에서는 제거
+            this.bufferManager.releaseEntity(id); // 🚀 [DOD] 버퍼 상태 비활성화
             this.entityPool.push(id); // 재활용 대기소로 이동
         }
     }
@@ -75,6 +82,34 @@ export default class EntityManager {
         if (entity) {
             let name = overrideName || component.constructor.name;
             
+            // 🚀 [DOD Integration] 버퍼 기반 컴포넌트인 경우 연결 정보 주입
+            if (component.hasOwnProperty('entityId') && component.hasOwnProperty('bufferManager')) {
+                component.entityId = entityId;
+                component.bufferManager = this.bufferManager;
+                
+                // 초기값 동기화 (생성자에서 세팅된 _x, _hp 등을 버퍼로 전송)
+                if (name === 'Transform') {
+                    this.bufferManager.x[entityId] = component.x;
+                    this.bufferManager.y[entityId] = component.y;
+                    this.bufferManager.vx[entityId] = component.vx || 0;
+                    this.bufferManager.vy[entityId] = component.vy || 0;
+                } else if (name === 'BaseStats') {
+                    const bm = this.bufferManager;
+                    bm.hp[entityId] = component.health;
+                    bm.maxHp[entityId] = component.maxHealth;
+                    bm.hunger[entityId] = component.hunger;
+                    bm.fatigue[entityId] = component.fatigue;
+                    bm.strength[entityId] = component.strength;
+                    bm.defense[entityId] = component.defense;
+                    bm.speed[entityId] = component.speed;
+                } else if (name === 'Visual') {
+                    const bm = this.bufferManager;
+                    bm.vType[entityId] = VISUAL_TYPES.indexOf(component.type || 'fallback');
+                    bm.vSize[entityId] = component.size || 10;
+                    bm.vColor[entityId] = component.packColor ? component.packColor(component.color) : 0xFFFFFF;
+                }
+            }
+
             // 🚀 [FIX] 일반 객체({})로 전달된 경우 클래스 이름이 'Object'가 되는 문제 방지
             if (name === 'Object') {
                 if (component.type === 'wood' || component.isTree) name = 'Resource';

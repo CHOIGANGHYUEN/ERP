@@ -4,11 +4,14 @@
  * 명세에 따라 캡슐화 및 자체 파기 로직(이벤트 버스, 엔티티 매니저 호출)이 내재화되었습니다.
  */
 export default class ResourceNode {
-    constructor(type, amount, category = 'resource') {
+    constructor(type, amount, category = 'resource', entityId = -1, bufferManager = null) {
+        this.entityId = entityId;
+        this.bufferManager = bufferManager;
+        
         this.type = type;
         const lowerType = type.toLowerCase();
 
-        // 🌳 [Intelligence] 카테고리가 명시되지 않았거나 기본값일 경우 이름으로 자동 유추 (하위 호환성 및 통일성 보장)
+        // 🌳 [Intelligence] 카테고리가 명시되지 않았거나 기본값일 경우 이름으로 자동 유추
         if (category === 'resource') {
             if (lowerType.includes('tree')) category = 'tree';
             else if (lowerType.includes('wood') || lowerType.includes('log') || lowerType.includes('stick')) category = 'wood';
@@ -18,28 +21,35 @@ export default class ResourceNode {
             else if (lowerType.includes('stone') || lowerType.includes('ore') || lowerType.includes('mineral')) category = 'mineral';
         }
 
-        this.category = category; // 🌳 [AI Identification] tree, food, mineral 등 기능적 분류
-        this.value = amount;           // 현재 남은 양
-        this.maxAmount = amount;
+        this.category = category;
+        this.value = amount ?? 0;
+        this.maxAmount = amount ?? 0;
         this.isDepleted = false;
         
-        // AI 인지를 위한 플래그 (속성 기반 자동 설정)
         this.isTree = lowerType.includes('tree') || lowerType.includes('wood');
-        
-        // 동물/인간이 식용 가능한 자원 목록
-        this.edible = lowerType.includes('berry') || 
-                      lowerType.includes('fruit') || 
-                      lowerType.includes('wheat') || 
-                      lowerType.includes('plant') ||
-                      lowerType.includes('grass') ||
-                      lowerType.includes('flower') ||
-                      lowerType.includes('shrub') ||
-                      lowerType.includes('meat'); // 🍖 [Expert Fix] 고기도 이제 먹을 수 있는 자원임
-                      
+        this.edible = lowerType.includes('berry') || lowerType.includes('fruit') || lowerType.includes('wheat') || lowerType.includes('plant') || lowerType.includes('grass') || lowerType.includes('flower') || lowerType.includes('shrub') || lowerType.includes('meat');
         this.isMineral = lowerType.includes('stone') || lowerType.includes('iron') || lowerType.includes('gold');
         
-        // 식물의 비옥도 등 제로섬 로직을 위한 속성
-        this.storedFertility = this.edible ? amount / 100 : undefined; 
+        this.storedFertility = this.edible && amount !== null ? amount / 100 : undefined; 
+
+        if (bufferManager && entityId !== -1) {
+            if (amount !== null) {
+                this.isFalling = false;
+            }
+        } else {
+            this._isFalling = false;
+        }
+    }
+
+    get isFalling() {
+        return this.bufferManager ? (this.bufferManager.isFalling[this.entityId] === 1) : this._isFalling;
+    }
+    set isFalling(val) {
+        if (this.bufferManager) {
+            this.bufferManager.isFalling[this.entityId] = val ? 1 : 0;
+        } else {
+            this._isFalling = val;
+        }
     }
 
     /**

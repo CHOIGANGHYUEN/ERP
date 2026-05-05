@@ -45,7 +45,7 @@ export default class BuildingFactory extends IEntityFactory {
                 isComplete: !options.isBlueprint,
                 isBlueprint: options.isBlueprint || false
             })
-            .addComponent('Health', new Health(config.maxHp || 500));
+            .addComponent('Health', new Health(config.maxHp || 500, id, em.bufferManager));
 
         // 🚪 울타리 문(fence_gate)인 경우 Door 컴포넌트 추가
         if (type === 'fence_gate') {

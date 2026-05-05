@@ -17,6 +17,11 @@ import ToolManager from './ToolManager.js';
 import { JobTypes } from '../config/JobTypes.js';
 import { GlobalLogger } from '../utils/Logger.js';
 
+// 🚀 [Critical Imports] 멀티스레딩 및 DOD 아키텍처 필수 클래스
+import SpatialHash from '../utils/SpatialHash.js';
+import WorkerBridge from './WorkerBridge.js';
+import BufferManager from './BufferManager.js';
+
 
 
 export default class Engine {
@@ -61,29 +66,55 @@ export default class Engine {
         this.camera.clamp();
 
         this.terrainGen = new TerrainGen();
-        this.entityManager = new EntityManager(); // EntityManager는 TerrainGen 생성 후 초기화
-        this.eventBus = new EventBus(); // 📡 Global Event Network 생성
-        this.renderer = new EntityRenderer(this);
-
-        this.factoryProvider = new FactoryProvider(this); 
-        // 🚀 주입: 팩토리들이 설정을 참조할 수 있도록 엔진 참조 확인
-
-        // 단일 책임 원칙(SRP) 준수를 위한 시스템 매니저 도입
-        this.systemManager = new SystemManager(this);
+        this.eventBus = new EventBus();
+        this.entityManager = new EntityManager();
+        this.spatialHash = new SpatialHash(100);
+        this.entityManager.spatialHash = this.spatialHash;
+        
+        // 🚀 [MAIN Thread Systems] 입력, 파티클, UI 담당
+        this.systemManager = new SystemManager(this, 'MAIN');
+        
+        // 편리한 참조 연결 (RenderCoordinator 등에서 사용)
         this.inputSystem = this.systemManager.inputSystem;
-        this.environment = this.systemManager.environment;
         this.particleSystem = this.systemManager.particleSystem;
         this.wind = this.systemManager.wind;
-        this.spawner = this.systemManager.spawner;
+        
+        this.workerBridge = new WorkerBridge(this);
+        this.renderer = new EntityRenderer(this);
+        this.factoryProvider = new FactoryProvider(this);
 
+        // 메인 스레드 전용 상태 관리
         this.isRunning = false;
         this.lastTime = 0;
         this.time = 0;
-        this.timeSystem = new TimeSystem(); // ⏳ World Clock Init
+        this.timeSystem = new TimeSystem(this);
 
         this.isPainting = false;
-        this.brushSize = 50; // 🚀 High-res optimized brush size
+        this.brushSize = 50; 
         this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true, showNames: false, village: false, zone: false };
+
+        // 🌉 [Input Sync] 툴 사용 이벤트를 워커로 토스
+        this.eventBus.on('APPLY_TOOL_EFFECT', (payload) => {
+            if (payload.action === 'CHANGE_BIOME') {
+                if (this.terrainGen) {
+                    const idx = this.terrainGen.getIndex(payload.x, payload.y);
+                    if (this.terrainGen.isValidIndex(idx)) {
+                        this.terrainGen.biomeBuffer[idx] = payload.biome;
+                        this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: payload.x, y: payload.y, reason: 'biome_change' });
+                    }
+                }
+                if (this.workerBridge) this.workerBridge.sendInput('TOOL_EFFECT', payload);
+            } else if (payload.action === 'SPAWN_RESOURCE' || payload.action === 'SPAWN_ENTITY') {
+                payload.isFalling = true;
+                this.dispatchCommand({ type: payload.action, payload: payload });
+            } else {
+                if (this.workerBridge) this.workerBridge.sendInput('TOOL_EFFECT', payload);
+            }
+        });
+        
+        this.eventBus.on('SPAWN_ENTITY', (payload) => {
+            if (this.workerBridge) this.workerBridge.sendInput('SPAWN_ENTITY', payload);
+        });
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
         this._onWorldSpawnDust = (e) => {
@@ -205,6 +236,11 @@ export default class Engine {
 
         // 📡 시뮬레이션 준비 완료 알림
         this.eventBus.emit('WORLD_READY');
+
+        // 🚀 [Multithreading] 지형 생성이 완료된 후 워커 브릿지 초기화
+        if (this.workerBridge) {
+            this.workerBridge.init();
+        }
 
         // 🏗️ PoC: 테스트용 글로벌 구역 생성
         setTimeout(() => {
@@ -359,7 +395,16 @@ export default class Engine {
                     spawnGoat: 'goat'
                 };
                 const type = methodToType[command.payload.method];
-                if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
+                if (type) {
+                    const cat = type === 'human' ? 'human' : 'animal';
+                    this.eventBus.emit('SPAWN_ENTITY', { 
+                        cat, 
+                        type, 
+                        x: command.payload.x, 
+                        y: command.payload.y, 
+                        options: { isBaby: false, isFalling: command.payload.isFalling } 
+                    });
+                }
                 break;
             case 'CHANGE_BIOME':
                 this.eventBus.emit('APPLY_TOOL_EFFECT', { ...command.payload, action: 'CHANGE_BIOME' });
@@ -375,8 +420,14 @@ export default class Engine {
                 // food, wood 카테고리는 NatureFactory에서, mineral, fertilizer 등은 ResourceFactory에서 처리
                 const isNature = resCategory === 'food' || resCategory === 'wood' || resType.includes('tree');
                 const cat = isNature ? 'nature' : 'resource';
-                this.factoryProvider.spawn(cat, resType, command.payload.x, command.payload.y, { quality: resAmount / 20 });
-                GlobalLogger.success(`Spawned ${resType.toUpperCase()} at (${Math.floor(command.payload.x)}, ${Math.floor(command.payload.y)})`);
+                
+                this.eventBus.emit('SPAWN_ENTITY', { 
+                    cat, 
+                    type: resType, 
+                    x: command.payload.x, 
+                    y: command.payload.y, 
+                    options: { quality: resAmount / 20, isFalling: command.payload.isFalling } 
+                });
                 break;
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);
@@ -388,14 +439,22 @@ export default class Engine {
                 this.eventBus.emit('APPLY_FILL_TOOL', command.payload);
                 break;
             case 'PLACE_BLUEPRINT':
-                this.factoryProvider.spawn('building', command.payload.type, command.payload.x, command.payload.y, { isBlueprint: true });
-                GlobalLogger.info(`Placed blueprint for ${command.payload.type.toUpperCase()} at (${Math.floor(command.payload.x)}, ${Math.floor(command.payload.y)})`);
+                this.eventBus.emit('SPAWN_ENTITY', { 
+                    cat: 'building', 
+                    type: command.payload.type, 
+                    x: command.payload.x, 
+                    y: command.payload.y, 
+                    options: { isBlueprint: true } 
+                });
                 break;
             case 'SPAWN_DROPPED_ITEM':
-                const itemFactory = this.factoryProvider.getFactory('item');
-                if (itemFactory) {
-                    itemFactory.spawnDrop(command.payload.x, command.payload.y, command.payload.type, command.payload.amount);
-                }
+                this.eventBus.emit('SPAWN_ENTITY', { 
+                    cat: 'item', 
+                    type: command.payload.type, 
+                    x: command.payload.x, 
+                    y: command.payload.y, 
+                    options: { amount: command.payload.amount, isFalling: command.payload.isFalling } 
+                });
                 break;
         }
         if (this.isRunning) return;
@@ -406,12 +465,31 @@ export default class Engine {
 
     start() {
         if (this.isRunning) return;
+        
+        // 🚀 [Safety Check] 지형 생성 중이면 완료 후 자동 시작 예약
+        if (this.isGenerating) {
+            this.eventBus.once('WORLD_READY', () => this.start());
+            GlobalLogger.info("⏳ World is generating... Simulation will start automatically when ready.");
+            return;
+        }
+
+        // 🚀 [Worker Check] 워커가 아직 준비되지 않았다면 대기
+        if (this.workerBridge && !this.workerBridge.isInitialized) {
+            this.eventBus.once('WORKER_READY', () => this.start());
+            GlobalLogger.info("⏳ Waiting for Simulation Worker to initialize...");
+            return;
+        }
+
         this.isRunning = true;
         this.lastTime = performance.now();
+        if (this.workerBridge) this.workerBridge.start(); // 🚀 워커 시작
         requestAnimationFrame((t) => this.loop(t));
     }
 
-    stop() { this.isRunning = false; }
+    stop() { 
+        this.isRunning = false; 
+        if (this.workerBridge) this.workerBridge.stop(); // 🚀 워커 정지
+    }
 
     loop(time) {
         if (!this.isRunning) return;
@@ -419,38 +497,43 @@ export default class Engine {
         this.lastTime = time;
 
         this.monitor.update(time);
+        this.frameCount++; 
 
-        this.frameCount++; // 🚀 Increment frame counter
         this.update(dt);
+        
+        // 🚀 [Render] 데이터는 SharedArrayBuffer를 통해 워커가 실시간 갱신 중
         if (this.chunkManager.dirtyChunks.size > 0) this.renderDirtyTiles();
         this.render();
+        
         requestAnimationFrame((t) => this.loop(t));
     }
 
     update(dt) {
         if (this.isGenerating) return;
-        const time = performance.now();
 
-        // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
-        this.systemManager.update(dt, time);
-        
-        // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달, 엔진 인스턴스 공유)
+        // ⏳ 시간 시스템 업데이트
         this.timeSystem.update(dt * 1000, this);
+
+        // 🚀 [MAIN Thread Systems] 입력, 파티클, 바람 등 업데이트
+        if (this.systemManager) {
+            this.systemManager.update(dt, performance.now());
+        }
+        
+        if (this.workerBridge) {
+            this.workerBridge.syncCamera();
+        }
 
         if (this.selectedId) {
             const e = this.entityManager.entities.get(this.selectedId);
             if (e) {
-                // 🎥 카메라 추적 (기존 로직)
-                if (this.onEntitySelect && this.isFollowing) {
-                    const t = e.components.get('Transform');
-                    if (t) {
-                        this.camera.x = t.x - (this.width / this.camera.zoom) / 2;
-                        this.camera.y = t.y - (this.height / this.camera.zoom) / 2;
-                        this.camera.clamp();
-                    }
+                // 🎥 카메라 추적 (DOD 버퍼에서 직접 좌표 읽기)
+                if (this.isFollowing) {
+                    const bm = this.entityManager.bufferManager;
+                    this.camera.x = bm.x[this.selectedId] - (this.width / this.camera.zoom) / 2;
+                    this.camera.y = bm.y[this.selectedId] - (this.height / this.camera.zoom) / 2;
+                    this.camera.clamp();
                 }
             } else {
-                // 개체가 삭제되었다면(죽음 등) 선택 해제
                 this.selectedId = null;
                 this.eventBus.emit('ENTITY_SELECTED', null);
             }

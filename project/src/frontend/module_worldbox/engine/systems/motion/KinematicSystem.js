@@ -5,13 +5,12 @@ export default class KinematicSystem {
 
     update(dt) {
         const em = this.engine.entityManager;
+        const bm = em.bufferManager; // 🚀 [DOD] 버퍼 매니저 참조
         const camera = this.engine.camera;
         const spatialHash = this.engine.spatialHash;
         const mw = this.engine.mapWidth;
         const mh = this.engine.mapHeight;
         const frameCount = this.engine.frameCount || 0;
-
-        // SystemManager에서 이미 클리어됨
 
         // 🚀 [Optimization] 카메라 가시 영역 계산 (LOD용)
         const margin = 100;
@@ -20,69 +19,91 @@ export default class KinematicSystem {
         const viewW = (camera.width / camera.zoom) + (margin * 2);
         const viewH = (camera.height / camera.zoom) + (margin * 2);
 
-        for (const id of em.animalIds) {
-            const entity = em.entities.get(id);
-            if (!entity) continue;
+        // 🏃 모든 동적 개체 이동 연산 (동물, 떨어지는 자원 등)
+        for (const [id, entity] of em.entities) {
+            // 🚀 [DOD] 버퍼에서 직접 데이터 추출 (객체 조회 제거)
+            let x = bm.x[id];
+            let y = bm.y[id];
+            let vx = bm.vx[id];
+            let vy = bm.vy[id];
+            const isFalling = bm.isFalling[id] === 1;
 
-            const transform = entity.components.get('Transform');
-            if (!transform) continue;
+            // 정적 개체 최적화 패스 (안 움직이고, 떨어지지 않고, 동물이 아니면)
+            if (vx === 0 && vy === 0 && !isFalling && !em.animalIds.has(id)) {
+                continue;
+            }
 
-            // 1. [Physics LOD] 화면 밖 개체는 물리 연산 빈도 낮춤 (20fps 수준)
-            const isVisible = (transform.x > viewX && transform.x < viewX + viewW && 
-                               transform.y > viewY && transform.y < viewY + viewH);
+            // 1. [Physics LOD] 화면 밖 개체 연산 최적화
+            const isVisible = (x > viewX && x < viewX + viewW && 
+                               y > viewY && y < viewY + viewH);
             
             if (!isVisible) {
-                // 화면 밖 개체는 3프레임에 한 번만 물리 연산 수행 (분산 처리)
                 if ((id + frameCount) % 3 !== 0) {
-                    // 위치만 대략 업데이트 (마찰력 등은 건너뜀)
-                    transform.x += transform.vx * dt;
-                    transform.y += transform.vy * dt;
+                    bm.x[id] += vx * dt;
+                    bm.y[id] += vy * dt;
                     continue; 
                 }
             }
 
-            // 🛑 [Drag & Drop Protection]
+            // 🛑 [AI State Check] - 복잡한 상태는 아직 컴포넌트 참조 (점진적 전환)
             const aiState = entity.components.get('AIState');
             if (aiState && aiState.mode === 'grabbed') continue;
 
             // 2. 이동 및 마찰력 계산
-            let nextX = transform.x + transform.vx * dt;
-            let nextY = transform.y + transform.vy * dt;
+            let nextX = x + vx * dt;
+            let nextY = y + vy * dt;
 
-            // 🛑 [Stability] 상호작용 중에는 급제동 (관성 제거)
-            let friction = 0.92;
-            const interactionStates = ['eat', 'sleep', 'gather_wood', 'gather_plant', 'build', 'pickup', 'deposit', 'socializing'];
-            if (aiState && interactionStates.includes(aiState.mode)) {
-                friction = 0.5; // 급격한 속도 감쇄
+            // 🛑 [Falling Logic]
+            if (isFalling) {
+                const targetComp = entity.components.get('TargetY');
+                if (targetComp && nextY >= targetComp.y) {
+                    nextY = targetComp.y;
+                    vy = 0;
+                    bm.isFalling[id] = 0; // 착지 완료
+                    entity.components.delete('TargetY');
+                    
+                    // 파티클 효과 발생
+                    if (this.engine.eventBus) {
+                        this.engine.eventBus.emit('SPAWN_DUST', { detail: { x: nextX, y: nextY } });
+                    }
+                    
+                    // 공간 해시에 다시 정적으로 갱신 (선택적)
+                    if (spatialHash && !em.animalIds.has(id) && !em.humanIds.has(id)) {
+                        spatialHash.insert(id, nextX, nextY, true);
+                    }
+                }
+            } else {
+                let friction = 0.92;
+                const interactionStates = ['eat', 'sleep', 'gather_wood', 'gather_plant', 'build', 'pickup', 'deposit', 'socializing'];
+                if (aiState && interactionStates.includes(aiState.mode)) {
+                    friction = 0.5;
+                }
+
+                vx *= friction;
+                vy *= friction;
+
+                if (Math.abs(vx) < 0.1) vx = 0;
+                if (Math.abs(vy) < 0.1) vy = 0;
             }
-
-            transform.vx *= friction;
-            transform.vy *= friction;
-
-            // 정지 임계값 처리 (미세하게 떨리는 현상 방지)
-            if (Math.abs(transform.vx) < 0.1) transform.vx = 0;
-            if (Math.abs(transform.vy) < 0.1) transform.vy = 0;
 
             // 3. 지형 검사 (Navigable)
             if (this.engine.terrainGen && !this.engine.terrainGen.isNavigable(nextX, nextY)) {
-                if (this.engine.terrainGen.isNavigable(nextX, transform.y)) {
-                    nextY = transform.y;
-                    transform.vy = 0;
-                } else if (this.engine.terrainGen.isNavigable(transform.x, nextY)) {
-                    nextX = transform.x;
-                    transform.vx = 0;
+                if (this.engine.terrainGen.isNavigable(nextX, y)) {
+                    nextY = y; vy = 0;
+                } else if (this.engine.terrainGen.isNavigable(x, nextY)) {
+                    nextX = x; vx = 0;
                 } else {
-                    nextX = transform.x; nextY = transform.y;
-                    transform.vx = 0; transform.vy = 0;
+                    nextX = x; nextY = y; vx = 0; vy = 0;
                 }
             }
 
-            // 4. 🚀 [Expert Optimization] 건물 충돌 (Spatial Hash 기반 쿼리)
-            // 전체 건물 루프(em.buildingIds) 대신 주변 건물만 쿼리하여 성능 폭증 방지
+            // 4. 🏢 건물 충돌 (Spatial Hash)
             if (spatialHash) {
                 const nearbyIds = spatialHash.query(nextX, nextY, 30);
                 for (let i = 0; i < nearbyIds.length; i++) {
                     const bId = nearbyIds[i];
+                    if (bId === id) continue;
+                    
                     const bEnt = em.entities.get(bId);
                     if (!bEnt || !bEnt.components.has('Building')) continue;
 
@@ -98,36 +119,34 @@ export default class KinematicSystem {
                         const distSq = dx * dx + dy * dy;
                         
                         if (distSq < bRadius * bRadius) {
-                            // 밀어내기 로직 (입사각/반사각 대신 간단한 거리 기반 밀어내기)
                             const dist = Math.sqrt(distSq) || 1;
                             const overlap = bRadius - dist;
                             nextX += (dx / dist) * (overlap + 0.5);
                             nextY += (dy / dist) * (overlap + 0.5);
-                            
-                            // 속도 상쇄
-                            transform.vx *= 0.5;
-                            transform.vy *= 0.5;
+                            vx *= 0.5; vy *= 0.5;
                         }
                     }
                 }
             }
 
             // 5. 위치 최종 확정 및 경계 체크
-            transform.x = nextX;
-            transform.y = nextY;
+            if (nextX < 0)  { nextX = 0; vx *= -0.5; }
+            else if (nextX > mw) { nextX = mw; vx *= -0.5; }
+            if (nextY < 0)  { nextY = 0; vy *= -0.5; }
+            else if (nextY > mh) { nextY = mh; vy *= -0.5; }
 
-            if (transform.x < 0)  { transform.x = 0;  transform.vx *= -0.5; }
-            else if (transform.x > mw) { transform.x = mw; transform.vx *= -0.5; }
-            if (transform.y < 0)  { transform.y = 0;  transform.vy *= -0.5; }
-            else if (transform.y > mh) { transform.y = mh; transform.vy *= -0.5; }
+            // 🚀 [DOD] 버퍼에 결과 저장
+            bm.x[id] = nextX;
+            bm.y[id] = nextY;
+            bm.vx[id] = vx;
+            bm.vy[id] = vy;
 
-            // 6. 🧭 방향 및 애니메이션 데이터 갱신 (보이는 개체만 정밀하게)
+            // 6. 🧭 방향 및 애니메이션 데이터 갱신
             if (isVisible) {
-                const speedSq = transform.vx * transform.vx + transform.vy * transform.vy;
-                if (speedSq > 2.25) { // speed > 1.5
+                if (vx * vx + vy * vy > 2.25) {
                     const visual = entity.components.get('Visual');
                     if (visual) {
-                        const angle = Math.atan2(transform.vy, transform.vx);
+                        const angle = Math.atan2(vy, vx);
                         const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
                         visual.facing = idx;
                         visual.flipX = (idx >= 3 && idx <= 5);
@@ -135,9 +154,9 @@ export default class KinematicSystem {
                 }
             }
 
-            // 7. 🚀 [Optimization] 공간 해시 갱신 (별도 루프 제거)
+            // 7. 🚀 [Optimization] 공간 해시 갱신
             if (spatialHash) {
-                spatialHash.insert(id, transform.x, transform.y, false);
+                spatialHash.insert(id, nextX, nextY, false, true);
             }
         }
     }

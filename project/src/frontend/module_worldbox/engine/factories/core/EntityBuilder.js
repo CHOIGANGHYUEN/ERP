@@ -17,14 +17,13 @@ export default class EntityBuilder {
     }
 
     withTransform(x, y) {
-        const transform = new Transform(x, y);
-        transform.vx = 0;
-        transform.vy = 0;
+        const transform = new Transform(x, y, this.id, this.em.bufferManager);
         return this.addComponent('Transform', transform);
     }
 
     withVisual(options) {
-        return this.addComponent('Visual', new Visual(options));
+        const visual = new Visual(options, this.id, this.em.bufferManager);
+        return this.addComponent('Visual', visual);
     }
 
     build() {
