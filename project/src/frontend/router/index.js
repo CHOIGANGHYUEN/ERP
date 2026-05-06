@@ -141,12 +141,7 @@ const router = createRouter({
           name: 'sys-syst09-detail',
           component: () => import('@/frontend/module_sys/SYST09/SYST09V002.vue'),
         },
-        {
-          path: 'game',
-          name: 'game',
-          component: () => import('@/frontend/module_game/GameView.vue'),
-          meta: { requiresAuth: true },
-        },
+
         {
           path: 'worldbox',
           name: 'worldbox',

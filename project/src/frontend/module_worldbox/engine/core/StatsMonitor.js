@@ -84,17 +84,15 @@ export default class StatsMonitor {
                 const nationSystem = this.engine.systemManager.nationSystem;
                 if (nationSystem && nationSystem.nations) {
                     for (const nation of nationSystem.nations.values()) {
-                        nationStats.push({
-                            id: nation.id,
-                            name: nation.name,
-                            color: nation.color,
-                            population: nation.totalPopulation,
-                            villageCount: nation.villages.size,
-                            resources: { ...nation.resources },
-                            taxRate: nation.taxRate
-                        });
+                        nationStats.push({ id: nation.id, name: nation.name });
                     }
                 }
+
+                const cm = this.engine.chunkManager;
+                const viewport = this.engine.camera.getViewportBounds();
+                const visibleChunks = cm.getVisibleChunks(viewport);
+                const activeCanvases = cm.chunks.filter(c => c.offscreenCanvas).length;
+                const currentLOD = this.engine.camera.zoom > 0.4 ? 1 : 0;
 
                 this.onUpdate({ 
                     fps: this.fps,
@@ -102,7 +100,14 @@ export default class StatsMonitor {
                     totalFertility: this.allocatedFertility,
                     totalMaxFertility: this.maxPotentialFertility,
                     villages: villageStats,
-                    nations: nationStats
+                    nations: nationStats,
+                    chunkStats: {
+                        visible: visibleChunks.length,
+                        total: cm.chunks.length,
+                        activeCanvases: activeCanvases,
+                        maxActive: cm.maxActiveCanvases,
+                        lod: currentLOD
+                    }
                 });
             }
         }

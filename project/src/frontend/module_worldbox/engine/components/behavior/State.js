@@ -58,9 +58,10 @@ export default class State extends Component {
         this.blacklist = new Map();    // { targetId: expirationTime } - 일시적 무시 대상 목록
         this.unreachableTargets = new Set(); // 🚫 [Stability] 경로 탐색 실패 타겟 캐시 (Set 유지)
 
-        // 🔍 [Debug Visualization] 탐색 범위를 시각화하기 위한 데이터
         this.searchRange = 0;          // 최근 탐색 반경
         this.targetName = null;        // 현재 타겟의 명칭 (UI/디버그용)
+        this.interruptible = options.interruptible !== undefined ? options.interruptible : true; // 🛡️ 상태 중단 가능 여부
+        this.thinkTimer = 0;      // 🧠 판단 주기 타이머 (Throttling)
     }
 
     /** 🚫 타겟을 일시적 블랙리스트에 추가 */

@@ -109,8 +109,12 @@ export default class HumanBehaviorSystem extends System {
         if (stateHandler) {
             let nextMode = stateHandler.update(id, entity, dt);
             
-            // 💡 [Persistence Logic] 현재 상태가 특별한 지시 없이 종료(IDLE 반환)되었을 때만 브레인의 권장을 따름
-            if (nextMode === AnimalStates.IDLE || !nextMode) {
+            // 💡 [Persistence Logic] 작업 완료(IDLE), 중단 가능(interruptible), 또는 긴급 상황(Emergency) 시에만 전이 허용
+            const isFinished = nextMode === AnimalStates.IDLE;
+            const isEmergency = suggestedMode === AnimalStates.FLEE || suggestedMode === AnimalStates.DIE;
+            const canInterrupt = state.interruptible !== false;
+            
+            if (isFinished || isEmergency || canInterrupt) {
                 if (suggestedMode && suggestedMode !== state.mode) {
                     nextMode = suggestedMode;
                 }
@@ -138,6 +142,14 @@ export default class HumanBehaviorSystem extends System {
         state.targetRequestFailed = false;
         state.path = null;
         state.pathIndex = 0;
+        state.interruptible = true; // 🛡️ 상태 전이 시 기본적으로 중단 가능으로 초기화
+
+        // 🚀 [Expert Fix] 상태 전이 시 속도 초기화 (관성 제거 및 정밀한 다음 행동 준비)
+        const transform = entity.components.get('Transform');
+        if (transform) {
+            transform.vx = 0;
+            transform.vy = 0;
+        }
 
         // 타겟 유지 조건 (건설, 채집, 식사 등은 타겟 보존)
         const preservesTarget = [
@@ -190,22 +202,22 @@ export default class HumanBehaviorSystem extends System {
             stats.fatigue = Math.max(0, stats.fatigue - dt * 0.8 * timeScale);
             // 아침이 되고 충분히 쉬었으면 기상
             if (hour >= 5 && hour < 20 && stats.fatigue < 10) {
-                state.mode = AnimalStates.IDLE;
+                this._transitionTo(id, entity, state, AnimalStates.IDLE);
             }
         } else {
             stats.fatigue = Math.min(stats.maxFatigue || 100, stats.fatigue + dt * fatigueRate);
             // 극한 피로 또는 밤에 피곤할 때 수면 전이
             if (stats.fatigue >= 100 || (isNight && stats.fatigue > 50 && Math.random() < 0.005)) {
-                state.mode = AnimalStates.SLEEP;
-                state.targetId = null; // 수면 시 현재 목표 해제
+                this._transitionTo(id, entity, state, AnimalStates.SLEEP);
             }
         }
 
         // 💀 사망 판정
         if (stats.health <= 0) {
             stats.health = 0;
-            state.mode = AnimalStates.DIE;
-            state.targetId = null;
+            if (state.mode !== AnimalStates.DIE) {
+                this._transitionTo(id, entity, state, AnimalStates.DIE);
+            }
         }
     }
 

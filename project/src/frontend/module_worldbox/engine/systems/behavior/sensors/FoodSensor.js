@@ -13,25 +13,21 @@ export default class FoodSensor {
         let minDistSq = radius * radius;
 
         const em = this.entityManager;
-        const nearbyIds = this.spatialHash.query(x, y, radius);
         
-        // 🚀 [Optimization] 검색 대상 수를 제한하여 밀집 지역에서의 CPU 폭주 방지
-        const scanLimit = 20;
-        let count = 0;
-
-        for (const id of nearbyIds) {
-            if (count++ > scanLimit) break;
+        // 🚀 [Expert Optimization] eachInRange + scanLimit 대신 eachInSpiral을 사용하여 가장 가까운 먹이부터 검색
+        this.spatialHash.eachInSpiral(x, y, radius, (id) => {
+            if (id === animalOrStats.id) return false;
 
             if (state && state.blacklist && state.blacklist.has(id)) {
-                if (Date.now() < state.blacklist.get(id)) continue;
+                if (Date.now() < state.blacklist.get(id)) return false;
                 else state.blacklist.delete(id);
             }
 
             const entity = em.entities.get(id);
-            if (!entity || id === animalOrStats.id) continue;
+            if (!entity) return false;
 
             const tPos = entity.components.get('Transform');
-            if (!tPos) continue;
+            if (!tPos) return false;
 
             // 📦 [New] 드랍된 아이템 감지
             const droppedItem = entity.components.get('DroppedItem');
@@ -44,10 +40,10 @@ export default class FoodSensor {
                     if (distSq < minDistSq) {
                         minDistSq = distSq;
                         nearestId = id;
-                        if (distSq < 100) break;
+                        return true; // 최적의 먹이 발견 시 즉시 중단
                     }
                 }
-                continue;
+                return false;
             }
 
             const targetAnim = entity.components.get('Animal');
@@ -60,6 +56,7 @@ export default class FoodSensor {
                 if (distSq !== null && distSq < minDistSq) {
                     minDistSq = distSq;
                     nearestId = id;
+                    return true;
                 }
             }
 
@@ -69,9 +66,11 @@ export default class FoodSensor {
                 if (distSq !== null && distSq < minDistSq) {
                     minDistSq = distSq;
                     nearestId = id;
+                    return true;
                 }
             }
-        }
+            return false;
+        });
         return nearestId;
     }
 

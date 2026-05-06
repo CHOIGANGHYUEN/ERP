@@ -10,54 +10,64 @@ export default class HerbivoreBrain {
         this.predatorSensor = new PredatorSensor(entityManager, spatialHash);
     }
 
-    update(id, state, transform, animal, stats, dt) {
+    /**
+     * 🧠 [Decide Pattern] 상태를 직접 변경하지 않고 권장 모드와 타겟을 제안합니다.
+     */
+    decide(id, state, transform, animal, stats, dt) {
         // 🛑 [Drag & Drop Protection] 플레이어에게 잡힌 상태면 AI 판단 중단
-        if (state.mode === AnimalStates.GRABBED) return;
+        if (state.mode === AnimalStates.GRABBED) return { mode: AnimalStates.GRABBED };
 
-        // 1. 생존 본능 (포식자 감지 시 최우선 도망)
+        // 🧠 [Decision Throttling] 판단 주기를 1초로 제한 (단, 도망 상태는 즉시 반응)
+        state.thinkTimer = (state.thinkTimer || 0) + dt;
+        if (state.thinkTimer < 1.0 && state.mode && state.mode !== AnimalStates.IDLE && state.mode !== AnimalStates.FLEE) {
+            return { mode: state.mode, targetId: state.targetId };
+        }
+        state.thinkTimer = 0;
+
+        // 1. 생존 본능 (포식자 감지 시 최우선 도망) - 인터럽트 허용
         const predatorId = this.predatorSensor.findNearestPredator(this.entityManager.entities.get(id), state, 120);
         if (predatorId) {
-            state.targetId = predatorId;
-            state.mode = AnimalStates.FLEE;
-            return;
+            return { mode: AnimalStates.FLEE, targetId: predatorId };
         }
 
-        // 2. 허기 관리 (도망 중이 아닐 때만)
+        // 2. 현재 상태 유지 판단 (이미 식사/채집 중이면 해당 작업 완수 우선)
+        const isBusy = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE || state.mode === AnimalStates.GRAZE) && state.targetId;
+        if (isBusy) {
+            return { mode: state.mode, targetId: state.targetId };
+        }
+
+        // 3. 허기 관리 (도망 중이 아닐 때만)
         if (state.mode !== AnimalStates.FLEE) {
-            if (stats.hunger < 75) { // 임계값 소폭 조정 (기회주의적 섭취 유도)
-                // 🍎 [Scavenging] 
-                // 이미 식물 아이템을 대상으로 FORAGE 또는 EAT 중이면 중복 판단 방지
+            if (stats.hunger < 75) { 
                 const isEatingPlant = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE) && state.targetId;
                 
                 if (!isEatingPlant) {
                     const plantId = this.findPlantItem(id, state, transform, 400);
                     if (plantId) {
-                        state.targetId = plantId;
-                        state.mode = AnimalStates.FORAGE;
-                        return;
+                        return { mode: AnimalStates.FORAGE, targetId: plantId };
                     }
                 } else {
-                    // 이미 아이템 식사 중이면 그대로 유지 (GRAZE로 넘어가지 않도록)
-                    return;
+                    return { mode: state.mode, targetId: state.targetId };
                 }
 
                 if (state.mode !== AnimalStates.GRAZE) {
-                    state.mode = AnimalStates.GRAZE; // 전용 GrazeState 사용
+                    return { mode: AnimalStates.GRAZE, targetId: state.targetId };
                 }
             }
         }
 
-        // 3. 상태 유지 및 전이
+        // 4. 상태 유지 및 전이
         if (state.mode === AnimalStates.IDLE || !state.mode) {
-            // 🕒 가만히 서 있다가 가끔씩 방황하도록 변경 (자연스러운 AI 연출)
             state.idleTimer = (state.idleTimer || 0) + dt;
             if (state.idleTimer >= (2.0 + Math.random() * 3.0)) {
-                state.mode = AnimalStates.WANDER;
                 state.idleTimer = 0;
+                return { mode: AnimalStates.WANDER, targetId: null };
             } else {
-                state.mode = AnimalStates.IDLE;
+                return { mode: AnimalStates.IDLE, targetId: null };
             }
         }
+
+        return { mode: state.mode, targetId: state.targetId };
     }
 
     findPlantItem(id, state, transform, radius) {

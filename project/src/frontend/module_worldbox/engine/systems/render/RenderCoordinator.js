@@ -1,5 +1,6 @@
 import System from '../../core/System.js';
 import { BIOME_PROPERTIES_MAP } from '../../world/TerrainGen.js';
+import ObjectPool from '../../utils/ObjectPool.js';
 
 /**
  * 🖼️ RenderCoordinator (렌더링 총괄 시스템)
@@ -17,6 +18,20 @@ export default class RenderCoordinator extends System {
         this.updateResolution(engine.width, engine.height);
         
         this.offCtx = this.offscreenCanvas.getContext('2d', { alpha: false });
+
+        // 🚀 [Expert Optimization] Floating Text Pooling
+        this.floatingTexts = [];
+        this.textPool = new ObjectPool(
+            () => ({}), 
+            (t) => {
+                for (const key in t) delete t[key];
+            },
+            50
+        );
+
+        this.eventBus.on('SPAWN_FLOATING_TEXT', (data) => {
+            this.spawnFloatingText(data.x, data.y, data.text, data.color, data.options);
+        });
     }
 
     updateResolution(w, h) {
@@ -56,22 +71,8 @@ export default class RenderCoordinator extends System {
 
         // --- 레이어별 그리기 작업 ---
         
-        // [레이어 1] 지형 (Terrain) - 가시 영역만 클리핑하여 렌더링 (성능 최적화)
-        const viewW = Math.ceil(this.offscreenCanvas.width / camera.zoom);
-        const viewH = Math.ceil(this.offscreenCanvas.height / camera.zoom);
-        
-        const sx = Math.max(0, Math.floor(camera.x));
-        const sy = Math.max(0, Math.floor(camera.y));
-        const sw = Math.min(engine.mapWidth - sx, viewW + 2);
-        const sh = Math.min(engine.mapHeight - sy, viewH + 2);
-
-        if (sw > 0 && sh > 0) {
-            offCtx.drawImage(
-                engine.terrainCanvas, 
-                sx, sy, sw, sh, // Source (Terrain Canvas)
-                sx, sy, sw, sh  // Destination (World Space)
-            );
-        }
+        // [레이어 1] 지형 (Terrain) - 청크 기반 렌더링 및 Culling 적용
+        engine.chunkManager.render(offCtx, camera);
 
         // [레이어 2] 엔티티 및 자원 (Entities)
         engine.renderer.render(
@@ -113,6 +114,9 @@ export default class RenderCoordinator extends System {
         if (engine.viewFlags.zone || engine.viewFlags.showZones) {
             this.renderZoneView(offCtx);
         }
+
+        // [레이어 5] 플로팅 텍스트 (World Space or Screen Space)
+        this.updateAndRenderFloatingTexts(offCtx, performance.now());
 
         // 4. 🚀 [대미의 장식] 완성된 가상 도화지를 메인 화면에 한 번에 복사!
         // 🛡️ [Scaling Fix] 캡핑된 해상도를 메인 캔버스 크기에 맞춰 확대/축소하여 출력
@@ -450,6 +454,66 @@ export default class RenderCoordinator extends System {
                 ctx.fillStyle = '#ffeb3b';
                 ctx.fillText(workerText, screenX + 5, screenY + 15);
             }
+        }
+        
+        ctx.restore();
+    }
+
+    /** 🚀 [Expert Design] 플로팅 텍스트 생성 (데미지, 상태창 등) */
+    spawnFloatingText(x, y, text, color = '#ffffff', options = {}) {
+        const t = this.textPool.get();
+        t.x = x;
+        t.y = y;
+        t.text = text;
+        t.color = color;
+        t.vx = options.vx || (Math.random() - 0.5) * 0.5;
+        t.vy = options.vy || -1.5;
+        t.life = options.life || 1.2;
+        t.maxLife = t.life;
+        t.size = options.size || 14;
+        t.alpha = 1.0;
+        t.isScreenSpace = options.isScreenSpace || false;
+
+        this.floatingTexts.push(t);
+    }
+
+    /** 🚀 [Expert Design] 플로팅 텍스트 업데이트 및 렌더링 */
+    updateAndRenderFloatingTexts(ctx, time) {
+        const dt = 0.016; // 대략적인 deltaTime (추후 엔진 dt 연동 고려)
+        
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+            const t = this.floatingTexts[i];
+            
+            // 위치 업데이트
+            t.x += t.vx;
+            t.y += t.vy;
+            t.vy += 0.05; // 약간의 중력 효과 또는 감속
+
+            // 수명 및 알파 업데이트
+            t.life -= dt;
+            t.alpha = Math.max(0, t.life / t.maxLife);
+            
+            if (t.life <= 0) {
+                this.floatingTexts.splice(i, 1);
+                this.textPool.release(t);
+                continue;
+            }
+
+            // 그리기
+            ctx.globalAlpha = t.alpha;
+            ctx.font = `bold ${t.size}px "Courier New", monospace`;
+            
+            // 텍스트 외곽선 (가독성 향상)
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(t.text, t.x, t.y);
+            
+            ctx.fillStyle = t.color;
+            ctx.fillText(t.text, t.x, t.y);
         }
         
         ctx.restore();

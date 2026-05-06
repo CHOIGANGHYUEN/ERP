@@ -129,7 +129,8 @@ export default class SpawnerSystem extends System {
         const idx = this.terrainGen.getIndex(payload.x, payload.y);
         if (this.terrainGen.isValidIndex(idx)) {
             this.terrainGen.biomeBuffer[idx] = payload.biome;
-            this.eventBus.emit('CACHE_PIXEL_UPDATE', { 
+            this.terrainGen.syncPackedPixel(idx);
+            this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { 
                 x: Math.floor(payload.x), 
                 y: Math.floor(payload.y), 
                 reason: 'biome_change' 

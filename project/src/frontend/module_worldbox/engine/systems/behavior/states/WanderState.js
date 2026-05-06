@@ -15,41 +15,6 @@ export default class WanderState extends State {
 
         if (!transform || !state) return null;
 
-        // 1. 상태 전이 조건 체크
-        if (stats) {
-            if (stats.fatigue > 85) return AnimalStates.SLEEP;
-
-            if (stats.hunger < 60) {
-                state.searchCooldown = (state.searchCooldown || 0) - dt;
-                if (state.searchCooldown <= 0) {
-                    const searchRadius = 300 + (60 - stats.hunger) * 5;
-                    state.targetId = this.system.foodSensor.findFood(animal, transform.x, transform.y, searchRadius);
-
-                    if (state.targetId) {
-                        state.searchCooldown = 0;
-                        
-                        const targetEnt = this.system.engine.entityManager.entities.get(state.targetId);
-                        const isTargetAnimal = targetEnt && targetEnt.components.has('Animal');
-
-                        // 🍖 식성에 따른 행동 결정
-                        if (animal.diet === DietType.CARNIVORE) return AnimalStates.HUNT;
-                        if (animal.diet === DietType.HERBIVORE) return AnimalStates.FORAGE;
-                        
-                        // 🍱 잡식성(Omnivore)의 경우 타겟의 종류에 따라 결정
-                        if (animal.diet === DietType.OMNIVORE) {
-                            return isTargetAnimal ? AnimalStates.HUNT : AnimalStates.FORAGE;
-                        }
-                        
-                        return AnimalStates.FORAGE; // Fallback
-                    }
-                    
-                    // 🧪 [Expert Optimization] 배가 고플수록 더 자주 수색하도록 쿨타임 조절
-                    const baseCooldown = stats.hunger < 30 ? 0.5 : 2.0;
-                    state.searchCooldown = baseCooldown + Math.random();
-                }
-            }
-        }
-
         // 2. 방황 패턴 로직 (Pathfinder 기반으로 완전 교체)
         if (!state.wanderTarget) {
             const engine = this.system.engine;

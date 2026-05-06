@@ -20,13 +20,22 @@ export default class GrazeState {
 
         if (!state || !transform || !animal || !stats) return null;
 
+        // 🛡️ [Busy Protection] 식사(방목) 중에는 중단되지 않도록 보호
+        state.interruptible = false;
+
         // 1. 타겟 풀(자원)이 없으면 주변에서 탐색 (살아있는 풀)
         if (!state.targetId) {
-            const nearestGrassId = this.findNearestGrass(transform, 200);
-            if (nearestGrassId) {
-                state.targetId = nearestGrassId;
+            // 🚀 [Time-slicing] 이번 프레임에 탐색 권한이 있을 때만 수행
+            if (state.canSearchThisFrame) {
+                const nearestGrassId = this.findNearestGrass(transform, 250);
+                if (nearestGrassId) {
+                    state.targetId = nearestGrassId;
+                } else {
+                    return AnimalStates.WANDER;
+                }
             } else {
-                return AnimalStates.WANDER;
+                // 탐색 권한이 없으면 이번 프레임은 대기 (IDLE 유지 또는 약간의 방황)
+                return null; 
             }
         }
 
@@ -68,10 +77,27 @@ export default class GrazeState {
                     });
                 }
 
-                if (isDead) {
-                    // 🌿 [FIX] 아이템 드롭 책임은 DeathProcessor로 일원화 (중복 및 하드코딩 제거)
-                    state.targetId = null;
-                    return AnimalStates.FORAGE;
+                if (health) {
+                    const isDead = health.takeDamage(damage);
+
+                    // 📊 BaseStats 동기화
+                    const stats = target.components.get('BaseStats');
+                    if (stats) stats.takeDamage(damage);
+
+                    // 🚀 [Expert Feedback] 플로팅 데미지 텍스트 생성
+                    if (this.bs.eventBus) {
+                        this.bs.eventBus.emit('SPAWN_FLOATING_TEXT', {
+                            x: targetTransform.x, y: targetTransform.y - 5,
+                            text: `-${Math.round(damage)}`,
+                            color: '#ff4d4d',
+                            options: { size: 14, vy: -1.5 }
+                        });
+                    }
+
+                    if (isDead) {
+                        state.targetId = null;
+                        return AnimalStates.IDLE;
+                    }
                 }
                 state.attackCooldown = 0.8; // 0.8초 쿨타임
             }
@@ -87,18 +113,18 @@ export default class GrazeState {
     }
 
     findNearestGrass(transform, radius) {
-        const nearbyIds = this.bs.spatialHash.query(transform.x, transform.y, radius);
         let nearestId = null;
         let minDistSq = radius * radius;
 
-        for (const id of nearbyIds) {
+        // 🚀 [Expert Optimization] eachInRange 대신 eachInSpiral 사용하여 근접한 것부터 탐색
+        this.bs.spatialHash.eachInSpiral(transform.x, transform.y, radius, (id) => {
             const entity = this.bs.entityManager.entities.get(id);
-            if (!entity) continue;
+            if (!entity) return false;
             
             const resource = entity.components.get('Resource');
             const health = entity.components.get('Health');
             
-            if (!resource) continue;
+            if (!resource) return false;
 
             const config = this.bs.engine.resourceConfig[resource.type];
             // 🎯 [Balanced Identification] 카테고리가 풀/식물이거나 설정상 edible이면 허용하되, 나무(tree)는 절대 금지
@@ -109,16 +135,19 @@ export default class GrazeState {
             if (isEdible && !isTree) {
                 if (health && health.currentHp > 0) {
                     const resTransform = entity.components.get('Transform');
+                    if (!resTransform) return false;
                     const dx = transform.x - resTransform.x;
                     const dy = transform.y - resTransform.y;
                     const dSq = dx * dx + dy * dy;
                     if (dSq < minDistSq) {
                         minDistSq = dSq;
                         nearestId = id;
+                        return true; // 가장 가까운 것을 찾았으므로 즉시 종료
                     }
                 }
             }
-        }
+            return false;
+        });
         return nearestId;
     }
 }

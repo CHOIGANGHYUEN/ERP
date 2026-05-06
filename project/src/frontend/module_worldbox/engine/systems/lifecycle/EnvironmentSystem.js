@@ -72,7 +72,8 @@ export default class EnvironmentSystem extends System {
                 const spreadChance = fertility * 0.05; // 100% 비옥도에서 5% 확률
                 if (Math.random() < spreadChance) {
                     biomeBuffer[idx] = GRASS_ID; // 흙이 초원으로 변경
-                    this.eventBus.emit('CACHE_PIXEL_UPDATE', { x, y, reason: 'biome_spread' });
+                    this.tg.syncPackedPixel(idx);
+                    this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x, y, reason: 'biome_spread' });
                 }
             }
         }

@@ -12,6 +12,9 @@ export default class DepositState extends State {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
         const inventory = entity.components.get('Inventory');
+
+        // 🛡️ [Busy Protection] 자원 반납 작업 중에는 중단 방지
+        state.interruptible = false;
         const civ = entity.components.get('Civilization');
 
         // 인벤토리가 비어있거나 필수 컴포넌트가 없으면 바로 IDLE 상태로 전환

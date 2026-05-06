@@ -28,12 +28,16 @@ export default class TerrainGen {
     terrain = null; // Instance of TerrainLayer
     biomes = null;  // Instance of BiomeLayer
     
-    // 환경 수치 레이어 (향후 이들도 Layer 클래스로 추상화 가능)
+    // 환경 수치 레이어
     fertilityBuffer = null; 
     waterQualityBuffer = null;
     mineralDensityBuffer = null;
     occupancyBuffer = null;
-    territoryBuffer = null; // 🏘️ Faction/Village ownership (Uint16Array)
+    territoryBuffer = null; 
+
+    // 🚀 [Expert Optimization] 단일 메모리 접근을 위한 비트 팩킹 버퍼
+    // 지형(8) | 바이옴(8) | 비옥도(8) | 수질/광물(8)
+    packedBuffer = null; 
 
     constructor(entityManager) {
         this.entityManager = entityManager;
@@ -100,8 +104,21 @@ export default class TerrainGen {
     setFertility(x, y, value) {
         const idx = this.getIndex(x, y);
         if (this.isValidIndex(idx)) {
-            this.fertilityBuffer[idx] = Math.max(0, Math.min(255, value));
+            const v = Math.max(0, Math.min(255, value));
+            this.fertilityBuffer[idx] = v;
+            this.syncPackedPixel(idx);
         }
+    }
+
+    /** 🚀 [Expert Optimization] 개별 버퍼 변경 시 팩킹 버퍼 동기화 */
+    syncPackedPixel(idx) {
+        if (!this.packedBuffer) return;
+        const t = this.terrain.getValue(idx);
+        const b = this.biomes.getValue(idx);
+        const f = this.fertilityBuffer[idx];
+        const w = Math.max(this.waterQualityBuffer[idx], this.mineralDensityBuffer[idx]);
+        
+        this.packedBuffer[idx] = t | (b << 8) | (f << 16) | (w << 24);
     }
 
     /** ⚡ [Ultra-Fast Optimization] Permutation Table for Perlin Noise */
@@ -187,6 +204,7 @@ export default class TerrainGen {
         this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
         this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
         this.territoryBuffer = new Uint16Array(mapWidth * mapHeight);
+        this.packedBuffer = new Uint32Array(mapWidth * mapHeight);
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -263,9 +281,16 @@ export default class TerrainGen {
                     biomeBuf[idx] = biomeId;
 
                     const fert = (terrainId === 4 || terrainId === 5) ? Math.floor(25 + Math.random() * 200) : 0;
+                    const wq = (terrainId <= 1) ? 200 : 0;
+                    const md = (terrainId >= 6) ? 230 : 0;
+                    
                     fertBuf[idx] = fert;
-                    wqBuf[idx] = (terrainId <= 1) ? 200 : 0;
-                    mdBuf[idx] = (terrainId >= 6) ? 230 : 0;
+                    wqBuf[idx] = wq;
+                    mdBuf[idx] = md;
+
+                    // 🚀 [Expert Packing] 지형|바이옴|비옥도|수질(또는 광물) 데이터를 하나로 압축
+                    const envValue = wq > 0 ? wq : md;
+                    this.packedBuffer[idx] = terrainId | (biomeId << 8) | (fert << 16) | (envValue << 24);
 
                     // 📊 [Optimization] 최종 단계(Step 1)에서 통계 및 수역 데이터 합산 병행
                     if (step === 1) {
@@ -285,18 +310,23 @@ export default class TerrainGen {
                     // Fill ChunkManager buffer directly
                     if (step === 1) {
                         cmBuffer[idx] = color;
+                        cm.markDirty(x, y); // 🚀 [Tiled Fix] Notify ChunkManager
                     } else {
                         for (let dy = 0; dy < step && y + dy < mapHeight; dy++) {
                             const rOff = (y + dy) * mapWidth;
                             for (let dx = 0; dx < step && x + dx < mapWidth; dx++) {
                                 const nIdx = rOff + (x + dx);
                                 cmBuffer[nIdx] = color;
-                                if (dx === 0 && dy === 0) continue;
+                                if (dx === 0 && dy === 0) {
+                                    cm.markDirty(x, y); // 🚀 [Tiled Fix] Notify ChunkManager
+                                    continue;
+                                }
                                 terrainBuf[nIdx] = terrainId;
                                 biomeBuf[nIdx] = biomeId;
                                 fertBuf[nIdx] = fert;
-                                wqBuf[nIdx] = wqBuf[idx];
-                                mdBuf[nIdx] = mdBuf[idx];
+                                wqBuf[nIdx] = wq;
+                                mdBuf[nIdx] = md;
+                                this.packedBuffer[nIdx] = terrainId | (biomeId << 8) | (fert << 16) | (envValue << 24);
                             }
                         }
                     }
@@ -361,6 +391,9 @@ export default class TerrainGen {
         this.fertilityBuffer[idx] = soilFertility;
         this.waterQualityBuffer[idx] = waterQuality;
         this.mineralDensityBuffer[idx] = mineralDensity;
+
+        // 🚀 [Expert Optimization] 팩킹 버퍼 동기화
+        this.syncPackedPixel(idx);
     }
 
     determineTerrainType(altitude) {
@@ -420,36 +453,31 @@ export default class TerrainGen {
     }
 
     getTerrainColor(idx, viewFlags, systems = {}) {
-        const terrainId = this.terrain.getValue(idx);
-        const biomeId = this.biomes.getValue(idx);
-        const fertility = this.fertilityBuffer[idx];
+        // 🚀 [Expert Optimization] 여러 버퍼를 순회하는 대신 팩킹된 단일 버퍼에서 비트 연산으로 추출
+        const val = this.packedBuffer[idx];
+        if (val === undefined) return 0xFF000000;
+
+        const terrainId = val & 0xFF;
+        const biomeId = (val >> 8) & 0xFF;
+        const fertility = (val >> 16) & 0xFF;
         
         let r = 0, g = 0, b = 0;
         
         // 🏘️ [Village/Nation View] 지형 위에 영토 색상 입히기
         const villageId = this.territoryBuffer[idx];
         if (viewFlags.VILLAGETILE && villageId > 0) {
-            const village = systems.villageSystem?.getVillage(villageId - 1);
-            if (village) {
-                const c = village.color || '#ffffff';
-                // 16진수 색상을 RGB로 변환
-                r = parseInt(c.slice(1, 3), 16);
-                g = parseInt(c.slice(3, 5), 16);
-                b = parseInt(c.slice(5, 7), 16);
-                return (r << 16) | (g << 8) | b;
+            const village = systems.villageSystem?.getVillage(villageId);
+            if (village && village.rgbColor !== undefined) {
+                return village.rgbColor;
             }
         }
 
         if (viewFlags.NATIONTILE && villageId > 0) {
-            const village = systems.villageSystem?.getVillage(villageId - 1);
+            const village = systems.villageSystem?.getVillage(villageId);
             if (village && village.nationId !== -1) {
                 const nation = systems.nationSystem?.getNation(village.nationId);
-                if (nation) {
-                    const c = nation.color || '#ffffff';
-                    r = parseInt(c.slice(1, 3), 16);
-                    g = parseInt(c.slice(3, 5), 16);
-                    b = parseInt(c.slice(5, 7), 16);
-                    return (r << 16) | (g << 8) | b;
+                if (nation && nation.rgbColor !== undefined) {
+                    return nation.rgbColor;
                 }
             }
         }
@@ -488,7 +516,7 @@ export default class TerrainGen {
         // 2. 💧 수질 뷰 (Water Quality View)
         if (viewFlags.water) {
             if (!this.terrain.isWater(idx)) return 0x111111; 
-            const wq = this.waterQualityBuffer[idx];
+            const wq = (val >> 24) & 0xFF;
             const level = wq >> 6; // 0-255를 4단계(0-3)로 고속 변환
             const shades = [0x1565C0, 0x1E88E5, 0x42A5F5, 0x90CAF9];
             return shades[Math.min(3, level)];
@@ -497,7 +525,7 @@ export default class TerrainGen {
         // 3. 💎 광물 밀도 뷰 (Mineral Density View)
         if (viewFlags.mineral) {
             if (!this.terrain.isMountain(idx)) return 0x111111;
-            const md = this.mineralDensityBuffer[idx];
+            const md = (val >> 24) & 0xFF;
             const level = md >> 6; // 0-255를 4단계(0-3)로 고속 변환
             const shades = [0x424242, 0x757575, 0xBDBDBD, 0xFFFFFF];
             return shades[Math.min(3, level)];

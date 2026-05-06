@@ -156,8 +156,9 @@ const close = () => {
 
 const getTerritoryCoords = (list) => {
   if(!list) return [];
-  return list.map(t => {
-    const [x, y] = t.split(',').map(Number);
+  return list.map(key => {
+    const x = key & 0xFFFF;
+    const y = key >> 16;
     return { x, y };
   });
 };
@@ -165,8 +166,9 @@ const getTerritoryCoords = (list) => {
 const getTerritoryViewBox = (list) => {
   if(!list || !list.length) return "0 0 10 10";
   let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-  list.forEach(t => {
-    const [x, y] = t.split(',').map(Number);
+  list.forEach(key => {
+    const x = key & 0xFFFF;
+    const y = key >> 16;
     if(x<minX) minX=x; if(y<minY) minY=y;
     if(x>maxX) maxX=x; if(y>maxY) maxY=y;
   });
@@ -222,6 +224,18 @@ const getPriorityClass = (p) => {
               inset 0 0 20px rgba(255,255,255,0.02);
   overflow: hidden;
   font-family: 'Inter', system-ui, sans-serif;
+}
+
+@media (max-width: 768px) {
+  .village-detail-panel {
+    top: auto;
+    right: 10px;
+    left: 10px;
+    bottom: 100px;
+    width: auto;
+    max-height: 50vh;
+    border-radius: 16px;
+  }
 }
 
 .panel-header {

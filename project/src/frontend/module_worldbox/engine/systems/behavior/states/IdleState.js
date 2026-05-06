@@ -13,9 +13,9 @@ export default class IdleState extends State {
         state.pathTargetId = null;
         state.lastPathCalcTime = 0;
 
-        // 물리 마찰력 적용 (멈추기)
-        transform.vx *= 0.8;
-        transform.vy *= 0.8;
+        // 즉시 정지 (관성 제거)
+        transform.vx = 0;
+        transform.vy = 0;
 
         // 대기 타이머 처리 (3초마다 한 번씩 이동 시도)
         if (state.idleWaitTimer === undefined) {

@@ -14,133 +14,52 @@ export default class InputSystem extends System {
     setupInput() {
         this.canvas.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
-                const rect = this.canvas.getBoundingClientRect();
-                const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-
-                // 1. 활성화된 도구 확인
-                const activeTool = this.engine.toolManager?.activeTool;
-
-                // 2. 문 상호작용 체크 (활성화된 건설/소환 도구가 없을 때만)
-                const isActionTool = activeTool && !['inspect_entity', 'grab_entity', 'move_hand'].includes(activeTool.id);
-                if (!isActionTool) {
-                    const nearbyBuildings = this.engine.spatialHash.query(world.x, world.y, 20);
-                    for (const id of nearbyBuildings) {
-                        const ent = this.entityManager.entities.get(id);
-                        if (ent && ent.components.has('Door')) {
-                            const door = ent.components.get('Door');
-                            door.toggle();
-                            this.eventBus.emit('CACHE_PIXEL_UPDATE', { x: world.x, y: world.y, reason: 'door_toggle' });
-                            return;
-                        }
-                    }
-                }
-
-                // 🚀 ToolManager를 통한 도구 실행 위임 (이곳에서 INSPECT 명령 등이 나감)
-                if (this.engine.toolManager) {
-                    const cmd = this.engine.toolManager.handleMouseDown(world, e);
-                    if (cmd) this.engine.dispatchCommand(cmd);
-                }
-
-                // 🛠️ [Grab logic] 오직 grab_entity 도구가 선택되었을 때만 그랩 발동
-                if (activeTool?.id === 'grab_entity') {
-                    const nearest = this.findNearestEntity(world, 25); // 판정 범위를 약간 넉넉하게 조정
-                    if (nearest) {
-                        this.draggedEntityId = nearest;
-                        const ent = this.entityManager.entities.get(nearest);
-                        const state = ent?.components.get('AIState');
-                        if (state) state.pushMode('grabbed');
-                        GlobalLogger.info(`🫳 Grabbed Entity: ${nearest}`);
-                        return;
-                    }
-                }
-
-                // 🖐️ move_hand 도구 혹은 'view_' 계열(관찰용) 도구가 선택되었을 때 카메라 조작 허용
-                const isViewTool = activeTool && activeTool.id.startsWith('view_');
-                if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
-                    // 🗺️ [Zone System] 클릭한 좌표에 구역(Zone)이 있는지 확인
-                    let isZoneClicked = false;
-                    const zoneManager = this.engine.systemManager?.zoneManager;
-                    if (zoneManager && typeof zoneManager.handleClick === 'function') {
-                        isZoneClicked = zoneManager.handleClick(world.x, world.y);
-                    }
-
-                    // 구역을 클릭하지 않았을 때만 화면 패닝(카메라 이동) 시작
-                    if (!isZoneClicked) {
-                        this.camera.handleMouseDown(e);
-                    }
-                }
+                this.handleStart(e.clientX, e.clientY, e);
             } else if (e.button === 2) {
-                // 🖱️ [Right Click] 선택 해제 (Deselect)
                 this.eventBus.emit('INSPECT_REQUEST', { x: -10000, y: -10000 });
             }
         });
 
         window.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            const world = this.camera.screenToWorld(e.clientX, e.clientY, rect);
-
-            // 📍 Track mouse position for engine access (e.g. tooltips)
-            this.mouseScreen = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            this.mouseWorld = world;
-
-            // 3. 드래그 중인 개체 위치 업데이트
-            if (this.draggedEntityId) {
-                const ent = this.entityManager.entities.get(this.draggedEntityId);
-                const transform = ent?.components.get('Transform');
-                if (transform) {
-                    transform.x = world.x;
-                    transform.y = world.y;
-                    // 🛡️ [Safety Fix] spatialHash 존재 여부 및 update 메서드 체크
-                    const sh = this.engine.spatialHash;
-                    if (sh && typeof sh.update === 'function') {
-                        sh.update(this.draggedEntityId, world.x, world.y);
-                    }
-                }
-                return;
-            }
-
-            // 🚀 ToolManager를 통한 도구 실행 위임
-            if (this.engine.toolManager) {
-                const cmd = this.engine.toolManager.handleMouseMove(world, e);
-                if (cmd) this.engine.dispatchCommand(cmd);
-            }
-
-            const activeTool = this.engine.toolManager?.activeTool;
-            const isViewTool = activeTool && activeTool.id.startsWith('view_');
-            if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
-                this.camera.handleMouseMove(e);
-            }
+            this.handleMove(e.clientX, e.clientY, rect, e);
         });
 
-
         window.addEventListener('mouseup', (e) => {
-            // 4. 드래그 종료
-            if (this.draggedEntityId) {
-                const ent = this.entityManager.entities.get(this.draggedEntityId);
-                const state = ent?.components.get('AIState');
-                if (state && state.mode === 'grabbed') {
-                    state.popMode();
-                }
-                this.draggedEntityId = null;
-                return;
-            }
-
-            // 🚀 ToolManager를 통한 도구 실행 위임
-            if (this.engine.toolManager) {
-                const cmd = this.engine.toolManager.handleMouseUp(e);
-                if (cmd) this.engine.dispatchCommand(cmd);
-            }
-
-            const activeTool = this.engine.toolManager?.activeTool;
-            const isViewTool = activeTool && activeTool.id.startsWith('view_');
-            if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
-                this.camera.handleMouseUp();
-            }
+            this.handleEnd();
         });
 
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.camera.handleWheel(e);
+        }, { passive: false });
+
+        // 📱 Mobile Touch Support
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                this.handleStart(touch.clientX, touch.clientY, e);
+            } else if (e.touches.length === 2) {
+                this.camera.resetPinch();
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                this.handleMove(touch.clientX, touch.clientY, rect, e);
+            } else if (e.touches.length === 2) {
+                this.camera.handlePinch(e.touches[0], e.touches[1], rect);
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.handleEnd();
+            this.camera.resetPinch();
         }, { passive: false });
 
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -154,6 +73,109 @@ export default class InputSystem extends System {
                 this.eventBus.emit('INSPECT_REQUEST', { x: -10000, y: -10000 });
             }
         });
+    }
+
+    // 🔧 Refactored Input Handlers for both Mouse and Touch
+    handleStart(clientX, clientY, originalEvent) {
+        const rect = this.canvas.getBoundingClientRect();
+        const world = this.camera.screenToWorld(clientX, clientY, rect);
+        const activeTool = this.engine.toolManager?.activeTool;
+
+        const isActionTool = activeTool && !['inspect_entity', 'grab_entity', 'move_hand'].includes(activeTool.id);
+        if (!isActionTool) {
+            const nearbyBuildings = this.engine.spatialHash.query(world.x, world.y, 20);
+            for (const id of nearbyBuildings) {
+                const ent = this.entityManager.entities.get(id);
+                if (ent && ent.components.has('Door')) {
+                    const door = ent.components.get('Door');
+                    door.toggle();
+                    this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x: world.x, y: world.y, reason: 'door_toggle' });
+                    return;
+                }
+            }
+        }
+
+        if (this.engine.toolManager) {
+            const cmd = this.engine.toolManager.handleMouseDown(world, originalEvent);
+            if (cmd) this.engine.dispatchCommand(cmd);
+        }
+
+        if (activeTool?.id === 'grab_entity') {
+            const nearest = this.findNearestEntity(world, 25);
+            if (nearest) {
+                this.draggedEntityId = nearest;
+                const ent = this.entityManager.entities.get(nearest);
+                const state = ent?.components.get('AIState');
+                if (state) state.pushMode('grabbed');
+                return;
+            }
+        }
+
+        const isViewTool = activeTool && activeTool.id.startsWith('view_');
+        if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
+            let isZoneClicked = false;
+            const zoneManager = this.engine.systemManager?.zoneManager;
+            if (zoneManager && typeof zoneManager.handleClick === 'function') {
+                isZoneClicked = zoneManager.handleClick(world.x, world.y);
+            }
+            if (!isZoneClicked) {
+                this.camera.handleMouseDown({ clientX, clientY });
+            }
+        }
+    }
+
+    handleMove(clientX, clientY, rect, originalEvent) {
+        const world = this.camera.screenToWorld(clientX, clientY, rect);
+        this.mouseScreen = { x: clientX - rect.left, y: clientY - rect.top };
+        this.mouseWorld = world;
+
+        if (this.draggedEntityId) {
+            const ent = this.entityManager.entities.get(this.draggedEntityId);
+            const transform = ent?.components.get('Transform');
+            if (transform) {
+                transform.x = world.x;
+                transform.y = world.y;
+                const sh = this.engine.spatialHash;
+                if (sh && typeof sh.update === 'function') {
+                    sh.update(this.draggedEntityId, world.x, world.y);
+                }
+            }
+            return;
+        }
+
+        if (this.engine.toolManager) {
+            const cmd = this.engine.toolManager.handleMouseMove(world, originalEvent);
+            if (cmd) this.engine.dispatchCommand(cmd);
+        }
+
+        const activeTool = this.engine.toolManager?.activeTool;
+        const isViewTool = activeTool && activeTool.id.startsWith('view_');
+        if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
+            this.camera.handleMouseMove({ clientX, clientY, target: this.canvas });
+        }
+    }
+
+    handleEnd() {
+        if (this.draggedEntityId) {
+            const ent = this.entityManager.entities.get(this.draggedEntityId);
+            const state = ent?.components.get('AIState');
+            if (state && state.mode === 'grabbed') {
+                state.popMode();
+            }
+            this.draggedEntityId = null;
+            return;
+        }
+
+        if (this.engine.toolManager) {
+            const cmd = this.engine.toolManager.handleMouseUp();
+            if (cmd) this.engine.dispatchCommand(cmd);
+        }
+
+        const activeTool = this.engine.toolManager?.activeTool;
+        const isViewTool = activeTool && activeTool.id.startsWith('view_');
+        if (!activeTool || activeTool.id === 'move_hand' || isViewTool) {
+            this.camera.handleMouseUp();
+        }
     }
 
     update(dt, time) {

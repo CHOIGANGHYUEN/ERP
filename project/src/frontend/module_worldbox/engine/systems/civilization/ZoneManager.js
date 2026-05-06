@@ -6,6 +6,7 @@ export default class ZoneManager {
         this.eventBus = engine.eventBus;
         this.zones = new Map();
         this.nextZoneId = 1;
+        this.tileToZoneMap = new Map(); // 🚀 [Optimization] key: "tx,ty", value: zoneId
 
         // 🗺️ [Zone System] 구역 내 일거리/자원 고갈 시 작업자 재배치 처리
         if (this.eventBus) {
@@ -45,13 +46,17 @@ export default class ZoneManager {
         if (village && zone.territory && zone.territory.size > 0) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const key of zone.territory) {
-                const [tx, ty] = key.split(',').map(Number);
+                const tx = key & 0xFFFF;
+                const ty = key >> 16;
                 const x = tx * 16;
                 const y = ty * 16;
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
                 if (x + 16 > maxX) maxX = x + 16;
                 if (y + 16 > maxY) maxY = y + 16;
+                
+                // 🚀 [Map Sync]
+                this.tileToZoneMap.set(key, zoneId);
             }
             if (zone.bounds) {
                 zone.bounds.minX = minX;
@@ -75,21 +80,26 @@ export default class ZoneManager {
         const targetZone = this.zones.get(zoneId);
         if (!targetZone) return;
         
-        const key = `${tx},${ty}`;
+        const key = (ty << 16) | tx;
 
-        // 🚀 [Expert Logic] 중첩 방지: 같은 마을의 다른 구역에서 해당 타일을 제거합니다.
-        if (targetZone.villageId !== undefined) {
-            for (const other of this.zones.values()) {
-                if (other.id !== zoneId && other.villageId === targetZone.villageId) {
-                    if (other.territory && other.territory.has(key)) {
-                        other.territory.delete(key);
-                        this.syncVillageZone(other.id);
-                    }
+        // 🚀 [O(1) Strict Overlap Check] 이미 다른 구역이 이 타일을 점유하고 있는지 확인
+        const existingZoneId = this.tileToZoneMap.get(key);
+        if (existingZoneId && existingZoneId !== zoneId) {
+            const other = this.zones.get(existingZoneId);
+            if (other) {
+                // 타지마을 구역이라면 추가 실패
+                if (other.villageId !== undefined && other.villageId !== targetZone.villageId) {
+                    GlobalLogger.warn(`🚫 Zone Overlap Blocked: Tile ${key} is already claimed by Zone ${other.id} of Village ${other.villageId}`);
+                    return;
                 }
+                // 같은 마을의 다른 구역이라면 기존 구역에서 제거
+                other.territory.delete(key);
+                this.syncVillageZone(other.id);
             }
         }
 
         targetZone.territory.add(key);
+        this.tileToZoneMap.set(key, zoneId);
         this.syncVillageZone(zoneId);
     }
 
@@ -97,7 +107,11 @@ export default class ZoneManager {
     removeTileFromZone(zoneId, tx, ty) {
         const zone = this.zones.get(zoneId);
         if (!zone) return;
-        zone.territory.delete(`${tx},${ty}`);
+        const key = (ty << 16) | tx;
+        zone.territory.delete(key);
+        if (this.tileToZoneMap.get(key) === zoneId) {
+            this.tileToZoneMap.delete(key);
+        }
         this.syncVillageZone(zoneId);
     }
 
@@ -123,7 +137,8 @@ export default class ZoneManager {
         const vTy = Math.floor(village.centerY / 16);
 
         for (const key of allTiles) {
-            const [tx, ty] = key.split(',').map(Number);
+            const tx = key & 0xFFFF;
+            const ty = key >> 16;
             const distSq = (tx - vTx) ** 2 + (ty - vTy) ** 2;
 
             // 1. 마을 중심에서 가까운 타일(반경 4타일 이내)은 무조건 주거 구역
@@ -209,6 +224,15 @@ export default class ZoneManager {
     removeZone(zoneId) {
         const zone = this.zones.get(zoneId);
         if (zone) {
+            // 🚀 [Map Cleanup]
+            if (zone.territory) {
+                for (const key of zone.territory) {
+                    if (this.tileToZoneMap.get(key) === zoneId) {
+                        this.tileToZoneMap.delete(key);
+                    }
+                }
+            }
+
             if (zone.assignedWorkers) {
                 for (const workerId of [...zone.assignedWorkers]) {
                     this.unassignWorker(zoneId, workerId);
@@ -225,7 +249,7 @@ export default class ZoneManager {
     getZoneAt(x, y) {
         const tx = Math.floor(x / 16);
         const ty = Math.floor(y / 16);
-        const key = `${tx},${ty}`;
+        const key = (ty << 16) | tx;
 
         for (const zone of this.zones.values()) {
             if (zone.territory && zone.territory.size > 0) {
@@ -283,7 +307,7 @@ export default class ZoneManager {
                         if (transform) {
                             const tx = Math.floor(transform.x / 16);
                             const ty = Math.floor(transform.y / 16);
-                            if (village.territory.has(`${tx},${ty}`)) {
+                            if (village.territory.has((ty << 16) | tx)) {
                                 entities.push(entity);
                             }
                         }
@@ -300,7 +324,7 @@ export default class ZoneManager {
                     if (isIrregular) {
                         const tx = Math.floor(transform.x / 16);
                         const ty = Math.floor(transform.y / 16);
-                        if (village.territory.has(`${tx},${ty}`)) {
+                        if (village.territory.has((ty << 16) | tx)) {
                             entities.push(entity);
                         }
                     } else if (zone.contains(transform.x, transform.y)) {
@@ -372,7 +396,8 @@ export default class ZoneManager {
                 ctx.lineWidth = 1 * camera.zoom;
 
                 for (const key of zone.territory) {
-                    const [tx, ty] = key.split(',').map(Number);
+                    const tx = key & 0xFFFF;
+                    const ty = key >> 16;
                     const worldX = tx * TILE_SIZE;
                     const worldY = ty * TILE_SIZE;
 

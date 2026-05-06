@@ -306,15 +306,39 @@ export default class UISystem extends System {
 
     handleSelect(worldPos) {
         let nearest = null;
-        let minDist = 30;
+        let minDistSq = 900; // 30^2
 
-        for (const [id, entity] of this.entityManager.entities) {
-            const t = entity.components.get('Transform');
-            if (t) {
-                const dist = Math.sqrt((t.x - worldPos.x) ** 2 + (t.y - worldPos.y) ** 2);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearest = id;
+        // 🚀 [Expert Optimization] 모든 엔티티를 순회(O(N))하는 대신 SpatialHash 기반 Spiral Search 사용
+        if (this.engine.spatialHash) {
+            this.engine.spatialHash.eachInSpiral(worldPos.x, worldPos.y, 30, (id) => {
+                const entity = this.entityManager.entities.get(id);
+                if (!entity) return false;
+                
+                const t = entity.components.get('Transform');
+                if (t) {
+                    const dx = t.x - worldPos.x;
+                    const dy = t.y - worldPos.y;
+                    const dSq = dx * dx + dy * dy;
+                    if (dSq < minDistSq) {
+                        minDistSq = dSq;
+                        nearest = id;
+                        return true; // 클릭 판정은 가장 가까운 하나만 찾으면 되므로 즉시 중단
+                    }
+                }
+                return false;
+            });
+        } else {
+            // Fallback: SpatialHash가 없을 경우에만 전수 조사
+            for (const [id, entity] of this.entityManager.entities) {
+                const t = entity.components.get('Transform');
+                if (t) {
+                    const dx = t.x - worldPos.x;
+                    const dy = t.y - worldPos.y;
+                    const dSq = dx * dx + dy * dy;
+                    if (dSq < minDistSq) {
+                        minDistSq = dSq;
+                        nearest = id;
+                    }
                 }
             }
         }

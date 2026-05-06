@@ -7,6 +7,9 @@ export default class HuntState extends State {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
 
+        // 🛡️ [Busy Protection] 사냥 중에는 중단되지 않도록 보호
+        state.interruptible = false;
+
         const target = this.system.entityManager.entities.get(state.targetId);
         if (!target) {
             state.targetId = null;
@@ -54,6 +57,21 @@ export default class HuntState extends State {
 
                 if (targetHealth) {
                     const isDead = targetHealth.takeDamage(damage);
+                    
+                    // 📊 BaseStats 동기화
+                    const targetStats = target.components.get('BaseStats');
+                    if (targetStats) targetStats.takeDamage(damage);
+
+                    // 🚀 [Expert Feedback] 플로팅 데미지 텍스트 생성
+                    if (this.system.eventBus) {
+                        this.system.eventBus.emit('SPAWN_FLOATING_TEXT', {
+                            x: tPos.x, y: tPos.y - 5,
+                            text: `-${Math.round(damage)}`,
+                            color: '#ff4d4d',
+                            options: { size: 14, vy: -1.5 }
+                        });
+                    }
+
                     if (isDead) {
                         // 사냥 성공 -> Forage 상태로 전이하여 드랍된 고기를 찾도록 함
                         state.targetId = null;

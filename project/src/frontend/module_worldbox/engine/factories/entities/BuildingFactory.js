@@ -109,10 +109,11 @@ export default class BuildingFactory extends IEntityFactory {
                     const idx = this.engine.terrainGen.getIndex(x + dx, y + dy);
                     if (this.engine.terrainGen.isValidIndex(idx)) {
                         this.engine.terrainGen.fertilityBuffer[idx] = 0;
+                        this.engine.terrainGen.syncPackedPixel(idx);
                     }
                 }
             }
-            this.engine.eventBus.emit('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'building_placed' });
+            this.engine.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'building_placed' });
         }
 
         return id;

@@ -175,6 +175,21 @@ const confirmSettings = () => {
   animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+@media (max-width: 768px) {
+  .settings-card {
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .card-header, .settings-body, .card-footer {
+    padding: 20px;
+  }
+  .grid-settings {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
 .card-header {
   padding: 30px 40px;
   background: linear-gradient(to right, rgba(46, 125, 50, 0.2), transparent);

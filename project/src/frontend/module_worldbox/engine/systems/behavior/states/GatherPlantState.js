@@ -16,6 +16,9 @@ export default class GatherPlantState extends State {
 
         if (!state || !transform || !inventory) return AnimalStates.IDLE;
 
+        // 🛡️ [Busy Protection] 채집 작업 중에는 중단 방지
+        state.interruptible = false;
+
         // 1. 인벤토리 체크
         if (inventory.getTotal() >= inventory.capacity) {
             state.targetId = null;

@@ -13,6 +13,20 @@ export default class EntityRenderer {
     constructor(engine) {
         this.engine = engine;
         this.spriteCache = new Map(); 
+        this._initShadowSprite();
+    }
+
+    /** 🌑 그림자용 공용 스프라이트 생성 (GC 및 연산 감소) */
+    _initShadowSprite() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(16, 16, 2, 16, 16, 14);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0.35)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 32, 32);
+        this.shadowSprite = canvas;
     }
 
     /** 메인 렌더링 루프 */
@@ -90,7 +104,10 @@ export default class EntityRenderer {
 
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
-                if (this.engine.viewFlags.debugAI && camera.zoom > 0.8 && state) {
+                
+                // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 매우 근접한 경우에만 렌더링
+                const shouldShowAIDebug = this.engine.viewFlags.debugAI && (id === this.engine.selectedId || (camera.zoom > 2.0 && renderList.indexOf(item) < 10));
+                if (shouldShowAIDebug && state) {
                     this.renderAIDebug(ctx, t, state, id);
                 }
             } else {
@@ -130,35 +147,27 @@ export default class EntityRenderer {
 
     /** 🌑 통합 그림자 렌더링 시스템 */
     renderShadow(ctx, t, v, entity, time) {
+        if (v.alpha === 0) return;
+
         const size = v.size || 10;
         const type = v.type;
         
-        // 사망하거나 비주얼이 꺼져있으면 그림자 생략
-        if (v.alpha === 0) return;
-
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
-        
-        // 🌀 호흡/모션에 따른 동적 그림자 크기 변화
         let breathScale = 1.0;
         if (entity.components.has('Animal')) {
             breathScale = 1.0 + Math.sin(time * 0.003) * 0.05;
         }
 
-        let sw = size * 0.8 * breathScale;
-        let sh = size * 0.3 * breathScale;
+        const sw = size * 1.6 * breathScale;
+        const sh = size * 0.6 * breathScale;
 
-        // 나무는 더 크고 진한 그림자
-        if (type === 'tree') {
-            sw *= 1.2;
-            sh *= 1.2;
-        }
-
-        ctx.beginPath();
-        ctx.ellipse(0, 1, sw, sh, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-        ctx.fill();
-        ctx.restore();
+        // 🚀 [Expert Optimization] ellipse/fill 대신 미리 생성된 그림자 스프라이트 사용
+        // ctx.save/restore 없이 drawImage로만 렌더링하여 성능 극대화
+        ctx.drawImage(
+            this.shadowSprite, 
+            Math.floor(t.x - sw / 2), 
+            Math.floor(t.y - sh / 2 + 1), 
+            sw, sh
+        );
     }
 
     /** 🌊 수면 파동 효과 (타일 기반 감지) */
@@ -452,24 +461,39 @@ export default class EntityRenderer {
     }
 
     renderParticles(ctx, particles) {
-        for (const p of particles) {
-            ctx.save();
-            ctx.globalAlpha = p.alpha !== undefined ? p.alpha : 1.0;
-            ctx.fillStyle = p.color;
+        // 🚀 [Optimization] 파티클 렌더링 시 save/restore 횟수를 최소화하고 rgba 활용
+        for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            const alpha = p.alpha !== undefined ? p.alpha : 1.0;
+            
             if (p.type === 'ZZZ') {
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = p.color;
                 ctx.font = `${p.size}px Arial`;
                 ctx.fillText(p.text, p.x, p.y);
-            } else if (p.type === 'DUST') {
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            } else if (p.type === 'BLOOD') {
-                ctx.fillRect(p.x, p.y, p.size, p.size);
+                ctx.restore();
             } else {
-                const s = p.size || 1.5;
-                ctx.fillRect(p.x, p.y, s, s);
+                // 단순 사각형/원형 파티클은 save 없이 렌더링
+                ctx.fillStyle = p.color;
+                if (alpha < 1.0) {
+                    // 투명도가 있는 경우 globalAlpha 대신 색상 스트링 조작 고려 가능하나 여기선 유지
+                    ctx.globalAlpha = alpha;
+                }
+                
+                if (p.type === 'DUST') {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (p.type === 'BLOOD') {
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                } else {
+                    const s = p.size || 1.5;
+                    ctx.fillRect(p.x, p.y, s, s);
+                }
+                
+                if (alpha < 1.0) ctx.globalAlpha = 1.0;
             }
-            ctx.restore();
         }
     }
 

@@ -6,11 +6,12 @@ import FillBrush from '../systems/tools/brushes/FillBrush.js';
 
 // 🛠️ Base Tool Interface
 export class Tool {
-    constructor({ id, name, icon, category }) {
+    constructor({ id, name, icon, category, description }) {
         this.id = id;
         this.name = name;
         this.icon = icon;
         this.category = category;
+        this.description = description || '';
         this.isInstant = false;
         this.isBrush = false;
     }
@@ -22,14 +23,14 @@ export class Tool {
 }
 
 export class MoveTool extends Tool {
-    constructor() { super({ id: 'move_hand', name: 'Move', icon: '🖐️', category: 'Interaction' }); }
+    constructor() { super({ id: 'move_hand', name: 'Move', icon: '🖐️', category: 'Interaction', description: '카메라를 이동하거나 지형을 둘러봅니다.' }); }
     onMouseDown(worldPos, e) { return { type: 'CAMERA_DOWN', event: e }; }
     onMouseMove(worldPos, e) { return { type: 'CAMERA_MOVE', event: e }; }
     onMouseUp(e) { return { type: 'CAMERA_UP' }; }
 }
 
 export class GrabTool extends Tool {
-    constructor() { super({ id: 'grab_entity', name: 'Grab', icon: '🫳', category: 'Interaction' }); }
+    constructor() { super({ id: 'grab_entity', name: 'Grab', icon: '🫳', category: 'Interaction', description: '생명체를 잡아 원하는 위치로 옮깁니다.' }); }
 }
 
 export class BrushTool extends Tool {
@@ -131,6 +132,32 @@ export class BuildTool extends Tool {
     }
 }
 
+export class GodPowerTool extends Tool {
+    constructor(config) {
+        super(config);
+        this.powerType = config.powerType;
+        this.radius = config.radius || 30;
+        this.isContinuous = config.isContinuous || false;
+    }
+
+    onMouseDown(worldPos) {
+        return { 
+            type: 'APPLY_GOD_POWER', 
+            payload: { powerType: this.powerType, x: worldPos.x, y: worldPos.y, radius: this.radius } 
+        };
+    }
+
+    onMouseMove(worldPos) {
+        if (this.isContinuous) {
+            return { 
+                type: 'APPLY_GOD_POWER', 
+                payload: { powerType: this.powerType, x: worldPos.x, y: worldPos.y, radius: this.radius } 
+            };
+        }
+        return null;
+    }
+}
+
 export class ToggleTool extends Tool {
     constructor(config) {
         super(config);
@@ -151,7 +178,7 @@ export class ToggleTool extends Tool {
 }
 
 export class InspectTool extends Tool {
-    constructor() { super({ id: 'inspect_entity', name: 'Inspect', icon: '🔍', category: 'View' }); }
+    constructor() { super({ id: 'inspect_entity', name: 'Inspect', icon: '🔍', category: 'View', description: '개체나 건물의 상세 정보를 확인합니다.' }); }
     onMouseDown(worldPos) {
         return { type: 'INSPECT', payload: { worldPos } };
     }
@@ -163,20 +190,20 @@ export const DefaultTools = (engine) => [
     new GrabTool(),
     
     // 🎨 Fill (전략 패턴 적용: FillBrush)
-    new BrushTool({ id: 'fill_grass', name: 'Fill Meadow', icon: '🎨', category: 'Landscape', biome: 'GRASS', strategy: new FillBrush(engine) }),
-    new BrushTool({ id: 'fill_dirt', name: 'Fill Dirt', icon: '🧱', category: 'Landscape', biome: 'DIRT', strategy: new FillBrush(engine) }),
+    new BrushTool({ id: 'fill_grass', name: 'Fill Meadow', icon: '🎨', category: 'Landscape', biome: 'GRASS', strategy: new FillBrush(engine), description: '전체 지형을 푸른 초원으로 뒤덮습니다.' }),
+    new BrushTool({ id: 'fill_dirt', name: 'Fill Dirt', icon: '🧱', category: 'Landscape', biome: 'DIRT', strategy: new FillBrush(engine), description: '전체 지형을 메마른 흙으로 뒤덮습니다.' }),
     
     // 🌍 Landscape (전략 패턴 적용: DrawBrush)
-    new BrushTool({ id: 'paint_grass', name: 'Meadow', icon: '🌱', category: 'Landscape', color: '#a8e063', biome: 'GRASS', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_jungle', name: 'Jungle', icon: '🌳', category: 'Landscape', color: '#2d5a27', biome: 'JUNGLE', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_dirt', name: 'Dirt', icon: '🟫', category: 'Landscape', color: '#8d6e63', biome: 'DIRT', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_sand', name: 'Desert', icon: '🏜️', category: 'Landscape', color: '#f4d03f', biome: 'SAND', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_ocean', name: 'Ocean', icon: '💧', category: 'Landscape', color: '#3498db', biome: 'OCEAN', strategy: new DrawBrush(engine), brushSize: 3 }),
-    new BrushTool({ id: 'paint_deep_ocean', name: 'Deep Ocean', icon: '🌊', category: 'Landscape', color: '#1a5276', biome: 'DEEP_OCEAN', strategy: new DrawBrush(engine), brushSize: 3 }),
-    new BrushTool({ id: 'paint_lake', name: 'Lake', icon: '💎', category: 'Landscape', color: '#5dade2', biome: 'LAKE', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_river', name: 'River', icon: '🏞️', category: 'Landscape', color: '#85c1e9', biome: 'RIVER', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_low_mountain', name: 'Mountain', icon: '⛰️', category: 'Landscape', color: '#85929e', biome: 'LOW_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2 }),
-    new BrushTool({ id: 'paint_high_mountain', name: 'High Peak', icon: '🏔️', category: 'Landscape', color: '#fdfefe', biome: 'HIGH_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2 }),
+    new BrushTool({ id: 'paint_grass', name: 'Meadow', icon: '🌱', category: 'Landscape', color: '#a8e063', biome: 'GRASS', strategy: new DrawBrush(engine), brushSize: 2, description: '풀이 무성한 초원을 칠합니다.' }),
+    new BrushTool({ id: 'paint_jungle', name: 'Jungle', icon: '🌳', category: 'Landscape', color: '#2d5a27', biome: 'JUNGLE', strategy: new DrawBrush(engine), brushSize: 2, description: '습하고 울창한 정글 지형을 칠합니다.' }),
+    new BrushTool({ id: 'paint_dirt', name: 'Dirt', icon: '🟫', category: 'Landscape', color: '#8d6e63', biome: 'DIRT', strategy: new DrawBrush(engine), brushSize: 2, description: '거친 흙바닥을 칠합니다.' }),
+    new BrushTool({ id: 'paint_sand', name: 'Desert', icon: '🏜️', category: 'Landscape', color: '#f4d03f', biome: 'SAND', strategy: new DrawBrush(engine), brushSize: 2, description: '뜨거운 모래 사막을 칠합니다.' }),
+    new BrushTool({ id: 'paint_ocean', name: 'Ocean', icon: '💧', category: 'Landscape', color: '#3498db', biome: 'OCEAN', strategy: new DrawBrush(engine), brushSize: 3, description: '맑은 바닷물을 칠합니다.' }),
+    new BrushTool({ id: 'paint_deep_ocean', name: 'Deep Ocean', icon: '🌊', category: 'Landscape', color: '#1a5276', biome: 'DEEP_OCEAN', strategy: new DrawBrush(engine), brushSize: 3, description: '어둡고 깊은 심해를 칠합니다.' }),
+    new BrushTool({ id: 'paint_lake', name: 'Lake', icon: '💎', category: 'Landscape', color: '#5dade2', biome: 'LAKE', strategy: new DrawBrush(engine), brushSize: 2, description: '잔잔한 호수를 칠합니다.' }),
+    new BrushTool({ id: 'paint_river', name: 'River', icon: '🏞️', category: 'Landscape', color: '#85c1e9', biome: 'RIVER', strategy: new DrawBrush(engine), brushSize: 2, description: '흐르는 강물을 칠합니다.' }),
+    new BrushTool({ id: 'paint_low_mountain', name: 'Mountain', icon: '⛰️', category: 'Landscape', color: '#85929e', biome: 'LOW_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2, description: '험준한 바위 산을 칠합니다.' }),
+    new BrushTool({ id: 'paint_high_mountain', name: 'High Peak', icon: '🏔️', category: 'Landscape', color: '#fdfefe', biome: 'HIGH_MOUNTAIN', strategy: new DrawBrush(engine), brushSize: 2, description: '눈 덮인 고산 지대를 칠합니다.' }),
     
     // 🌱 Nature (Trees & Plants - SprayBrush)
     new SingleSpawnTool({ id: 'single_tree_normal', name: 'Oak (1)', icon: '🌳', category: 'Nature', resourceId: 'tree_oak' }),
@@ -202,70 +229,77 @@ export const DefaultTools = (engine) => [
     new BrushTool({ id: 'spawn_medicinal', name: 'Herb', icon: '🌿', category: 'Nature', actionType: 'SPAWN_RESOURCE', resourceId: 'medicinal_herb', color: '#81c784', count: 6, strategy: new SprayBrush(engine), brushSize: 15 }),
 
     // ⛏️ Resources (전략 패턴 적용: SprayBrush)
-    new BrushTool({ id: 'spawn_stone', name: 'Stone', icon: '🪨', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'stone', color: '#9e9e9e', count: 5, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_coal', name: 'Coal', icon: '⬛', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'coal', color: '#212121', count: 8, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_iron', name: 'Iron', icon: '⛓️', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'iron', color: '#757575', count: 6, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_copper', name: 'Copper', icon: '🟠', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'copper', color: '#d84315', count: 6, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_gold', name: 'Gold', icon: '🟡', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'gold', color: '#fbc02d', count: 4, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_silver', name: 'Silver', icon: '⚪', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'silver', color: '#b0bec5', count: 4, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_gems', name: 'Gems', icon: '💎', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'gems', color: '#00bcd4', count: 2, strategy: new SprayBrush(engine), brushSize: 15 }),
-    new BrushTool({ id: 'spawn_obsidian', name: 'Obsidian', icon: '🖤', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'obsidian', color: '#263238', count: 4, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_clay', name: 'Clay', icon: '🏺', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'clay', color: '#a1887f', count: 8, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_flint', name: 'Flint', icon: '🔪', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'flint', color: '#546e7a', count: 8, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_salt', name: 'Salt', icon: '🧂', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'salt', color: '#ffffff', count: 10, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_mud', name: 'Mud', icon: '🥣', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'mud', color: '#5d4037', count: 12, strategy: new SprayBrush(engine), brushSize: 20 }),
-    new BrushTool({ id: 'spawn_sand_res', name: 'Sand', icon: '⏳', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'sand', color: '#ffe082', count: 15, strategy: new SprayBrush(engine), brushSize: 25 }),
+    new BrushTool({ id: 'spawn_stone', name: 'Stone', icon: '🪨', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'stone', color: '#9e9e9e', count: 5, strategy: new SprayBrush(engine), brushSize: 20, description: '단단한 돌덩이를 배치합니다.' }),
+    new BrushTool({ id: 'spawn_coal', name: 'Coal', icon: '⬛', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'coal', color: '#212121', count: 8, strategy: new SprayBrush(engine), brushSize: 20, description: '석탄 광맥을 형성합니다.' }),
+    new BrushTool({ id: 'spawn_iron', name: 'Iron', icon: '⛓️', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'iron', color: '#757575', count: 6, strategy: new SprayBrush(engine), brushSize: 20, description: '철 광맥을 형성합니다.' }),
+    new BrushTool({ id: 'spawn_copper', name: 'Copper', icon: '🟠', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'copper', color: '#d84315', count: 6, strategy: new SprayBrush(engine), brushSize: 20, description: '구리 광맥을 형성합니다.' }),
+    new BrushTool({ id: 'spawn_gold', name: 'Gold', icon: '🟡', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'gold', color: '#fbc02d', count: 4, strategy: new SprayBrush(engine), brushSize: 20, description: '귀한 금 광맥을 형성합니다.' }),
+    new BrushTool({ id: 'spawn_silver', name: 'Silver', icon: '⚪', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'silver', color: '#b0bec5', count: 4, strategy: new SprayBrush(engine), brushSize: 20, description: '은 광맥을 형성합니다.' }),
+    new BrushTool({ id: 'spawn_gems', name: 'Gems', icon: '💎', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'gems', color: '#00bcd4', count: 2, strategy: new SprayBrush(engine), brushSize: 15, description: '영롱한 보석 광맥을 형성합니다.' }),
+    new BrushTool({ id: 'spawn_obsidian', name: 'Obsidian', icon: '🖤', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'obsidian', color: '#263238', count: 4, strategy: new SprayBrush(engine), brushSize: 20, description: '날카로운 흑요석을 배치합니다.' }),
+    new BrushTool({ id: 'spawn_clay', name: 'Clay', icon: '🏺', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'clay', color: '#a1887f', count: 8, strategy: new SprayBrush(engine), brushSize: 20, description: '점토를 얻을 수 있는 지형을 만듭니다.' }),
+    new BrushTool({ id: 'spawn_flint', name: 'Flint', icon: '🔪', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'flint', color: '#546e7a', count: 8, strategy: new SprayBrush(engine), brushSize: 20, description: '부싯돌 바위를 배치합니다.' }),
+    new BrushTool({ id: 'spawn_salt', name: 'Salt', icon: '🧂', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'salt', color: '#ffffff', count: 10, strategy: new SprayBrush(engine), brushSize: 20, description: '소금 결정을 배치합니다.' }),
+    new BrushTool({ id: 'spawn_mud', name: 'Mud', icon: '🥣', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'mud', color: '#5d4037', count: 12, strategy: new SprayBrush(engine), brushSize: 20, description: '진흙탕을 만듭니다.' }),
+    new BrushTool({ id: 'spawn_sand_res', name: 'Sand', icon: '⏳', category: 'Resources', actionType: 'SPAWN_RESOURCE', resourceId: 'sand', color: '#ffe082', count: 15, strategy: new SprayBrush(engine), brushSize: 25, description: '모래 더미를 배치합니다.' }),
 
     // 📦 Items (Collectible - 수집 대상)
-    new ItemSpawnTool({ id: 'item_wood', name: 'Wood Log', icon: '🪵', category: 'Items', itemType: 'wood', amount: 5 }),
-    new ItemSpawnTool({ id: 'item_stone', name: 'Stone Piece', icon: '🪨', category: 'Items', itemType: 'stone', amount: 3 }),
-    new ItemSpawnTool({ id: 'item_meat', name: 'Raw Meat', icon: '🥩', category: 'Items', itemType: 'meat', amount: 1 }),
-    new ItemSpawnTool({ id: 'item_fruit', name: 'Fruit', icon: '🍎', category: 'Items', itemType: 'fruit', amount: 2 }),
-    new ItemSpawnTool({ id: 'item_grass', name: 'Grass Item', icon: '🌾', category: 'Items', itemType: 'grass', amount: 3 }),
-    new ItemSpawnTool({ id: 'item_milk', name: 'Milk Jar', icon: '🥛', category: 'Items', itemType: 'milk', amount: 1 }),
-    new ItemSpawnTool({ id: 'item_poop', name: 'Fertilizer', icon: '💩', category: 'Items', itemType: 'poop', amount: 1 }),
-    new ItemSpawnTool({ id: 'item_gold', name: 'Gold Ingot', icon: '🟡', category: 'Items', itemType: 'gold', amount: 1 }),
+    new ItemSpawnTool({ id: 'item_wood', name: 'Wood Log', icon: '🪵', category: 'Items', itemType: 'wood', amount: 5, description: '주민들이 수집할 수 있는 나무 통나무 더미를 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_stone', name: 'Stone Piece', icon: '🪨', category: 'Items', itemType: 'stone', amount: 3, description: '주민들이 수집할 수 있는 돌 조각을 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_meat', name: 'Raw Meat', icon: '🥩', category: 'Items', itemType: 'meat', amount: 1, description: '신선한 생고기를 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_fruit', name: 'Fruit', icon: '🍎', category: 'Items', itemType: 'fruit', amount: 2, description: '달콤한 과일을 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_grass', name: 'Grass Item', icon: '🌾', category: 'Items', itemType: 'grass', amount: 3, description: '수집 가능한 풀 더미를 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_milk', name: 'Milk Jar', icon: '🥛', category: 'Items', itemType: 'milk', amount: 1, description: '영양가 높은 우유병을 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_poop', name: 'Fertilizer', icon: '💩', category: 'Items', itemType: 'poop', amount: 1, description: '비옥도를 높이는 거름을 투하합니다.' }),
+    new ItemSpawnTool({ id: 'item_gold', name: 'Gold Ingot', icon: '🟡', category: 'Items', itemType: 'gold', amount: 1, description: '반짝이는 금괴를 투하합니다.' }),
 
     // 🐑 Life (Creatures)
-    new SpawnTool({ id: 'spawn_sheep', name: 'Sheep', icon: '🐑', category: 'Life', spawnMethod: 'spawnSheep' }),
-    new SpawnTool({ id: 'spawn_cow', name: 'Cow', icon: '🐄', category: 'Life', spawnMethod: 'spawnCow' }),
-    new SpawnTool({ id: 'spawn_human', name: 'Human', icon: '👤', category: 'Life', spawnMethod: 'spawnHuman' }),
-    new SpawnTool({ id: 'spawn_wolf', name: 'Wolf', icon: '🐺', category: 'Life', spawnMethod: 'spawnWolf' }),
-    new SpawnTool({ id: 'spawn_hyena', name: 'Hyena', icon: '🐾', category: 'Life', spawnMethod: 'spawnHyena' }),
-    new SpawnTool({ id: 'spawn_wild_dog', name: 'Wild Dog', icon: '🐕', category: 'Life', spawnMethod: 'spawnWildDog' }),
+    new SpawnTool({ id: 'spawn_sheep', name: 'Sheep', icon: '🐑', category: 'Life', spawnMethod: 'spawnSheep', description: '온순한 양을 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_cow', name: 'Cow', icon: '🐄', category: 'Life', spawnMethod: 'spawnCow', description: '젖을 주는 소를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_human', name: 'Human', icon: '👤', category: 'Life', spawnMethod: 'spawnHuman', description: '문명을 건설할 인간을 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_wolf', name: 'Wolf', icon: '🐺', category: 'Life', spawnMethod: 'spawnWolf', description: '야생의 늑대를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_hyena', name: 'Hyena', icon: '🐾', category: 'Life', spawnMethod: 'spawnHyena', description: '무리를 짓는 하이에나를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_wild_dog', name: 'Wild Dog', icon: '🐕', category: 'Life', spawnMethod: 'spawnWildDog', description: '빠른 들개를 소환합니다.' }),
     
     // 🦁 Predators
-    new SpawnTool({ id: 'spawn_tiger', name: 'Tiger', icon: '🐅', category: 'Life', spawnMethod: 'spawnTiger' }),
-    new SpawnTool({ id: 'spawn_lion', name: 'Lion', icon: '🦁', category: 'Life', spawnMethod: 'spawnLion' }),
-    new SpawnTool({ id: 'spawn_bear', name: 'Bear', icon: '🐻', category: 'Life', spawnMethod: 'spawnBear' }),
-    new SpawnTool({ id: 'spawn_fox', name: 'Fox', icon: '🦊', category: 'Life', spawnMethod: 'spawnFox' }),
-    new SpawnTool({ id: 'spawn_crocodile', name: 'Crocodile', icon: '🐊', category: 'Life', spawnMethod: 'spawnCrocodile' }),
+    new SpawnTool({ id: 'spawn_tiger', name: 'Tiger', icon: '🐅', category: 'Life', spawnMethod: 'spawnTiger', description: '강력한 호랑이를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_lion', name: 'Lion', icon: '🦁', category: 'Life', spawnMethod: 'spawnLion', description: '백수의 왕 사자를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_bear', name: 'Bear', icon: '🐻', category: 'Life', spawnMethod: 'spawnBear', description: '거대한 곰을 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_fox', name: 'Fox', icon: '🦊', category: 'Life', spawnMethod: 'spawnFox', description: '영리한 여우를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_crocodile', name: 'Crocodile', icon: '🐊', category: 'Life', spawnMethod: 'spawnCrocodile', description: '위험한 악어를 소환합니다.' }),
 
     // 🦌 Herbivores
-    new SpawnTool({ id: 'spawn_deer', name: 'Deer', icon: '🦌', category: 'Life', spawnMethod: 'spawnDeer' }),
-    new SpawnTool({ id: 'spawn_rabbit', name: 'Rabbit', icon: '🐇', category: 'Life', spawnMethod: 'spawnRabbit' }),
-    new SpawnTool({ id: 'spawn_horse', name: 'Horse', icon: '🐎', category: 'Life', spawnMethod: 'spawnHorse' }),
-    new SpawnTool({ id: 'spawn_elephant', name: 'Elephant', icon: '🐘', category: 'Life', spawnMethod: 'spawnElephant' }),
-    new SpawnTool({ id: 'spawn_goat', name: 'Goat', icon: '🐐', category: 'Life', spawnMethod: 'spawnGoat' }),
+    new SpawnTool({ id: 'spawn_deer', name: 'Deer', icon: '🦌', category: 'Life', spawnMethod: 'spawnDeer', description: '우아한 사슴을 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_rabbit', name: 'Rabbit', icon: '🐇', category: 'Life', spawnMethod: 'spawnRabbit', description: '번식력이 강한 토끼를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_horse', name: 'Horse', icon: '🐎', category: 'Life', spawnMethod: 'spawnHorse', description: '빠른 말을 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_elephant', name: 'Elephant', icon: '🐘', category: 'Life', spawnMethod: 'spawnElephant', description: '장엄한 코끼리를 소환합니다.' }),
+    new SpawnTool({ id: 'spawn_goat', name: 'Goat', icon: '🐐', category: 'Life', spawnMethod: 'spawnGoat', description: '산양을 소환합니다.' }),
     
     // 🏘️ Civilization (Buildings)
-    new BuildTool({ id: 'build_house', name: 'Wood House', icon: '🏠', category: 'Civilization', buildingType: 'house' }),
-    new BuildTool({ id: 'build_fence', name: 'Fence', icon: '🚧', category: 'Civilization', buildingType: 'fence' }),
-    new BuildTool({ id: 'build_gate', name: 'Fence Gate', icon: '🚪', category: 'Civilization', buildingType: 'fence_gate' }),
+    new BuildTool({ id: 'build_house', name: 'Wood House', icon: '🏠', category: 'Civilization', buildingType: 'house', description: '주민들이 거주할 수 있는 통나무 집 청사진을 배치합니다.' }),
+    new BuildTool({ id: 'build_fence', name: 'Fence', icon: '🚧', category: 'Civilization', buildingType: 'fence', description: '영역을 구분하는 울타리를 세웁니다.' }),
+    new BuildTool({ id: 'build_gate', name: 'Fence Gate', icon: '🚪', category: 'Civilization', buildingType: 'fence_gate', description: '울타리 사이를 지날 수 있는 문을 설치합니다.' }),
+
+    // ⚡ God Powers (신적 권능)
+    new GodPowerTool({ id: 'power_meteor', name: 'Meteor', icon: '☄️', category: 'God Powers', powerType: 'meteor', radius: 40, description: '거대한 운석을 투하하여 지형을 파괴하고 생명체를 소멸시킵니다.' }),
+    new GodPowerTool({ id: 'power_lightning', name: 'Lightning', icon: '⚡', category: 'God Powers', powerType: 'lightning', radius: 15, description: '강력한 번개를 내리쳐 적들을 심판합니다.' }),
+    new GodPowerTool({ id: 'power_magnet', name: 'Magnet', icon: '🧲', category: 'God Powers', powerType: 'magnet', radius: 60, isContinuous: true, description: '떨어진 아이템들을 커서 방향으로 강력하게 끌어당깁니다.' }),
+    new GodPowerTool({ id: 'power_bless', name: 'Blessing', icon: '✨', category: 'God Powers', powerType: 'bless', radius: 30, description: '생명체들의 체력을 회복시키고 대지를 축복합니다.' }),
+    new GodPowerTool({ id: 'power_disaster', name: 'Clean Up', icon: '💀', category: 'God Powers', powerType: 'disaster', radius: 50, description: '범위 내의 모든 생명체를 즉시 제거합니다.' }),
 
     // 👁️ View (Filters)
-    new ToggleTool({ id: 'view_wind', name: 'Wind View', icon: '🌬️', category: 'View', flagName: 'wind' }),
-    new ToggleTool({ id: 'view_fertility', name: 'Fertility View', icon: '💎', category: 'View', flagName: 'fertility' }),
-    new ToggleTool({ id: 'view_fertility_value', name: 'Fertility Info', icon: '🔢', category: 'View', flagName: 'fertilityValue' }),
-    new ToggleTool({ id: 'view_water', name: 'Water Quality', icon: '🌊', category: 'View', flagName: 'water' }),
-    new ToggleTool({ id: 'view_mineral', name: 'Mineral Density', icon: '⛏️', category: 'View', flagName: 'mineral' }),
-    new ToggleTool({ id: 'view_xray', name: 'X-Ray View', icon: '👁️', category: 'View', flagName: 'xray' }),
-    new ToggleTool({ id: 'view_debug_ai', name: 'AI Paths', icon: '🛣️', category: 'View', flagName: 'debugAI' }),
-    new ToggleTool({ id: 'view_showNames', name: 'Show Names', icon: '🏷️', category: 'View', flagName: 'showNames' }),
-    new ToggleTool({ id: 'view_village', name: 'Village Info', icon: '🏘️', category: 'View', flagName: 'village' }),
-    new ToggleTool({ id: 'view_nation', name: 'Nation View', icon: '🚩', category: 'View', flagName: 'nation' }),
-    new ToggleTool({ id: 'view_zone', name: 'Zone View', icon: '🗺️', category: 'View', flagName: 'zone' }),
-    new InspectTool()
+    new ToggleTool({ id: 'view_wind', name: 'Wind View', icon: '🌬️', category: 'View', flagName: 'wind', description: '바람의 흐름을 시각화합니다.' }),
+    new ToggleTool({ id: 'view_fertility', name: 'Fertility View', icon: '💎', category: 'View', flagName: 'fertility', description: '지형의 비옥도를 색상으로 표시합니다.' }),
+    new ToggleTool({ id: 'view_fertility_value', name: 'Fertility Info', icon: '🔢', category: 'View', flagName: 'fertilityValue', description: '각 타일의 정확한 비옥도 수치를 표시합니다.' }),
+    new ToggleTool({ id: 'view_water', name: 'Water Quality', icon: '🌊', category: 'View', flagName: 'water', description: '수질 오염도 및 상태를 표시합니다.' }),
+    new ToggleTool({ id: 'view_mineral', name: 'Mineral Density', icon: '⛏️', category: 'View', flagName: 'mineral', description: '매장된 광물의 밀도를 시각화합니다.' }),
+    new ToggleTool({ id: 'view_xray', name: 'X-Ray View', icon: '👁️', category: 'View', flagName: 'xray', description: '구조물 내부의 엔티티를 투과해서 봅니다.' }),
+    new ToggleTool({ id: 'view_debug_ai', name: 'AI Paths', icon: '🛣️', category: 'View', flagName: 'debugAI', description: '주민들의 이동 경로와 목적지를 표시합니다.' }),
+    new ToggleTool({ id: 'view_showNames', name: 'Show Names', icon: '🏷️', category: 'View', flagName: 'showNames', description: '엔티티 위에 이름을 표시합니다.' }),
+    new ToggleTool({ id: 'view_village', name: 'Village Info', icon: '🏘️', category: 'View', flagName: 'village', description: '마을의 경계와 통계를 표시합니다.' }),
+    new ToggleTool({ id: 'view_nation', name: 'Nation View', icon: '🚩', category: 'View', flagName: 'nation', description: '국가별 영토를 색상으로 구분하여 표시합니다.' }),
+    new ToggleTool({ id: 'view_zone', name: 'Zone View', icon: '🗺️', category: 'View', flagName: 'zone', description: '마을 내 구역 설정(주거/벌목 등)을 표시합니다.' }),
+    new InspectTool(),
 
 
 ];

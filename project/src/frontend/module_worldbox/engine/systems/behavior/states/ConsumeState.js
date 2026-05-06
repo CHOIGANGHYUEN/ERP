@@ -1,4 +1,5 @@
 import State from './State.js';
+import Pathfinder from '../../../utils/Pathfinder.js';
 
 export default class ConsumeState extends State {
     update(entityId, entity, dt) {
@@ -36,13 +37,10 @@ export default class ConsumeState extends State {
             return 'idle'; // Done eating
         } 
         
-        // Otherwise, move towards food
-        const dist = Math.sqrt(distSq);
         const config = this.engine.speciesConfig[animal.type];
         const speed = config ? config.moveSpeed : 45;
         
-        transform.vx = (dx / dist) * speed;
-        transform.vy = (dy / dist) * speed;
+        Pathfinder.followPath(transform, state, targetPos, speed, this.engine, 4);
 
         return null; // Stay in consume state
     }

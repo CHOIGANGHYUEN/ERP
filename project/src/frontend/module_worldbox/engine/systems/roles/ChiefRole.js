@@ -349,7 +349,7 @@ export default class ChiefRole extends BaseRole {
 
         // 4. 병합 조건 충족 시 영토 확장
         if (bestTile && highestScore >= 0) {
-            const key = `${bestTile.tx},${bestTile.ty}`;
+            const key = (bestTile.ty << 16) | bestTile.tx;
 
             // 다른 마을 영토와의 충돌 검사
             let overlap = false;
@@ -367,14 +367,15 @@ export default class ChiefRole extends BaseRole {
                 // 🗺️ [Engine Buffer Sync] 영토 버퍼 동기화
                 const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
                 if (territoryBuffer) {
-                    const [tx, ty] = key.split(',').map(Number);
+                    const tx = key & 0xFFFF;
+                    const ty = key >> 16;
+                    const startX = tx * 16;
+                    const startY = ty * 16;
                     for (let dy = 0; dy < 16; dy++) {
-                        const rowOff = (ty * 16 + dy) * this.engine.mapWidth;
-                        for (let dx = 0; dx < 16; dx++) {
-                            const idx = rowOff + (tx * 16 + dx);
-                            if (idx >= 0 && idx < territoryBuffer.length) {
-                                territoryBuffer[idx] = village.id;
-                            }
+                        const rowOff = (startY + dy) * this.engine.mapWidth;
+                        const idx = rowOff + startX;
+                        if (idx >= 0 && idx + 16 <= territoryBuffer.length) {
+                            territoryBuffer.fill(village.id, idx, idx + 16);
                         }
                     }
                 }
@@ -396,11 +397,12 @@ export default class ChiefRole extends BaseRole {
         const adjacent = new Map();
         const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
         for (const key of territory) {
-            const [tx, ty] = key.split(',').map(Number);
+            const tx = key & 0xFFFF;
+            const ty = key >> 16;
             for (const [dx, dy] of dirs) {
                 const nx = tx + dx;
                 const ny = ty + dy;
-                const nKey = `${nx},${ny}`;
+                const nKey = (ny << 16) | nx;
                 if (!territory.has(nKey)) {
                     adjacent.set(nKey, { tx: nx, ty: ny });
                 }

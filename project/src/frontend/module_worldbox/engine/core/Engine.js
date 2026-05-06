@@ -83,11 +83,11 @@ export default class Engine {
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
-        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: true, showNames: false, village: false, nation: false, zone: false };
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: false, showNames: false, village: false, nation: false, zone: false };
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
         this._onWorldSpawnDust = (e) => {
-            this.eventBus.emit('SPAWN_DUST', e.detail);
+            this.eventBus.emitDeferred('SPAWN_DUST', e.detail);
         };
         window.addEventListener('WORLD_SHAKE', this._onWorldSpawnDust);
 
@@ -110,10 +110,11 @@ export default class Engine {
                 // 바다가 아닌 육지(DIRT, GRASS 등)만 채우기 대상으로 설정
                 if (this.terrainGen.isLand(buffer[i])) {
                     buffer[i] = biomeId;
+                    this.terrainGen.syncPackedPixel(i);
                 }
             }
             // 전체 렌더링 갱신 통보 (메모리 효율을 위해 전체 업데이트 플래그 사용 가능)
-            this.eventBus.emit('CACHE_PIXEL_UPDATE', { all: true, reason: 'fill_biome' });
+            this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { all: true, reason: 'fill_biome' });
         });
 
 
@@ -350,7 +351,7 @@ export default class Engine {
                 this.camera.handleMouseUp();
                 break;
             case 'SPAWN_PARTICLES':
-                this.eventBus.emit('SPAWN_PARTICLES', command.payload);
+                this.eventBus.emitDeferred('SPAWN_PARTICLES', command.payload);
                 break;
             case 'SPAWN_ENTITY':
                 const methodToType = { 
@@ -410,6 +411,14 @@ export default class Engine {
                     itemFactory.spawnDrop(command.payload.x, command.payload.y, command.payload.type, command.payload.amount);
                 }
                 break;
+            case 'APPLY_GOD_POWER':
+                this.systemManager.godPower?.applyPower(
+                    command.payload.powerType, 
+                    command.payload.x, 
+                    command.payload.y, 
+                    command.payload.radius
+                );
+                break;
         }
         if (this.isRunning) return;
         this.isRunning = true;
@@ -435,6 +444,10 @@ export default class Engine {
 
         this.frameCount++; // 🚀 Increment frame counter
         this.update(dt);
+        
+        // 🚀 [Expert Optimization] 프레임 끝에서 지연된 이벤트들 일괄 처리
+        this.eventBus.flush();
+
         if (this.chunkManager.dirtyChunks.size > 0) this.renderDirtyTiles();
         this.render();
         requestAnimationFrame((t) => this.loop(t));

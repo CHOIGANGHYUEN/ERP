@@ -27,12 +27,18 @@ export default class HumanBrain {
         // 🛑 [LOD/Optimization] 플레이어에게 잡힌 상태면 어떤 판단도 하지 않음
         if (state.mode === AnimalStates.GRABBED) return AnimalStates.GRABBED;
 
-        const civ = entity.components.get('Civilization');
-
         // 🧠 [Stable AI Decision] 판단 주기를 조절하여 부하 감소
         state.thinkTimer = (state.thinkTimer || 0) + dt;
         if (state.thinkTimer < 1.0 && state.mode) return state.mode;
         state.thinkTimer = 0;
+
+        // 🛡️ [Busy Protection] 현재 작업을 수행 중이고 타겟이 유효하면 상태 유지 (경로 재계산 방지)
+        const busyStates = [AnimalStates.PICKUP, 'build', 'deposit', 'gather_wood', 'gather_stone', 'withdraw'];
+        if (busyStates.includes(state.mode) && state.targetId) {
+            if (this.em.entities.has(state.targetId)) return state.mode;
+        }
+
+        const civ = entity.components.get('Civilization');
 
         // ========================================================================
         // 🚨 LEVEL 1: PERSONAL SURVIVAL (생존 및 위급 상황 - 개인 할일)
@@ -41,7 +47,7 @@ export default class HumanBrain {
         // 1. 위협 회피 (최우선)
         const nearbyPredator = this.predatorSensor.findNearestPredator(entity, state, 150);
         if (nearbyPredator) {
-            state.targetId = nearbyPredator;
+            state.targetId = nearbyPredator; // 긴급 상황은 예외적으로 타겟 즉시 변경
             const job = civ?.jobType ? ` (${civ.jobType})` : '';
             GlobalLogger.warn(`🚨 EMERGENCY: Citizen ${entity.id}${job} is FLEEING from a predator!`);
             return AnimalStates.FLEE;
@@ -50,18 +56,24 @@ export default class HumanBrain {
         // 2. 극한 생존 욕구 (허기, 피로)
         const jobSuffix = civ?.jobType ? ` (${civ.jobType})` : '';
         if (stats.hunger < 30) {
-            GlobalLogger.info(`🍎 SURVIVAL: Citizen ${entity.id}${jobSuffix} is searching for food (Hunger: ${Math.floor(stats.hunger)}%).`);
-            return this._tryForage(entity, state, stats);
+            const foodId = this._findFoodTarget(entity, state, stats);
+            if (foodId) {
+                state.targetId = foodId;
+                GlobalLogger.info(`🍎 SURVIVAL: Citizen ${entity.id}${jobSuffix} is searching for food (Hunger: ${Math.floor(stats.hunger)}%).`);
+                return AnimalStates.FORAGE;
+            }
         }
         if (stats.fatigue > 90) {
             GlobalLogger.info(`😴 FATIGUE: Citizen ${entity.id}${jobSuffix} is exhausted and seeking rest.`);
             return AnimalStates.SLEEP;
         }
 
-        // 3. 현재 진행 중인 생존 행동 방어
+        // 3. 현재 진행 중인 생존 행동 보호
         if (state.mode === AnimalStates.EAT && stats.hunger < 90) return AnimalStates.EAT;
         if (state.mode === AnimalStates.SLEEP && stats.fatigue > 10) return AnimalStates.SLEEP;
-        if (state.mode === AnimalStates.FORAGE && state.targetId) return AnimalStates.FORAGE;
+        if (state.mode === AnimalStates.FORAGE && state.targetId) {
+            if (this.em.entities.has(state.targetId)) return AnimalStates.FORAGE;
+        }
 
         // ========================================================================
         // 🏘️ LEVEL 2: VILLAGE & JOB (마을 및 직업 활동 - 공적 할일)
@@ -77,7 +89,7 @@ export default class HumanBrain {
         const isFull = inventory && totalInInv >= inventory.capacity;
 
         if (!isFull) {
-            const pickupId = this._tryPickup(entity, state);
+            const pickupId = this._getBestPickupTarget(entity, state);
             if (pickupId) {
                 state.targetId = pickupId;
                 return AnimalStates.PICKUP;
@@ -88,47 +100,44 @@ export default class HumanBrain {
         return AnimalStates.WANDER;
     }
 
-    _tryForage(entity, state, stats) {
+    _findFoodTarget(entity, state, stats) {
         const transform = entity.components.get('Transform');
         const animal = entity.components.get('Animal');
-        if (!transform || !animal) return AnimalStates.IDLE;
+        if (!transform || !animal) return null;
 
         const searchRadius = 500 + (100 - stats.hunger) * 3;
-        const foodId = this.foodSensor.findFood(stats, transform.x, transform.y, searchRadius, state);
-        if (foodId) {
-            state.targetId = foodId;
-            return AnimalStates.FORAGE;
-        }
-        return AnimalStates.WANDER;
+        return this.foodSensor.findFood(stats, transform.x, transform.y, searchRadius, state);
     }
 
-    _tryPickup(entity, state) {
+    _getBestPickupTarget(entity, state) {
         const transform = entity.components.get('Transform');
         const civ = entity.components.get('Civilization');
         const stats = entity.components.get('BaseStats');
         if (!transform) return null;
 
         const searchRadius = 250;
-        const nearbyIds = this.spatialHash.query(transform.x, transform.y, searchRadius);
-        
         let bestTargetId = null;
         let bestScore = -1;
 
-        for (const otherId of nearbyIds) {
-            if (state.unreachableTargets && state.unreachableTargets.has(otherId)) continue;
+        this.spatialHash.eachInRange(transform.x, transform.y, searchRadius, (otherId) => {
+            if (state.unreachableTargets && state.unreachableTargets.has(otherId)) return;
 
             const other = this.em.entities.get(otherId);
-            if (!other) continue;
+            if (!other) return;
 
             const item = other.components.get('DroppedItem');
-            if (!item || (item.claimedBy && item.claimedBy !== entity.id)) continue;
+            if (!item || (item.claimedBy && item.claimedBy !== entity.id)) return;
 
             const tPos = other.components.get('Transform');
-            if (!tPos) continue;
+            if (!tPos) return;
 
             let score = 100;
-            const dist = Math.sqrt((transform.x - tPos.x) ** 2 + (transform.y - tPos.y) ** 2);
-            score -= (dist / searchRadius) * 50;
+            const dx = transform.x - tPos.x;
+            const dy = transform.y - tPos.y;
+            const distSq = dx * dx + dy * dy;
+            
+            // 거리 기반 점수 (제곱근 연산 회피)
+            score -= (distSq / (searchRadius * searchRadius)) * 50;
 
             const itemType = item.itemType;
             const job = civ?.jobType;
@@ -148,11 +157,10 @@ export default class HumanBrain {
                 bestScore = score;
                 bestTargetId = otherId;
             }
-        }
+        });
 
         if (bestTargetId) {
             if (state.unreachableTargets) state.unreachableTargets.clear();
-            state.thinkTimer = 5.0;
         }
 
         return bestTargetId;

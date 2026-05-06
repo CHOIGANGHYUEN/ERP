@@ -11,6 +11,11 @@ export default class NationSystem extends System {
         this.engine = engine;
         this.nations = new Map();
         this.nextNationId = 1;
+        this.relationships = new Map(); // Map<string, string> - key: "id1_id2", value: "peace" | "war"
+    }
+
+    getNation(id) {
+        return this.nations.get(id);
     }
 
     update(dt, time) {
@@ -86,7 +91,7 @@ export default class NationSystem extends System {
             
             ['wood', 'food', 'stone'].forEach(res => {
                 if (v.resources[res] > 20) { // 마을 최소 운영 자원(20)은 보호
-                    const amount = v.resources[res] * (taxRate * 0.005); // 소량씩 징수
+                    const amount = Math.min(v.resources[res] * (taxRate * 0.005), 2); // 틱당 최대 징수 제한
                     
                     // 실제 저장소(Storage)에서 자원 차감
                     let remainingToTake = amount;
@@ -109,6 +114,19 @@ export default class NationSystem extends System {
         }
     }
 
+    getRelationship(id1, id2) {
+        if (id1 === id2) return 'self';
+        const key = [id1, id2].sort().join('_');
+        return this.relationships.get(key) || 'peace';
+    }
+
+    setRelationship(id1, id2, status) {
+        const key = [id1, id2].sort().join('_');
+        this.relationships.set(key, status);
+        GlobalLogger.info(`🤝 Diplomacy: ${this.nations.get(id1)?.name} and ${this.nations.get(id2)?.name} are now at ${status.toUpperCase()}`);
+        this.eventBus.emit('DIPLOMACY_CHANGED', { nation1: id1, nation2: id2, status });
+    }
+
     createNation(name, color) {
         const id = this.nextNationId++;
         const nation = {
@@ -127,6 +145,10 @@ export default class NationSystem extends System {
             },
             taxRate: 0.1 // 💰 10% 세율
         };
+        
+        // 🎨 [Optimization] Pre-calculate integer color
+        this._updateIntColor(nation);
+
         this.nations.set(id, nation);
         GlobalLogger.success(`🚩 Nation Created: ${nation.name} with color ${nation.color}`);
         return id;
@@ -171,6 +193,17 @@ export default class NationSystem extends System {
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
     }
 
+    _updateIntColor(nation) {
+        const c = nation.color || '#ffffff';
+        const r = parseInt(c.slice(1, 3), 16);
+        const g = parseInt(c.slice(3, 5), 16);
+        const b = parseInt(c.slice(5, 7), 16);
+        // Little Endian (AABBGGRR) for ChunkManager/ImageData
+        nation.intColor = (255 << 24) | (b << 16) | (g << 8) | r;
+        // Big Endian (RRGGBB) for TerrainGen
+        nation.rgbColor = (r << 16) | (g << 8) | b;
+    }
+
     addVillageToNation(nationId, villageId) {
         const nation = this.nations.get(nationId);
         if (nation) {
@@ -178,6 +211,10 @@ export default class NationSystem extends System {
             const village = this.engine.systemManager?.villageSystem?.getVillage(villageId);
             if (village) {
                 village.nationId = nationId;
+                // 🎨 [Sync] 국가 색상으로 마을 색상 동기화
+                village.color = nation.color;
+                village.intColor = nation.intColor;
+                village.rgbColor = nation.rgbColor;
             }
         }
     }

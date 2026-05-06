@@ -9,33 +9,73 @@ export default class BaseStats extends Component {
     constructor(options = {}) {
         super('BaseStats');
 
-        this.diet = options.diet || 'herbivore'; // DietType 참조 ('herbivore', 'carnivore', 'omnivore')
+        this.diet = options.diet || 'herbivore'; 
 
-        // 포만감 (Hunger)
-        this.hunger = options.hunger !== undefined ? options.hunger : 50;
+        // 🚀 [Expert Optimization] TypedArray 버퍼 연결을 위한 내부 변수
+        this._health = options.health || 100;
+        this._maxHealth = options.maxHealth || 100;
+        this._hunger = options.hunger !== undefined ? options.hunger : 50;
         this.maxHunger = options.maxHunger || 100;
-
-        // 피로도 (Fatigue)
-        this.fatigue = options.fatigue !== undefined ? options.fatigue : 0;
+        this._fatigue = options.fatigue !== undefined ? options.fatigue : 0;
         this.maxFatigue = options.maxFatigue || 100;
+        this._speed = options.speed || 1.0;
+        
+        this._buffer = null;
+        this._index = -1;
 
         // 배설 대기량 (Waste) 💩
         this.waste = options.waste !== undefined ? options.waste : 0;
         this.maxWaste = options.maxWaste || 100;
-        this.storedFertility = 0; // 🧪 섭취한 고품질 영양분 축적 (배설 시 비옥도 환원용)
-        this.digestionQuality = 0.5; // 🥨 현재 위장 속 음식의 평균 품질
+        this.storedFertility = 0; 
+        this.digestionQuality = 0.5; 
 
         // 기타 기본 스탯
-        this.health = options.health || 100;
-        this.maxHealth = options.maxHealth || 100;
         this.strength = options.strength || 10;
-        this.speed = options.speed || 1.0;
-        this.defense = options.defense || 0; // 방어력 추가
+        this.defense = options.defense || 0; 
 
         // 🤕 [Injury System] 피격 시 속도 저하 효과
-        this.injurySlowMultiplier = 1.0; // 1.0 = 정상 속도
-        this.injurySlowTimer = 0;        // 효과 지속 시간 (초)
+        this.injurySlowMultiplier = 1.0; 
+        this.injurySlowTimer = 0;        
     }
+
+    /** 🚀 버퍼 연결 */
+    linkBuffer(buffer, index) {
+        this._buffer = buffer;
+        this._index = index;
+        if (this._buffer) {
+            this._buffer[this._index] = this._health;
+            this._buffer[this._index + 1] = this._hunger;
+            this._buffer[this._index + 2] = this._fatigue;
+            this._buffer[this._index + 3] = this._speed;
+        }
+    }
+
+    get health() { return this._buffer ? this._buffer[this._index] : this._health; }
+    set health(v) { 
+        if (this._buffer) this._buffer[this._index] = v;
+        else this._health = v;
+    }
+
+    get hunger() { return this._buffer ? this._buffer[this._index + 1] : this._hunger; }
+    set hunger(v) { 
+        if (this._buffer) this._buffer[this._index + 1] = v;
+        else this._hunger = v;
+    }
+
+    get fatigue() { return this._buffer ? this._buffer[this._index + 2] : this._fatigue; }
+    set fatigue(v) { 
+        if (this._buffer) this._buffer[this._index + 2] = v;
+        else this._fatigue = v;
+    }
+
+    get speed() { return this._buffer ? this._buffer[this._index + 3] : this._speed; }
+    set speed(v) { 
+        if (this._buffer) this._buffer[this._index + 3] = v;
+        else this._speed = v;
+    }
+
+    get maxHealth() { return this._maxHealth; }
+    set maxHealth(v) { this._maxHealth = v; }
 
     /**
      * 엔티티 재사용(Pooling) 또는 삭제 시 속성을 초기화합니다.

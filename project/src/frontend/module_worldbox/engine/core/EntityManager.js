@@ -7,24 +7,46 @@ export default class EntityManager {
     constructor() {
         this.entities = new Map();
         this.animalIds = new Set();
-        this.humanIds = new Set(); // 👤 인간 전용 인덱스 추가
+        this.humanIds = new Set(); 
         this.resourceIds = new Set();
         this.buildingIds = new Set();
         this.nextId = 0;
-        this.entityPool = []; // 🗑️ 쓰레기통(재활용 대기소): 삭제된 엔티티 번호를 모아둠
+        this.entityPool = []; 
+
+        // 🚀 [Expert Optimization] TypedArray 기반 컴포넌트 데이터 캐싱 (DOD)
+        this.maxEntities = 10000;
+        this.transformBuffer = new Float32Array(this.maxEntities * 4); // [x, y, vx, vy, ...]
+        this.statsBuffer = new Float32Array(this.maxEntities * 4);     // [hp, hunger, fatigue, speed, ...]
     }
 
     createEntity() {
-        // 🚀 [재활용] 풀에 남은 게 있다면 새 번호를 발급하지 않고 꺼내서 재사용
+        let id;
         if (this.entityPool.length > 0) {
-            const id = this.entityPool.pop();
-            this.entities.set(id, { id, components: new Map() });
-            return id;
+            id = this.entityPool.pop();
+        } else {
+            id = this.nextId++;
+            this._ensureBufferCapacity(id);
         }
 
-        const id = this.nextId++;
         this.entities.set(id, { id, components: new Map() });
         return id;
+    }
+
+    /** 🚀 버퍼 용량 자동 확장 */
+    _ensureBufferCapacity(id) {
+        if (id < this.maxEntities) return;
+        
+        const newMax = Math.max(id + 1, this.maxEntities * 2);
+        const newTransform = new Float32Array(newMax * 4);
+        const newStats = new Float32Array(newMax * 4);
+        
+        newTransform.set(this.transformBuffer);
+        newStats.set(this.statsBuffer);
+        
+        this.transformBuffer = newTransform;
+        this.statsBuffer = newStats;
+        this.maxEntities = newMax;
+        console.log(`📏 EntityManager: Buffer resized to ${newMax} slots.`);
     }
 
     removeEntity(id, spatialHash = null) {
@@ -85,6 +107,13 @@ export default class EntityManager {
 
             entity.components.set(name, component);
             
+            // 🚀 [Expert Optimization] TypedArray 버퍼 연결 (DOD)
+            if (name === 'Transform') {
+                if (component.linkBuffer) component.linkBuffer(this.transformBuffer, entityId * 4);
+            } else if (name === 'BaseStats') {
+                if (component.linkBuffer) component.linkBuffer(this.statsBuffer, entityId * 4);
+            }
+
             if (name === 'Animal') {
                 this.animalIds.add(entityId);
                 if (component.type === 'human') this.humanIds.add(entityId);
@@ -134,23 +163,48 @@ export default class EntityManager {
         let nearestId = null;
         let minDistSq = radius * radius;
 
-        const nearbyIds = spatialHash
-            ? spatialHash.query(x, y, radius)
-            : Array.from(this.entities.keys());
+        if (spatialHash) {
+            // 🚀 [Expert Optimization] Spiral Search 적용
+            // 가까운 격자부터 탐색하여 일찍 발견하면 중단 가능
+            spatialHash.eachInSpiral(x, y, radius, (id) => {
+                const entity = this.entities.get(id);
+                if (!entity) return false;
+                
+                if (condition && !condition(entity)) return false;
 
-        for (const id of nearbyIds) {
-            const entity = this.entities.get(id);
-            if (!entity) continue;
-            
-            if (condition && !condition(entity)) continue;
+                const transform = entity.components.get('Transform');
+                if (!transform) return false;
 
-            const transform = entity.components.get('Transform');
-            if (!transform) continue;
+                const dx = transform.x - x;
+                const dy = transform.y - y;
+                const distSq = dx * dx + dy * dy;
 
-            const distSq = (transform.x - x) ** 2 + (transform.y - y) ** 2;
-            if (distSq < minDistSq) {
-                minDistSq = distSq;
-                nearestId = id;
+                if (distSq < minDistSq) {
+                    minDistSq = distSq;
+                    nearestId = id;
+                    
+                    // 🎯 [Expert Exit] 만약 충분히 가까운(예: 50px) 대상을 찾았다면 검색을 조기에 종료할 수 있음
+                    // (완벽한 '가장 가까운 것'이 아닐 수 있지만 AI 탐색용으로는 충분)
+                    if (minDistSq < 1600) return true; // 40px 이내면 즉시 확정
+                }
+                
+                // 만약 이미 찾은 대상이 현재 격자(shell)의 최소 가능 거리보다 가깝다면 중단 검토 가능
+                // (eachInSpiral이 shell 단위로 돌기 때문에 shell이 커질수록 distSq의 최소값도 커짐)
+                return false;
+            });
+        } else {
+            // Fallback for non-spatial searches
+            for (const [id, entity] of this.entities) {
+                if (condition && !condition(entity)) continue;
+                const transform = entity.components.get('Transform');
+                if (!transform) continue;
+                const dx = transform.x - x;
+                const dy = transform.y - y;
+                const distSq = dx * dx + dy * dy;
+                if (distSq < minDistSq) {
+                    minDistSq = distSq;
+                    nearestId = id;
+                }
             }
         }
 

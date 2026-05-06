@@ -13,6 +13,9 @@ export default class EatState extends State {
         const transform = entity.components.get('Transform');
         const stats = entity.components.get('BaseStats');
 
+        // 🛡️ [Busy Protection] 식사 중에는 중단되지 않도록 보호
+        state.interruptible = false;
+
         const target = this.system.entityManager.entities.get(state.targetId);
 
         // 🚀 [User Request] 관성 제거: 식사 중에는 이동 정지

@@ -12,20 +12,24 @@
       <EntityStatusPanel />
 
       <!-- TOP LEFT DEBUG PANEL -->
-      <!-- TOP LEFT DEBUG PANEL -->
-      <div class="debug-panel">
-        <div class="debug-header">🔬 SIMULATION DEBUG</div>
-        <div class="debug-item">
-          <span>Spread Speed (Hz): {{ spreadSpeed }}</span>
-          <input type="range" min="1" max="100" v-model="spreadSpeed" @input="updateSimParams" />
+      <div class="debug-panel" :class="{ 'collapsed': isMobile && !showDebugCollapse }">
+        <div class="debug-header" @click="showDebugCollapse = !showDebugCollapse">
+          <span>🔬 SIMULATION DEBUG</span>
+          <span v-if="isMobile" class="collapse-icon">{{ showDebugCollapse ? '▼' : '▶' }}</span>
         </div>
-        <div class="debug-item">
-          <span>Spread Power: {{ spreadAmount }}</span>
-          <input type="range" min="100" max="10000" step="100" v-model="spreadAmount" @input="updateSimParams" />
-        </div>
-        <div class="debug-stats" v-if="engine">
-          FPS: {{ fps }} | Entities: {{ entityCount }} <br/>
-          Fertility: {{ (totalFertility / 100).toLocaleString() }} / {{ (totalMaxFertility / 100).toLocaleString() }} ({{ ((totalFertility / totalMaxFertility) * 100).toFixed(1) }}%)
+        <div class="debug-content" v-show="!isMobile || showDebugCollapse">
+          <div class="debug-item">
+            <span>Spread Speed (Hz): {{ spreadSpeed }}</span>
+            <input type="range" min="1" max="100" v-model="spreadSpeed" @input="updateSimParams" />
+          </div>
+          <div class="debug-item">
+            <span>Spread Power: {{ spreadAmount }}</span>
+            <input type="range" min="100" max="10000" step="100" v-model="spreadAmount" @input="updateSimParams" />
+          </div>
+          <div class="debug-stats" v-if="engine">
+            FPS: {{ fps }} | Entities: {{ entityCount }} <br/>
+            Fertility: {{ (totalFertility / 100).toLocaleString() }} / {{ (totalMaxFertility / 100).toLocaleString() }} ({{ ((totalFertility / totalMaxFertility) * 100).toFixed(1) }}%)
+          </div>
         </div>
       </div>
 
@@ -48,6 +52,17 @@
         </Transition>
 
         <div class="controls-panel">
+          <!-- 📖 [Expert UI] Tool Information Panel -->
+          <Transition name="slide-up">
+            <div v-if="hoveredTool || activeToolData" class="tool-info-overlay">
+              <div class="info-icon">{{ hoveredTool?.icon || activeToolData?.icon }}</div>
+              <div class="info-text">
+                <div class="info-name">{{ hoveredTool?.name || activeToolData?.name }}</div>
+                <div class="info-desc">{{ hoveredTool?.description || activeToolData?.description }}</div>
+              </div>
+            </div>
+          </Transition>
+
           <div class="tool-tabs">
             <button 
               v-for="cat in toolCategories" 
@@ -65,6 +80,8 @@
               <div v-for="tool in filteredTools" :key="tool.id" 
                    class="tool-item" 
                    :class="{ active: activeTool === tool.id }"
+                   @mouseenter="hoveredTool = tool"
+                   @mouseleave="hoveredTool = null"
                    @click="selectTool(tool)">
                 <div class="tool-icon-wrapper">
                   <div class="tool-icon">{{ tool.icon }}</div>
@@ -146,9 +163,12 @@ const fps = ref(0);
 const entityCount = ref(0);
 const totalFertility = ref(0);
 const totalMaxFertility = ref(0);
+const hoveredTool = ref(null);
 
 const engine = ref(null);
 const allTools = ref([]);
+const isMobile = ref(window.innerWidth <= 768);
+const showDebugCollapse = ref(false);
 let resizeObserver = null;
 
 const store = useWorldboxStore();
@@ -167,6 +187,8 @@ const toolCategories = [
   { name: 'Resources', icon: '⛏️' },
   { name: 'Items', icon: '📦' },
   { name: 'Life', icon: '🐑' },
+  { name: 'Civilization', icon: '🏘️' },
+  { name: 'God Powers', icon: '⚡' },
   { name: 'Interaction', icon: '🤝' },
   { name: 'View', icon: '👁️' }
 ];
@@ -350,6 +372,11 @@ const initEngine = (mapSettings = {}) => {
 
   resizeObserver.observe(worldboxContainer.value);
   window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('resize', handleGlobalResize);
+};
+
+const handleGlobalResize = () => {
+  isMobile.value = window.innerWidth <= 768;
 };
 
 onMounted(() => {
@@ -360,6 +387,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (resizeObserver) resizeObserver.disconnect();
   window.removeEventListener('mousemove', handleMouseMove);
+  window.removeEventListener('resize', handleGlobalResize);
   if (engine.value) {
     engine.value.onEntitySelect = null;
     if (engine.value.monitor) {
@@ -444,6 +472,14 @@ const handleGodPower = (toolId) => {
   flex-direction: column;
   gap: 12px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.debug-panel.collapsed {
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  padding: 10px;
 }
 
 .debug-header {
@@ -451,6 +487,17 @@ const handleGodPower = (toolId) => {
   padding-bottom: 5px;
   font-weight: bold;
   color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.debug-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
 }
 
 .debug-item {
@@ -524,10 +571,59 @@ input[type="range"] {
 }
 
 .controls-panel {
-  background: linear-gradient(to bottom, rgba(20, 20, 20, 0.9), rgba(10, 10, 10, 0.98));
-  backdrop-filter: blur(25px);
+  position: relative;
+  background: linear-gradient(to bottom, rgba(15, 15, 15, 0.85), rgba(5, 5, 5, 0.95));
+  backdrop-filter: blur(30px) saturate(150%);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
+  box-shadow: 0 -15px 50px rgba(0,0,0,0.8);
+  border-radius: 24px 24px 0 0;
+  margin: 0 10px;
+}
+
+/* Tool Info Overlay */
+.tool-info-overlay {
+  position: absolute;
+  top: -85px;
+  left: 20px;
+  right: 20px;
+  background: rgba(20, 20, 20, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: white;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.info-icon {
+  font-size: 2rem;
+  text-shadow: 0 0 15px rgba(255,255,255,0.3);
+}
+
+.info-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-name {
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #4caf50;
+}
+
+.info-desc {
+  font-size: 0.75rem;
+  color: #ccc;
+  line-height: 1.4;
+  max-width: 600px;
 }
 
 /* Brush Settings */
@@ -570,7 +666,11 @@ input[type="range"] {
   background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   pointer-events: auto;
+  overflow-X: auto;
+  scrollbar-width: none;
 }
+
+.tool-tabs::-webkit-scrollbar { display: none; }
 
 .tool-tabs button {
   background: none;
@@ -605,13 +705,14 @@ input[type="range"] {
 
 .tool-tabs button.active {
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 0 10px rgba(255,255,255,0.05);
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  box-shadow: 0 0 20px rgba(76, 175, 80, 0.1);
 }
 
 .tool-tabs button.active .cat-icon {
   filter: grayscale(0);
-  transform: scale(1.1);
+  transform: scale(1.2) rotate(-5deg);
 }
 
 .tool-grid-container {
@@ -707,6 +808,67 @@ input[type="range"] {
 
 .tool-list-leave-active {
   position: absolute;
+}
+
+/* Slide Up Animation */
+.slide-up-enter-active, .slide-up-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+
+@media (max-width: 768px) {
+  .tool-belt {
+    grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+    gap: 10px;
+    padding: 15px 10px;
+  }
+  .tool-icon-wrapper {
+    width: 48px;
+    height: 48px;
+  }
+  .tool-icon {
+    font-size: 1.4rem;
+  }
+  .tool-tabs button {
+    padding: 6px 12px;
+    white-space: nowrap;
+  }
+  .tool-tabs button .cat-name {
+    display: none; /* Hide names to save space on very small screens, or just keep icons */
+  }
+  .bottom-controls {
+    bottom: -400px;
+  }
+  .top-bar {
+    padding: 10px 20px;
+  }
+  .top-bar h1 {
+    font-size: 0.9rem;
+  }
+  .tool-info-overlay {
+    top: -70px;
+    left: 10px;
+    right: 10px;
+    padding: 8px 15px;
+  }
+  .info-icon {
+    font-size: 1.5rem;
+  }
+  .info-desc {
+    font-size: 0.65rem;
+  }
+  .brush-settings {
+    bottom: 140px;
+    left: 10px;
+    padding: 10px;
+  }
 }
 
 .top-bar {

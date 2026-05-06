@@ -307,6 +307,19 @@ const getItemEmoji = (type) => {
   z-index: 1100;
 }
 
+@media (max-width: 768px) {
+  .entity-status-panel {
+    top: auto;
+    right: 10px;
+    left: 10px;
+    bottom: 100px;
+    width: auto;
+    max-height: 40vh;
+    border-radius: 16px;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+  }
+}
+
 /* Custom Scrollbar */
 .entity-status-panel::-webkit-scrollbar {
   width: 4px;

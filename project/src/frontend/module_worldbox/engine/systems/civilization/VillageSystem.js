@@ -20,6 +20,9 @@ export default class VillageSystem extends System {
         // 📦 [Event Listeners] 저장소 관리 및 자원 동기화
         this.eventBus.on('BUILDING_COMPLETE', (data) => this._onBuildingComplete(data));
         this.eventBus.on('STORAGE_CHANGED', (data) => this._onStorageChanged(data));
+        this.eventBus.on('VILLAGER_DEATH', (data) => this._onVillagerDeath(data));
+
+        this.dirtyVillages = new Set(); // 🚀 [Optimization]
     }
 
     /** 🔍 [Specialization] 주변 자원 밀도를 분석하여 마을의 전문 분야를 결정합니다. */
@@ -79,9 +82,17 @@ export default class VillageSystem extends System {
         const ent = this.entityManager.entities.get(entityId);
         const civ = ent?.components.get('Civilization');
         if (civ && civ.villageId !== -1) {
-            const village = this.villages.get(civ.villageId);
-            if (village) {
-                this.syncResources(village);
+            this.dirtyVillages.add(civ.villageId);
+        }
+    }
+
+    _onVillagerDeath(data) {
+        const { entityId, villageId } = data;
+        const village = this.villages.get(villageId);
+        if (village) {
+            village.members.delete(entityId);
+            if (entityId === village.chiefId) {
+                this._handleLeadershipSuccession(village);
             }
         }
     }
@@ -96,7 +107,6 @@ export default class VillageSystem extends System {
             }
             // 🗺️ 영토 확장은 이제 촌장(ChiefRole) AI가 지능적으로 수행합니다.
 
-            this.syncResources(village);
             this._updateVillagePlanning(village);
             // this._assignJobs(village); // 👑 촌장의 직업 할당 로직이 ChiefRole로 이전됨
 
@@ -131,6 +141,15 @@ export default class VillageSystem extends System {
                 this._processNationEconomy(); // 경제망 업데이트
                 this._recruitTimer = 3.0;
             }
+        }
+
+        // 🚀 [Optimization] Dirty Village Sync (Once per frame)
+        if (this.dirtyVillages.size > 0) {
+            for (const vid of this.dirtyVillages) {
+                const v = this.villages.get(vid);
+                if (v) this.syncResources(v);
+            }
+            this.dirtyVillages.clear();
         }
     }
 
@@ -176,14 +195,25 @@ export default class VillageSystem extends System {
             for (let dx = -2; dx <= 2; dx++) {
                 const tx = startTx + dx;
                 const ty = startTy + dy;
-                const key = `${tx},${ty}`;
+                const key = (ty << 16) | tx;
                 
                 // 🚀 [Strict Overlap Check] 이미 다른 마을의 영토라면 제외
                 let isClaimed = false;
-                for (const v of this.villages.values()) {
-                    if (v.territory && v.territory.has(key)) {
-                        isClaimed = true;
-                        break;
+                // 1. TerrainGen 버퍼 체크 (가장 정확함)
+                const tg = this.engine.terrainGen;
+                if (tg && tg.territoryBuffer) {
+                    const rowOff = ty * 16 * this.engine.mapWidth; // 16x16 타일 영역의 시작행
+                    const idx = rowOff + (tx * 16);
+                    if (tg.territoryBuffer[idx] > 0) isClaimed = true;
+                }
+
+                // 2. 다른 마을 객체 전수 조사 (백업)
+                if (!isClaimed) {
+                    for (const v of this.villages.values()) {
+                        if (v.territory && v.territory.has(key)) {
+                            isClaimed = true;
+                            break;
+                        }
                     }
                 }
                 if (!isClaimed) village.territory.add(key);
@@ -194,9 +224,11 @@ export default class VillageSystem extends System {
             const candidates = [];
             const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
             for (const key of village.territory) {
-                const [tx, ty] = key.split(',').map(Number);
+                const tx = key & 0xFFFF;
+                const ty = key >> 16;
                 for (const [dx, dy] of dirs) {
-                    const nx = tx + dx, ny = ty + dy, nKey = `${nx},${ny}`;
+                    const nx = tx + dx, ny = ty + dy;
+                    const nKey = (ny << 16) | nx;
                     if (!village.territory.has(nKey)) {
                         if (tg && tg.isLandAt(nx * 16 + 8, ny * 16 + 8)) candidates.push(nKey);
                     }
@@ -206,13 +238,17 @@ export default class VillageSystem extends System {
             village.territory.add(candidates[Math.floor(Math.random() * candidates.length)]);
         }
 
+        // 🎨 [Optimization] Pre-calculate integer color for rendering
+        this._updateIntColor(village);
+
         this.villages.set(id, village);
 
         // 🗺️ [Engine Buffer Sync] 영토 버퍼 동기화
         const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
         if (territoryBuffer) {
             for (const key of village.territory) {
-                const [tx, ty] = key.split(',').map(Number);
+                const tx = key & 0xFFFF;
+                const ty = key >> 16;
                 // 16x16 타일 영역 전체를 채우기
                 for (let dy = 0; dy < 16; dy++) {
                     const rowOff = (ty * 16 + dy) * this.engine.mapWidth;
@@ -276,6 +312,17 @@ export default class VillageSystem extends System {
         return colors[Math.floor(Math.random() * colors.length)];
     }
 
+    _updateIntColor(village) {
+        const c = village.color || '#ffffff';
+        const r = parseInt(c.slice(1, 3), 16);
+        const g = parseInt(c.slice(3, 5), 16);
+        const b = parseInt(c.slice(5, 7), 16);
+        // Little Endian (AABBGGRR) for ChunkManager/ImageData
+        village.intColor = (255 << 24) | (b << 16) | (g << 8) | r;
+        // Big Endian (RRGGBB) for TerrainGen (optional, but keep it consistent)
+        village.rgbColor = (r << 16) | (g << 8) | b;
+    }
+
     _checkFirstFounder() {
         const em = this.entityManager;
         for (const id of em.humanIds) {
@@ -304,7 +351,7 @@ export default class VillageSystem extends System {
             // 1. 현재 위치가 기존 마을 영토 내부인지 확인
             const tx = Math.floor(transform.x / 16);
             const ty = Math.floor(transform.y / 16);
-            const key = `${tx},${ty}`;
+            const key = (ty << 16) | tx;
             
             let hostVillage = null;
             for (const village of this.villages.values()) {
@@ -486,14 +533,45 @@ export default class VillageSystem extends System {
                 for (const receiver of villageList) {
                     if (provider.id === receiver.id) continue;
 
-                    // 식량 지원
-                    if (provider.resources.food > provider.resourceNeeds.food * 2 && receiver.resources.food < receiver.resourceNeeds.food) {
-                        const gift = 10;
-                        provider.resources.food -= gift;
-                        receiver.resources.food += gift;
-                        // 실제 건물의 저장소에서도 빼줘야 하지만, 여기서는 추상화된 자원 동기화로 처리
-                        GlobalLogger.info(`📦 Trade: ${provider.name} sent 10 food to ${receiver.name}`);
-                    }
+                    ['food', 'wood', 'stone'].forEach(resType => {
+                        // 자원 풍족도( Needs의 3배 이상)와 부족도(Needs 미만)를 기준으로 무역 발생
+                        const providerNeed = provider.resourceNeeds[resType] || 20;
+                        const receiverNeed = receiver.resourceNeeds[resType] || 20;
+
+                        if (provider.resources[resType] > providerNeed * 3 && receiver.resources[resType] < receiverNeed) {
+                            const giftAmount = 20;
+                            
+                            // 📦 [Physical Trade] 실제 창고(Storage)에서 자원 차감 및 주입
+                            let remainingToWithdraw = giftAmount;
+                            if (provider.storageIds && provider.storageIds.size > 0) {
+                                for (const sid of provider.storageIds) {
+                                    const sEnt = this.entityManager.entities.get(sid);
+                                    const storage = sEnt?.components.get('Storage');
+                                    if (storage) {
+                                        const taken = storage.withdraw(resType, remainingToWithdraw);
+                                        remainingToWithdraw -= taken;
+                                        if (remainingToWithdraw <= 0) break;
+                                    }
+                                }
+                            }
+
+                            const actualMoved = giftAmount - remainingToWithdraw;
+                            if (actualMoved > 0 && receiver.storageIds && receiver.storageIds.size > 0) {
+                                const targetSid = Array.from(receiver.storageIds)[0];
+                                const targetEnt = this.entityManager.entities.get(targetSid);
+                                const targetStorage = targetEnt?.components.get('Storage');
+                                if (targetStorage) {
+                                    targetStorage.addItem(resType, actualMoved);
+                                    
+                                    GlobalLogger.info(`📦 Trade: ${provider.name} sent ${actualMoved} ${resType} to ${receiver.name}`);
+                                    // 무역 효과음을 내거나 말풍선 표시 (선택사항)
+                                    this.eventBus.emit('SHOW_SPEECH_BUBBLE', { 
+                                        entityId: provider.chiefId, text: `📦 Exporting ${resType}`, duration: 2000 
+                                    });
+                                }
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -575,7 +653,8 @@ export default class VillageSystem extends System {
                 const b = targetZone.bounds;
                 const tiles = Array.from(village.territory);
                 const validTiles = tiles.filter(key => {
-                    const [tx, ty] = key.split(',').map(Number);
+                    const tx = key & 0xFFFF;
+                    const ty = key >> 16;
                     const cx = tx * 16 + 8;
                     const cy = ty * 16 + 8;
                     return cx >= b.minX && cx <= b.minX + b.width && cy >= b.minY && cy <= b.minY + b.height;
@@ -583,7 +662,8 @@ export default class VillageSystem extends System {
 
                 if (validTiles.length > 0) {
                     const rTile = validTiles[Math.floor(Math.random() * validTiles.length)];
-                    const [tx, ty] = rTile.split(',').map(Number);
+                    const tx = rTile & 0xFFFF;
+                    const ty = rTile >> 16;
                     spawnX = tx * 16 + 4 + Math.random() * 8;
                     spawnY = ty * 16 + 4 + Math.random() * 8;
                 } else {
@@ -763,7 +843,8 @@ export default class VillageSystem extends System {
 
             // 1️⃣ 개별 타일 격자 무늬 렌더링
             for (const key of village.territory) {
-                const [tx, ty] = key.split(',').map(Number);
+                const tx = key & 0xFFFF;
+                const ty = key >> 16;
                 const worldX = tx * TILE_SIZE;
                 const worldY = ty * TILE_SIZE;
 
@@ -794,7 +875,8 @@ export default class VillageSystem extends System {
             ctx.lineJoin = 'round';
 
             for (const key of village.territory) {
-                const [tx, ty] = key.split(',').map(Number);
+                const tx = key & 0xFFFF;
+                const ty = key >> 16;
                 const worldX = tx * TILE_SIZE;
                 const worldY = ty * TILE_SIZE;
 
@@ -823,10 +905,10 @@ export default class VillageSystem extends System {
                 };
 
                 // 인접 타일이 없는 방향(=외곽선)에만 울타리를 칩니다.
-                if (!village.territory.has(`${tx},${ty - 1}`)) drawFence(sX, sY, sX + size, sY); // 상
-                if (!village.territory.has(`${tx},${ty + 1}`)) drawFence(sX, sY + size, sX + size, sY + size); // 하
-                if (!village.territory.has(`${tx - 1},${ty}`)) drawFence(sX, sY, sX, sY + size); // 좌
-                if (!village.territory.has(`${tx + 1},${ty}`)) drawFence(sX + size, sY, sX + size, sY + size); // 우
+                if (!village.territory.has(( (ty - 1) << 16) | tx)) drawFence(sX, sY, sX + size, sY); // 상
+                if (!village.territory.has(( (ty + 1) << 16) | tx)) drawFence(sX, sY + size, sX + size, sY + size); // 하
+                if (!village.territory.has((ty << 16) | (tx - 1))) drawFence(sX, sY, sX, sY + size); // 좌
+                if (!village.territory.has((ty << 16) | (tx + 1))) drawFence(sX + size, sY, sX + size, sY + size); // 우
             }
 
             // 🏷️ 마을 중심에 라벨(이름 및 타일 수) 렌더링

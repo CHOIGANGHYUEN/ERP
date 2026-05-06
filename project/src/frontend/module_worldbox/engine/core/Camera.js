@@ -64,6 +64,41 @@ export default class Camera {
         }
     }
 
+    // 📱 Pinch Zoom support for Mobile
+    handlePinch(touch1, touch2, rect) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (this.lastPinchDistance) {
+            const factor = distance / this.lastPinchDistance;
+            let newZoom = this.zoom * factor;
+            newZoom = Math.max(0.1, Math.min(newZoom, 10.0));
+
+            if (newZoom !== this.zoom) {
+                const midX = (touch1.clientX + touch2.clientX) / 2;
+                const midY = (touch1.clientY + touch2.clientY) / 2;
+
+                const mouseX = (midX - rect.left) * (this.width / rect.width);
+                const mouseY = (midY - rect.top) * (this.height / rect.height);
+
+                const worldX = mouseX / this.zoom + this.x;
+                const worldY = mouseY / this.zoom + this.y;
+
+                this.zoom = newZoom;
+                this.x = worldX - mouseX / this.zoom;
+                this.y = worldY - mouseY / this.zoom;
+
+                this.clamp();
+            }
+        }
+        this.lastPinchDistance = distance;
+    }
+
+    resetPinch() {
+        this.lastPinchDistance = null;
+    }
+
     clamp() {
         const viewW = this.width / this.zoom;
         const viewH = this.height / this.zoom;
@@ -89,6 +124,16 @@ export default class Camera {
         return {
             x: mx / this.zoom + this.x,
             y: my / this.zoom + this.y
+        };
+    }
+
+    /** 👁️ 가시 영역(AABB) 계산 */
+    getViewportBounds() {
+        return {
+            x: this.x,
+            y: this.y,
+            width: this.width / this.zoom,
+            height: this.height / this.zoom
         };
     }
 }

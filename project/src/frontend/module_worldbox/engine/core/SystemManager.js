@@ -26,10 +26,10 @@ import EmotionSystem from '../systems/lifecycle/EmotionSystem.js';
 import VillageSystem from '../systems/civilization/VillageSystem.js';
 import ConstructionSystem from '../systems/civilization/ConstructionSystem.js';
 import ZoneManager from '../systems/civilization/ZoneManager.js';
-import CullingSystem from '../systems/render/CullingSystem.js';
 import Blackboard from '../systems/behavior/Blackboard.js';
 import TargetManager from '../systems/behavior/TargetManager.js';
 import EconomyManager from '../systems/economy/EconomyManager.js';
+import GodPowerSystem from '../systems/god/GodPowerSystem.js';
 
 export default class SystemManager {
     constructor(engine) {
@@ -82,54 +82,78 @@ export default class SystemManager {
         // Phase 4: Render Prep
         this.spriteManager = new SpriteManager(em, eb);
         this.particleSystem = new ParticleSystem(em, eb);
-        this.cullingSystem = new CullingSystem(em, eb, engine);
+        this.godPower = new GodPowerSystem(engine);
 
         // Phase 5: UI
         this.uiSystem = new UISystem(em, eb, engine);
     }
 
     update(dt, time) {
-        // 🚀 [Expert Optimization] 프레임 시작 시 동적 해시 초기화
-        // 모든 시스템이 동일한 프레임 내에서 일관된 공간 데이터를 참조하도록 보장합니다.
-        if (this.spatialHash) this.spatialHash.clearDynamic();
+        const frameCount = this.engine.frameCount || 0;
 
-        // [Phase 1] 환경 및 입력 업데이트 (Polling)
+        // [Phase 1] 환경 및 입력 업데이트 (Critical - 60Hz)
         this.wind.update(time);
         this.environment.update(dt, time);
 
-        // [Phase 2] 물리 이동 전 객체 상태 및 AI 판단 (AI & Logic)
-        this.combat.update(dt, time); // Event-driven (대기)
+        // [Phase 2] AI & Logic (Throttled)
+        
+        // ⚔️ Combat & Death (Critical - 60Hz to prevent missed events)
+        this.combat.update(dt, time);
         this.deathProcessor.update(dt, time);
+
+        // 🧠 AI Behavior (60Hz - Synchronized with Kinematics to remove inertia)
         this.humanBehavior.update(dt, time);
         this.behavior.update(dt, time);
-        this.herding.update(dt);
-        this.social.update(dt, time);
-        this.nationSystem.update(dt, time);
-        this.gathering.update(dt, time);
-        this.consumption.update(dt);
-        this.metabolism.update(dt, time);
-        this.reproduction.update(dt, time);
-        this.health.update(dt, time);
-        this.spawner.update(dt, time);
-        this.farming.update(dt, time);
-        this.livestock.update(dt, time);
-        this.emotion.update(dt, time);
-        this.villageSystem.update(dt, time);
-        this.construction.update(dt, time);
 
-        // [Phase 2.5] 중앙 관제 및 경제 업데이트 (Low Frequency)
-        this.targetManager.update(dt);
-        this.economyManager.update(dt);
+        // 🐕 Herding & Motion Logic (20Hz)
+        if (frameCount % 3 === 0) {
+            this.herding.update(dt * 3);
+        }
 
-        // [Phase 3] 이동 및 물리 연산 반영 (Kinematics)
+        // 🏘️ Civilization & Economy (12Hz) - Staggered
+        if (frameCount % 5 === 0) {
+            const dt5 = dt * 5;
+            this.social.update(dt5, time);
+            this.nationSystem.update(dt5, time);
+            this.gathering.update(dt5, time);
+            this.consumption.update(dt5);
+        }
+        if (frameCount % 5 === 2) {
+            const dt5 = dt * 5;
+            this.farming.update(dt5, time);
+            this.livestock.update(dt5, time);
+            this.villageSystem.update(dt5, time);
+            this.construction.update(dt5, time);
+            this.spawner.update(dt5, time);
+        }
+
+        // 🧪 Lifecycle & Stats (6Hz) - Staggered
+        if (frameCount % 10 === 5) {
+            const dt10 = dt * 10;
+            this.metabolism.update(dt10, time);
+            this.reproduction.update(dt10, time);
+        }
+        if (frameCount % 10 === 8) {
+            const dt10 = dt * 10;
+            this.health.update(dt10, time);
+            this.emotion.update(dt10, time);
+        }
+
+        // [Phase 2.5] 중앙 관제 (Low Frequency - 4Hz)
+        if (frameCount % 15 === 12) {
+            this.targetManager.update(dt * 15);
+            this.economyManager.update(dt * 15);
+        }
+
+        // [Phase 3] 이동 및 물리 연산 반영 (Critical - 60Hz)
         this.kinematics.update(dt);
 
-        // [Phase 4] 시각적 표현 및 렌더링 최적화 준비 (Post-Physics)
-        this.cullingSystem.update(dt, time);
+        // [Phase 4] 시각적 표현 (Critical - 60Hz)
         this.spriteManager.update(dt, time);
         this.particleSystem.update(dt, time);
+        this.godPower.update(dt);
 
-        // [Phase 5] UI 및 오버레이 처리
+        // [Phase 5] UI (Critical - 60Hz)
         this.uiSystem.update(dt, time);
     }
 

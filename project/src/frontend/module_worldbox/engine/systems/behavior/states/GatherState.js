@@ -17,6 +17,9 @@ export default class GatherState extends State {
     executeMovementAndGathering(entityId, entity, dt, gatherRangeSq) {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
+
+        // 🛡️ [Busy Protection] 채집 작업 중에는 중단 방지
+        state.interruptible = false;
         const gatherer = entity.components.get('GathererComponent');
         const em = this.system.entityManager;
         const target = em.entities.get(state.targetId);

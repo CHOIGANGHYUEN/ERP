@@ -15,6 +15,9 @@ export default class BuildState extends State {
         const em = this.system.entityManager;
         if (!state) return AnimalStates.IDLE;
 
+        // 🛡️ [Busy Protection] 건설 작업 중에는 중단되지 않도록 보호
+        state.interruptible = false;
+
         // 1. 타겟(청사진) 유효성 체크 및 요청
         let blueprintId = state.targetId;
         

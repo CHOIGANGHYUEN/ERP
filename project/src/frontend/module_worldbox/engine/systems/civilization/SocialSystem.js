@@ -59,24 +59,22 @@ export default class SocialSystem extends System {
         const spatialHash = this.engine.spatialHash;
         if (!transform || !spatialHash || !animal) return;
 
-        // 🔍 공간 해시 쿼리 사용 (반경 150px)
-        const nearbyIds = spatialHash.query(transform.x, transform.y, 150);
-
-        for (const targetId of nearbyIds) {
-            if (id === targetId) continue;
+        // 🔍 공간 해시 쿼리 사용 (반경 150px - 가비지 프리)
+        spatialHash.eachInRange(transform.x, transform.y, 150, (targetId) => {
+            if (id === targetId || social.isMarried) return;
 
             const target = em.entities.get(targetId);
-            if (!target) continue;
+            if (!target) return;
 
             const targetCiv = target.components.get('Civilization');
             const targetAnimal = target.components.get('Animal');
             const targetSocial = target.components.get('Social');
             
             // 1. 마을 소속 확인
-            if (targetCiv?.villageId !== civ.villageId) continue;
+            if (targetCiv?.villageId !== civ.villageId) return;
 
             // 2. 성별 확인 (이성끼리만 결혼)
-            if (targetAnimal?.gender === animal.gender) continue;
+            if (targetAnimal?.gender === animal.gender) return;
 
             // 3. 미혼 여부 확인
             if (targetSocial && !targetSocial.isMarried) {
@@ -90,9 +88,8 @@ export default class SocialSystem extends System {
                 this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: transform.x, y: transform.y, count: 15, type: 'EFFECT', color: '#ff4081', speed: 3
                 });
-                break;
             }
-        }
+        });
     }
 
     _processReproduction(id, entity, social, civ, time) {

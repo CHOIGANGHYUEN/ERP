@@ -29,15 +29,17 @@ export default class AnimalBehaviorSystem extends System {
 
         // 🚀 [Optimization] 동적 해시 갱신 로직이 KinematicSystem으로 통합됨 (중복 제거)
         
-        if (frameCount % 100 === 0) {
-            this.refreshStaticHash();
-        }
+        // 🚀 [Optimization] 정적 해시 갱신 로직 제거 (이미 개별 팩토리 및 KinematicSystem에서 관리됨)
 
         const camera = this.engine.camera;
         const viewW = (this.engine.width / (camera.zoom || 1)) + 100;
         const viewH = (this.engine.height / (camera.zoom || 1)) + 100;
         const viewX = camera.x - 50;
         const viewY = camera.y - 50;
+
+        // 🚀 [Optimization] 프레임당 무거운 탐색(Target Search) 횟수 제한 (Time-slicing)
+        let searchCount = 0;
+        const SEARCH_LIMIT_PER_FRAME = 5;
 
         for (const id of em.animalIds) {
             const entity = em.entities.get(id);
@@ -50,25 +52,47 @@ export default class AnimalBehaviorSystem extends System {
 
             if (state && transform && animal) {
                 const isVisible = transform.x >= viewX && transform.x <= viewX + viewW &&
-                                  transform.y >= viewY && transform.y <= viewY + viewH;
+                                   transform.y >= viewY && transform.y <= viewY + viewH;
                 
                 const updateModulo = isVisible ? 2 : 10;
                 if ((id + frameCount) % updateModulo === 0) {
                     const effectiveDt = dt * updateModulo;
 
-                    if (animal.type === 'bee') {
-                        this.beeBrain.update(id, state, transform, animal, effectiveDt); 
-                    } else if (animal.type !== 'human') {
-                        // 🥩 [Brain Assignment] 식성에 따라 전용 두뇌 할당
-                        if (animal.diet === 'carnivore') {
-                            this.carnivoreBrain.update(id, state, transform, animal, stats, effectiveDt);
+                    // 🧠 [Target Caching] 타겟 유효성 검사 및 재탐색 억제
+                    if (state.targetId) {
+                        const target = em.entities.get(state.targetId);
+                        if (!target) {
+                            state.targetId = null;
                         } else {
-                            this.herbivoreBrain.update(id, state, transform, animal, stats, effectiveDt);
+                            const tStats = target.components.get('BaseStats');
+                            if (tStats && tStats.health <= 0) state.targetId = null;
                         }
-                        
-                        // 공통 상태 실행
-                        this.updateEntityAI(id, entity, state, transform, animal, stats, effectiveDt);
                     }
+
+                    // 탐색이 필요한 상태인데 타겟이 없고, 이번 프레임 탐색 할당량이 남았다면 탐색 허용
+                    const needsSearch = !state.targetId && [AnimalStates.HUNT, AnimalStates.GRAZE, AnimalStates.FORAGE].includes(state.mode);
+                    const canSearch = searchCount < SEARCH_LIMIT_PER_FRAME;
+                    
+                    if (needsSearch && canSearch) {
+                        searchCount++;
+                        state.canSearchThisFrame = true;
+                    } else {
+                        state.canSearchThisFrame = false;
+                    }
+
+                    let suggestion = null;
+                    if (animal.type === 'bee') {
+                        suggestion = this.beeBrain.decide(id, state, transform, animal, effectiveDt); 
+                    } else if (animal.type !== 'human') {
+                        if (animal.diet === 'carnivore') {
+                            suggestion = this.carnivoreBrain.decide(id, state, transform, animal, stats, effectiveDt);
+                        } else {
+                            suggestion = this.herbivoreBrain.decide(id, state, transform, animal, stats, effectiveDt);
+                        }
+                    }
+
+                    // 공통 상태 실행 및 전이 판단
+                    this.updateEntityAI(id, entity, state, transform, animal, stats, effectiveDt, suggestion);
 
                     const visual = entity.components.get('Visual');
                     if (visual) {
@@ -80,71 +104,70 @@ export default class AnimalBehaviorSystem extends System {
         }
     }
 
-    refreshStaticHash() {
-        const em = this.entityManager;
-        this.spatialHash.clearAll();
 
-        for (const id of em.animalIds) {
-            const entity = em.entities.get(id);
-            const transform = entity?.components.get('Transform');
-            if (transform) this.spatialHash.insert(id, transform.x, transform.y, false);
-        }
-
-        for (const id of em.resourceIds) {
-            const entity = em.entities.get(id);
-            const transform = entity?.components.get('Transform');
-            if (transform) this.spatialHash.insert(id, transform.x, transform.y, true);
-        }
-
-        for (const id of em.buildingIds) {
-            const entity = em.entities.get(id);
-            const transform = entity?.components.get('Transform');
-            if (transform) this.spatialHash.insert(id, transform.x, transform.y, true);
-        }
-    }
-
-    updateEntityAI(id, entity, state, transform, animal, stats, dt) {
-        // [Note] Metabolism is now handled by MetabolismSystem.js
+    updateEntityAI(id, entity, state, transform, animal, stats, dt, suggestion) {
         if (!state.mode) state.mode = AnimalStates.IDLE;
 
-        // 💀 Death Check
+        // 💀 Death Check (최우선 인터럽트)
         if (stats && stats.health <= 0) {
-            state.mode = AnimalStates.DIE;
+            if (state.mode !== AnimalStates.DIE) this._transitionTo(id, entity, state, AnimalStates.DIE);
             return;
         }
 
-        // Execute current state logic via Factory (HumanBehaviorSystem과 동일한 패턴으로 통일)
         const stateHandler = this.stateFactory.getState(state.mode);
         if (stateHandler) {
-            const nextMode = stateHandler.update(id, entity, dt);
-            if (nextMode && nextMode !== state.mode) {
-                if (stateHandler.exit) stateHandler.exit(id, entity);
-                
-                // 🧹 상태 전이 시 경로 데이터 초기화
-                state.isTargetRequested = false;
-                state.targetRequestFailed = false;
-                state.path = null;
-                state.pathIndex = 0;
-                
-                // [고도화] EAT, PICKUP, ATTACK 등 타겟이 유지되어야 하는 상태가 아니면 타겟 초기화
-                const preservesTarget = [
-                    AnimalStates.EAT, 
-                    AnimalStates.PICKUP, 
-                    AnimalStates.ATTACK, 
-                    AnimalStates.FORAGE, 
-                    AnimalStates.HUNT,
-                    AnimalStates.GRAZE
-                ].includes(nextMode);
-                
-                if (!preservesTarget) {
-                    state.targetId = null;
+            let nextMode = stateHandler.update(id, entity, dt);
+            
+            // 💡 [Persistence Logic] 작업 완료(IDLE), 중단 가능(interruptible), 또는 긴급 상황(Emergency) 시에만 전이 허용
+            const isFinished = nextMode === AnimalStates.IDLE;
+            const isEmergency = suggestion && (suggestion.mode === AnimalStates.FLEE || suggestion.mode === AnimalStates.DIE);
+            const canInterrupt = state.interruptible !== false;
+            
+            if (isFinished || isEmergency || canInterrupt) {
+                if (suggestion && suggestion.mode !== state.mode) {
+                    // 타겟 업데이트 (제안에 타겟이 포함된 경우)
+                    if (suggestion.targetId !== undefined) {
+                        state.targetId = suggestion.targetId;
+                    }
+                    nextMode = suggestion.mode;
                 }
-                
-                state.mode = nextMode;
-                const nextHandler = this.stateFactory.getState(nextMode);
-                if (nextHandler && nextHandler.enter) nextHandler.enter(id, entity);
+            }
+
+            if (nextMode && nextMode !== state.mode) {
+                this._transitionTo(id, entity, state, nextMode);
             }
         }
+    }
+
+    _transitionTo(id, entity, state, nextMode) {
+        const currentHandler = this.stateFactory.getState(state.mode);
+        if (currentHandler && currentHandler.exit) currentHandler.exit(id, entity);
+
+        // 🧹 상태 데이터 초기화
+        state.isTargetRequested = false;
+        state.targetRequestFailed = false;
+        state.path = null;
+        state.pathIndex = 0;
+        state.interruptible = true; // 🛡️ 상태 전이 시 기본적으로 중단 가능으로 초기화
+
+        const transform = entity.components.get('Transform');
+        if (transform) {
+            transform.vx = 0;
+            transform.vy = 0;
+        }
+
+        // 타겟 유지 조건
+        const preservesTarget = [
+            AnimalStates.EAT, AnimalStates.PICKUP, AnimalStates.ATTACK, 
+            AnimalStates.FORAGE, AnimalStates.HUNT, AnimalStates.GRAZE,
+            'bee_gather', 'bee_return'
+        ].includes(nextMode);
+
+        if (!preservesTarget) state.targetId = null;
+
+        state.mode = nextMode;
+        const nextHandler = this.stateFactory.getState(nextMode);
+        if (nextHandler && nextHandler.enter) nextHandler.enter(id, entity);
     }
 
     // --- 🍽️ Interaction Helpers ---

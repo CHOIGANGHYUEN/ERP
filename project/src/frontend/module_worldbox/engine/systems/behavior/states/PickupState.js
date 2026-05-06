@@ -15,6 +15,9 @@ export default class PickupState extends State {
 
         if (!state || !transform || !inventory) return AnimalStates.IDLE;
 
+        // 🛡️ [Busy Protection] 아이템 획득 중에는 중단되지 않도록 보호
+        state.interruptible = false;
+
         // 1. 인벤토리 체크 (이미 가득 찼으면 취소)
         if (inventory.getTotal() >= inventory.capacity) {
             state.targetId = null;

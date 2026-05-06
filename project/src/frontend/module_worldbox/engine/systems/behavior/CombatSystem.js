@@ -18,8 +18,25 @@ export default class CombatSystem extends System {
         const defenderState = defender.components.get('AIState');
 
         if (attackerStats && defenderStats) {
-            const damage = attackerStats.strength || 10;
-            defenderStats.takeDamage(damage);
+            const damage = defenderStats.takeDamage(attackerStats.strength || 10);
+
+            // 🏥 [Health Sync] Health 컴포넌트가 따로 있다면 동기화 및 피격 애니메이션 트리거
+            const healthComp = defender.components.get('Health');
+            if (healthComp) {
+                healthComp.takeDamage(damage);
+            }
+
+            // 🚀 [Expert Feedback] 플로팅 데미지 텍스트 생성
+            const transform = defender.components.get('Transform');
+            if (transform) {
+                this.eventBus.emit('SPAWN_FLOATING_TEXT', {
+                    x: transform.x,
+                    y: transform.y - 10,
+                    text: `-${Math.round(damage)}`,
+                    color: '#ff5252',
+                    options: { size: 16, vy: -2 }
+                });
+            }
 
             // 🎨 시각적 피드백 트리거 (공격/피격 모션 - 타임스탬프 방식)
             const totalTime = this.engine.time || Date.now();

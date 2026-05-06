@@ -1,174 +1,128 @@
+import Chunk from './Chunk.js';
+
+/**
+ * 🗺️ ChunkManager (청크 관리자)
+ * 전체 맵을 고정 크기의 청크로 분할하여 관리합니다.
+ * 시야(Culling)에 들어온 청크만 렌더링하고, 메모리 보호를 위해
+ * 사용되지 않는 청크의 캔버스 자원을 자동으로 회수합니다.
+ */
 export default class ChunkManager {
-    constructor(engine, chunkSize = 50) {
+    constructor(engine, chunkSize = 512) {
         this.engine = engine;
         this.chunkSize = chunkSize;
         this.mapWidth = engine.mapWidth;
         this.mapHeight = engine.mapHeight;
+        
         this.cols = Math.ceil(this.mapWidth / chunkSize);
         this.rows = Math.ceil(this.mapHeight / chunkSize);
         
-        // Master buffer for the whole map
+        this.chunks = [];
+        this._initChunks();
+
+        // LRU 캐시 관리 (최대 활성 캔버스 수 제한)
+        this.maxActiveCanvases = 64; 
+        this.activeChunks = new Set();
+        
+        // 마스터 버퍼 (TerrainGen에서 직접 접근하는 용도 유지)
         this.buffer = new Uint32Array(this.mapWidth * this.mapHeight);
-        this.imgData = new ImageData(new Uint8ClampedArray(this.buffer.buffer), this.mapWidth, this.mapHeight);
-        
-        this.dirtyChunks = new Set();
     }
 
-    markDirty(x, y) {
-        if (x < 0 || x >= this.mapWidth || y < 0 || y >= this.mapHeight) return;
-        const cx = Math.floor(x / this.chunkSize);
-        const cy = Math.floor(y / this.chunkSize);
-        this.dirtyChunks.add(cy * this.cols + cx);
-        
-        // Update the pixel in the master buffer directly
-        const idx = y * this.mapWidth + x;
-        const color = this.engine.terrainGen.getTerrainColor(idx, this.engine.viewFlags, {
-            villageSystem: this.engine.systemManager?.villageSystem,
-            nationSystem: this.engine.systemManager?.nationSystem
-        });
-        
-        const r = (color >> 16) & 0xff;
-        const g = (color >> 8) & 0xff;
-        const b = color & 0xff;
-        
-        // Little Endian format: AABBGGRR
-        this.buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
-    }
-
-    /** ⚡ [Ultra-Fast Optimization] 점진적 컬러 재계산 (메인 스레드 프리징 방지) */
-    async markAllDirty(recalculateColors = true) {
-        for (let i = 0; i < this.cols * this.rows; i++) {
-            this.dirtyChunks.add(i);
-        }
-        
-        if (recalculateColors) {
-            const mapWidth = this.mapWidth;
-            const mapHeight = this.mapHeight;
-            const viewFlags = this.engine.viewFlags;
-            const tg = this.engine.terrainGen;
-            const buffer = this.buffer;
-
-            // 🚀 [Optimization] 로컬 변수 캐싱으로 가속
-            const terrainBuf = tg.terrain.buffer;
-            const biomeBuf = tg.biomeBuffer;
-            const fertBuf = tg.fertilityBuffer;
-            const wqBuf = tg.waterQualityBuffer;
-            const mdBuf = tg.mineralDensityBuffer;
-            const territoryBuf = tg.territoryBuffer; // 🏘️ 추가
-
-            const vs = this.engine.systemManager?.villageSystem;
-            const ns = this.engine.systemManager?.nationSystem;
-
-            // 🎯 정책 결정 (루프 외부에서 단 한 번)
-            let mode = 'normal';
-            if (viewFlags.VILLAGETILE) mode = 'village';
-            else if (viewFlags.NATIONTILE) mode = 'nation';
-            else if (viewFlags.fertility) mode = 'fertility';
-            else if (viewFlags.water) mode = 'water';
-            else if (viewFlags.mineral) mode = 'mineral';
-
-            const batchSize = 256; 
-
-            for (let y = 0; y < mapHeight; y += batchSize) {
-                const endY = Math.min(y + batchSize, mapHeight);
-                
-                for (let currY = y; currY < endY; currY++) {
-                    const rowOff = currY * mapWidth;
-                    
-                    if (mode === 'village') {
-                        for (let x = 0; x < mapWidth; x++) {
-                            const idx = rowOff + x;
-                            const vid = territoryBuf[idx];
-                            if (vid > 0) {
-                                const v = vs?.getVillage(vid - 1);
-                                if (v) {
-                                    const c = v.color || '#ffffff';
-                                    const r = parseInt(c.slice(1, 3), 16);
-                                    const g = parseInt(c.slice(3, 5), 16);
-                                    const b = parseInt(c.slice(5, 7), 16);
-                                    buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
-                                    continue;
-                                }
-                            }
-                            // Default to normal color if no village
-                            const t = terrainBuf[idx];
-                            const b = biomeBuf[idx];
-                            const fIdx = fertBuf[idx] >> 4;
-                            buffer[idx] = tg.colorLUT[(t << 8) | (b << 4) | fIdx];
-                        }
-                    } else if (mode === 'nation') {
-                        for (let x = 0; x < mapWidth; x++) {
-                            const idx = rowOff + x;
-                            const vid = territoryBuf[idx];
-                            if (vid > 0) {
-                                const v = vs?.getVillage(vid - 1);
-                                if (v && v.nationId !== -1) {
-                                    const n = ns?.getNation(v.nationId);
-                                    if (n) {
-                                        const c = n.color || '#ffffff';
-                                        const r = parseInt(c.slice(1, 3), 16);
-                                        const g = parseInt(c.slice(3, 5), 16);
-                                        const b = parseInt(c.slice(5, 7), 16);
-                                        buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
-                                        continue;
-                                    }
-                                }
-                            }
-                            // Default to normal color if no nation
-                            const t = terrainBuf[idx];
-                            const b = biomeBuf[idx];
-                            const fIdx = fertBuf[idx] >> 4;
-                            buffer[idx] = tg.colorLUT[(t << 8) | (b << 4) | fIdx];
-                        }
-                    } else if (mode === 'fertility') {
-                        for (let x = 0; x < mapWidth; x++) {
-                            const idx = rowOff + x;
-                            const t = terrainBuf[idx];
-                            if (t === 4 || t === 5) {
-                                const f = fertBuf[idx];
-                                buffer[idx] = f < 80 ? 0xFF636E8D : (f < 180 ? 0xFF50AF4C : 0xFF327D2E);
-                            } else buffer[idx] = 0xFF111111;
-                        }
-                    } else if (mode === 'water') {
-                        for (let x = 0; x < mapWidth; x++) {
-                            const idx = rowOff + x;
-                            const t = terrainBuf[idx];
-                            if (t <= 1) { // OCEAN, DEEP
-                                const wq = wqBuf[idx] >> 6;
-                                buffer[idx] = wq === 0 ? 0xFFC06515 : (wq === 1 ? 0xFFE5881E : (wq === 2 ? 0xFFF5A542 : 0xFFF9CA90));
-                            } else buffer[idx] = 0xFF111111;
-                        }
-                    } else if (mode === 'mineral') {
-                        for (let x = 0; x < mapWidth; x++) {
-                            const idx = rowOff + x;
-                            const t = terrainBuf[idx];
-                            if (t >= 6) { // MOUNTAINS
-                                const md = mdBuf[idx] >> 6;
-                                buffer[idx] = md === 0 ? 0xFF424242 : (md === 1 ? 0xFF757575 : (md === 2 ? 0xFFBDBDBD : 0xFFFFFFFF));
-                            } else buffer[idx] = 0xFF111111;
-                        }
-                    } else {
-                        // 🏎️ [Ultra-Fast Normal Mode] 미리 계산된 Color LUT 사용
-                        const colorLUT = tg.colorLUT;
-                        for (let x = 0; x < mapWidth; x++) {
-                            const idx = rowOff + x;
-                            const t = terrainBuf[idx];
-                            const b = biomeBuf[idx];
-                            const fIdx = fertBuf[idx] >> 4;
-                            buffer[idx] = colorLUT[(t << 8) | (b << 4) | fIdx];
-                        }
-                    }
-                }
-
-                await new Promise(resolve => requestAnimationFrame(resolve));
-                if (this.engine.isRunning) {
-                    this.render(this.engine.terrainCtx);
-                }
+    _initChunks() {
+        for (let y = 0; y < this.rows; y++) {
+            for (let x = 0; x < this.cols; x++) {
+                this.chunks.push(new Chunk(
+                    x * this.chunkSize,
+                    y * this.chunkSize,
+                    this.chunkSize,
+                    this.engine
+                ));
             }
         }
     }
 
-    /** 🎨 [Expert Optimization] 블록 단위로 버퍼 채우기 (점진적 생성용) */
+    /** 🎯 좌표에 해당하는 청크 반환 */
+    getChunkAt(worldX, worldY) {
+        if (worldX < 0 || worldX >= this.mapWidth || worldY < 0 || worldY >= this.mapHeight) return null;
+        const cx = Math.floor(worldX / this.chunkSize);
+        const cy = Math.floor(worldY / this.chunkSize);
+        return this.chunks[cy * this.cols + cx];
+    }
+
+    /** 👁️ 뷰포트 영역 내의 가시 청크 선별 (Culling) */
+    getVisibleChunks(viewport) {
+        const visible = [];
+        
+        // 뷰포트 인덱스 범위 계산
+        const startCol = Math.max(0, Math.floor(viewport.x / this.chunkSize));
+        const endCol = Math.min(this.cols - 1, Math.floor((viewport.x + viewport.width) / this.chunkSize));
+        const startRow = Math.max(0, Math.floor(viewport.y / this.chunkSize));
+        const endRow = Math.min(this.rows - 1, Math.floor((viewport.y + viewport.height) / this.chunkSize));
+
+        for (let r = startRow; r <= endRow; r++) {
+            for (let c = startCol; c <= endCol; c++) {
+                const chunk = this.chunks[r * this.cols + c];
+                visible.push(chunk);
+                
+                // LRU 관리: 현재 사용 중인 청크 등록
+                this.activeChunks.add(chunk);
+            }
+        }
+
+        // 메모리 관리: 너무 많은 캔버스가 활성화되어 있으면 오래된 것부터 해제
+        this._enforceMemoryLimit();
+
+        return visible;
+    }
+
+    _enforceMemoryLimit() {
+        // 활성화된 청크 중 실제 캔버스를 가진 청크들을 추적
+        const chunksWithCanvas = this.chunks.filter(c => c.offscreenCanvas);
+        
+        if (chunksWithCanvas.length > this.maxActiveCanvases) {
+            // 마지막 사용 시간 기준 정렬 (오래된 순)
+            chunksWithCanvas.sort((a, b) => a.lastUsedTime - b.lastUsedTime);
+            
+            const toRelease = chunksWithCanvas.length - this.maxActiveCanvases;
+            for (let i = 0; i < toRelease; i++) {
+                // 현재 화면에 보이는 청크는 해제하지 않도록 안전장치 (옵션)
+                chunksWithCanvas[i].releaseCanvas();
+            }
+        }
+    }
+
+    markDirty(x, y) {
+        const chunk = this.getChunkAt(x, y);
+        if (chunk) {
+            chunk.markDirty();
+        }
+    }
+
+    /** ⚡ 전체 맵 초기화 또는 대규모 변경 시 호출 */
+    async markAllDirty() {
+        for (const chunk of this.chunks) {
+            chunk.markDirty();
+        }
+    }
+
+    /** 🎨 메인 렌더링 (RenderCoordinator에서 호출됨) */
+    render(ctx, camera) {
+        const viewport = camera.getViewportBounds();
+        const visibleChunks = this.getVisibleChunks(viewport);
+        
+        // 줌 레벨에 따른 LOD 결정
+        const isClose = camera.zoom > 0.4;
+
+        for (const chunk of visibleChunks) {
+            if (isClose) {
+                chunk.renderLOD1(ctx);
+            } else {
+                chunk.renderLOD0(ctx);
+            }
+        }
+    }
+
+    // --- Legacy Compatibility ---
+    // TerrainGen 등에서 직접 픽셀을 채울 때 사용하던 buffer에 대한 호환성 레이어
     fillBlock(x, y, step, color) {
         const r = (color >> 16) & 0xff;
         const g = (color >> 8) & 0xff;
@@ -177,33 +131,12 @@ export default class ChunkManager {
         
         for (let dy = 0; dy < step && y + dy < this.mapHeight; dy++) {
             const rowOffset = (y + dy) * this.mapWidth;
+            const chunkRow = this.getChunkAt(x, y + dy);
+            if (chunkRow) chunkRow.markDirty();
+
             for (let dx = 0; dx < step && x + dx < this.mapWidth; dx++) {
                 this.buffer[rowOffset + (x + dx)] = abgr;
             }
         }
-    }
-
-    render(ctx) {
-        if (this.dirtyChunks.size === 0) {
-            // 강제 전체 렌더링 (점진적 생성 등에서 사용)
-            ctx.putImageData(this.imgData, 0, 0);
-            return;
-        }
-
-        // If many chunks are dirty, just render the whole thing at once
-        if (this.dirtyChunks.size > (this.cols * this.rows) / 2) {
-            ctx.putImageData(this.imgData, 0, 0);
-        } else {
-            // Render only dirty chunks
-            for (const chunkIdx of this.dirtyChunks) {
-                const cx = chunkIdx % this.cols;
-                const cy = Math.floor(chunkIdx / this.cols);
-                const x = cx * this.chunkSize;
-                const y = cy * this.chunkSize;
-                
-                ctx.putImageData(this.imgData, 0, 0, x, y, this.chunkSize, this.chunkSize);
-            }
-        }
-        this.dirtyChunks.clear();
     }
 }

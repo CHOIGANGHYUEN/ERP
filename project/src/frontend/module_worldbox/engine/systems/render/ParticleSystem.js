@@ -1,10 +1,20 @@
 import System from '../../core/System.js';
 import { BIOME_PROPERTIES_MAP, BIOME_NAMES_TO_IDS } from '../../world/TerrainGen.js';
+import ObjectPool from '../../utils/ObjectPool.js';
 
 export default class ParticleSystem extends System {
     constructor(entityManager, eventBus) {
         super(entityManager, eventBus);
         this.particles = [];
+
+        // 🚀 [Expert Optimization] Object Pooling for Particles
+        this.pool = new ObjectPool(
+            () => ({}), // Factory: Simple object
+            (p) => {    // Reset: Clear all properties for safety
+                for (const key in p) delete p[key];
+            },
+            500 // Initial size
+        );
 
         // 🔗 명시적 바인딩 (Context Loss 방지)
         this.addParticles = this.addParticles.bind(this);
@@ -29,17 +39,17 @@ export default class ParticleSystem extends System {
     spawn(type, options = {}) {
         const { x = 0, y = 0, color = '#ffffff', size = 2, velocity = { x: 0, y: 0 }, life = 1.0 } = options;
         
-        this.particles.push({
-            x, y,
-            vx: velocity.x,
-            vy: velocity.y,
-            color,
-            size,
-            type: type.toUpperCase(),
-            life,
-            maxLife: life,
-            alpha: 1.0
-        });
+        const p = this.pool.get();
+        p.x = x; p.y = y;
+        p.vx = velocity.x; p.vy = velocity.y;
+        p.color = color;
+        p.size = size;
+        p.type = type.toUpperCase();
+        p.life = life;
+        p.maxLife = life;
+        p.alpha = 1.0;
+        
+        this.particles.push(p);
     }
 
     destroy() {
@@ -54,7 +64,8 @@ export default class ParticleSystem extends System {
     enforceCap() {
         const MAX_PARTICLES = 800;
         if (this.particles.length > MAX_PARTICLES) {
-            this.particles.splice(0, this.particles.length - MAX_PARTICLES);
+            const removed = this.particles.splice(0, this.particles.length - MAX_PARTICLES);
+            removed.forEach(p => this.pool.release(p));
         }
     }
 
@@ -63,20 +74,21 @@ export default class ParticleSystem extends System {
      */
     addParticles({ x, y, actionType, biome, color, count, resourceId, treeType, brushSize = 15 }) {
         for (let i = 0; i < count; i++) {
-            this.particles.push({
-                x: x + (Math.random() - 0.5) * brushSize * 3,
-                y: y + (Math.random() - 0.5) * brushSize * 3 - 150,
-                targetY: y + (Math.random() - 0.5) * brushSize * 3,
-                type: 'BIOME_TOOL',
-                action: actionType,
-                biome,
-                resourceId,
-                color,
-                speed: 4 + Math.random() * 3,
-                treeType,
-                life: 1.0,
-                maxLife: 1.0
-            });
+            const p = this.pool.get();
+            p.x = x + (Math.random() - 0.5) * brushSize * 3;
+            p.y = y + (Math.random() - 0.5) * brushSize * 3 - 150;
+            p.targetY = y + (Math.random() - 0.5) * brushSize * 3;
+            p.type = 'BIOME_TOOL';
+            p.action = actionType;
+            p.biome = biome;
+            p.resourceId = resourceId;
+            p.color = color;
+            p.speed = 4 + Math.random() * 3;
+            p.treeType = treeType;
+            p.life = 1.0;
+            p.maxLife = 1.0;
+            
+            this.particles.push(p);
         }
     }
 
@@ -85,61 +97,65 @@ export default class ParticleSystem extends System {
      */
     addEffectParticles({ x, y, count, color, speed = 2, type = 'EFFECT' }) {
         for (let i = 0; i < count; i++) {
-            this.particles.push({
-                x: x + (Math.random() - 0.5) * 5,
-                y: y + (Math.random() - 0.5) * 5,
-                vx: (Math.random() - 0.5) * speed,
-                vy: (Math.random() - 0.5) * speed,
-                color,
-                type,
-                life: 1 + Math.random() * 0.5,
-                maxLife: 1.5,
-                alpha: 1
-            });
+            const p = this.pool.get();
+            p.x = x + (Math.random() - 0.5) * 5;
+            p.y = y + (Math.random() - 0.5) * 5;
+            p.vx = (Math.random() - 0.5) * speed;
+            p.vy = (Math.random() - 0.5) * speed;
+            p.color = color;
+            p.type = type;
+            p.life = 1 + Math.random() * 0.5;
+            p.maxLife = 1.5;
+            p.alpha = 1;
+            
+            this.particles.push(p);
         }
     }
 
     addDust({ x, y, count = 3 }) {
         for (let i = 0; i < count; i++) {
-            this.particles.push({
-                x, y: y + 2,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: -Math.random() * 0.5,
-                color: 'rgba(200, 180, 150, 0.6)',
-                type: 'DUST',
-                size: 1 + Math.random() * 2,
-                life: 0.8,
-                maxLife: 0.8
-            });
+            const p = this.pool.get();
+            p.x = x; p.y = y + 2;
+            p.vx = (Math.random() - 0.5) * 0.5;
+            p.vy = -Math.random() * 0.5;
+            p.color = 'rgba(200, 180, 150, 0.6)';
+            p.type = 'DUST';
+            p.size = 1 + Math.random() * 2;
+            p.life = 0.8;
+            p.maxLife = 0.8;
+            
+            this.particles.push(p);
         }
     }
 
     addZzz({ x, y }) {
-        this.particles.push({
-            x: x + 5, y: y - 10,
-            vx: 0.2 + Math.random() * 0.2,
-            vy: -0.3,
-            color: '#ffffff',
-            type: 'ZZZ',
-            text: Math.random() > 0.5 ? 'Z' : 'z',
-            size: 6 + Math.random() * 4,
-            life: 2.0,
-            maxLife: 2.0
-        });
+        const p = this.pool.get();
+        p.x = x + 5; p.y = y - 10;
+        p.vx = 0.2 + Math.random() * 0.2;
+        p.vy = -0.3;
+        p.color = '#ffffff';
+        p.type = 'ZZZ';
+        p.text = Math.random() > 0.5 ? 'Z' : 'z';
+        p.size = 6 + Math.random() * 4;
+        p.life = 2.0;
+        p.maxLife = 2.0;
+        
+        this.particles.push(p);
     }
 
     addBlood({ x, y, count = 5 }) {
         for (let i = 0; i < count; i++) {
-            this.particles.push({
-                x, y,
-                vx: (Math.random() - 0.5) * 2,
-                vy: -Math.random() * 2,
-                color: '#d32f2f',
-                type: 'BLOOD',
-                size: 1.5,
-                life: 1.0,
-                maxLife: 1.0
-            });
+            const p = this.pool.get();
+            p.x = x; p.y = y;
+            p.vx = (Math.random() - 0.5) * 2;
+            p.vy = -Math.random() * 2;
+            p.color = '#d32f2f';
+            p.type = 'BLOOD';
+            p.size = 1.5;
+            p.life = 1.0;
+            p.maxLife = 1.0;
+            
+            this.particles.push(p);
         }
     }
 
@@ -153,6 +169,7 @@ export default class ParticleSystem extends System {
                 } else {
                     this.eventBus.emit('APPLY_TOOL_EFFECT', { ...p });
                     this.particles.splice(i, 1);
+                    this.pool.release(p);
                 }
             } else {
                 // 일반 및 특수 이펙트 물리 업데이트
@@ -167,6 +184,7 @@ export default class ParticleSystem extends System {
                 
                 if (p.life <= 0) {
                     this.particles.splice(i, 1);
+                    this.pool.release(p);
                 }
             }
         }

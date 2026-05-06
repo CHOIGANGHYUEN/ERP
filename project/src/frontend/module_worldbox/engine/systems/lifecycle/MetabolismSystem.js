@@ -202,9 +202,10 @@ export default class MetabolismSystem extends System {
 
                 if (Math.floor(next) > current) {
                     fb[idx] = Math.floor(next);
+                    this.terrainGen.syncPackedPixel(idx);
                     if (resource.fertilityValue) resource.fertilityValue -= amount;
 
-                    this.eventBus.emit('CACHE_PIXEL_UPDATE', { x, y, reason: 'fertility_change' });
+                    this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x, y, reason: 'fertility_change' });
                 } else if (resource.fertilityValue) {
                     resource.fertilityValue -= amount;
                 }

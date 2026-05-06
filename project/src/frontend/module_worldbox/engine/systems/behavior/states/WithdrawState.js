@@ -20,6 +20,9 @@ export default class WithdrawState extends State {
             return AnimalStates.IDLE;
         }
 
+        // 🛡️ [Busy Protection] 자원 인출 작업 중에는 중단 방지
+        state.interruptible = false;
+
         const tPos = target.components.get('Transform');
         const storage = target.components.get('Storage');
 

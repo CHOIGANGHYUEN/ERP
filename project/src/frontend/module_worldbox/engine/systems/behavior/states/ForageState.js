@@ -10,6 +10,9 @@ export default class ForageState extends State {
         const state = entity.components.get('AIState');
         const transform = entity.components.get('Transform');
 
+        // 🛡️ [Busy Protection] 먹이 수색 및 이동 중에는 중단 방지
+        state.interruptible = false;
+
         const target = this.system.entityManager.entities.get(state.targetId);
         if (!target) {
             state.targetId = null;

@@ -71,6 +71,7 @@ export default class DeathProcessor extends System {
                 const fertilityBuffer = this.engine.terrainGen.fertilityBuffer;
                 if (fertilityBuffer) {
                     fertilityBuffer[idx] = Math.min(255, fertilityBuffer[idx] + 50);
+                    this.engine.terrainGen.syncPackedPixel(idx);
                     if (this.engine.chunkManager) this.engine.chunkManager.markDirty(x, y);
                 }
             }
