@@ -10,9 +10,11 @@ export default class Velocity {
 
     /** 🚀 [Expert Optimization] TypedArray 버퍼 연결 */
     linkBuffer(buffer, index) {
+        const isFirstLink = (this._buffer === null);
         this._buffer = buffer;
         this._index = index;
-        if (this._buffer) {
+        
+        if (isFirstLink && this._buffer) {
             this._buffer[this._index] = this._vx;
             this._buffer[this._index + 1] = this._vy;
             this._buffer[this._index + 2] = this._ax;

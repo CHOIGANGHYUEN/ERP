@@ -49,23 +49,44 @@ export default class EntityRenderer {
 
         const renderList = [];
         const processedIds = new Set(); 
+        
+        const tBuffer = entityManager.transformBuffer;
+        const rBuffer = entityManager.renderBuffer;
 
         for (const id of visibleIds) {
             if (processedIds.has(id)) continue;
             processedIds.add(id);
 
+            const tIdx = id * 2;
+            const rIdx = id * 8;
+
+            const x = tBuffer[tIdx];
+            const y = tBuffer[tIdx + 1];
+
+            // 🚀 [Expert Optimization] 버퍼에서 직접 좌표 및 렌더링 데이터 추출 (객체 접근 최소화)
+            if (x < viewX || x > viewX + viewW || y < viewY || y > viewY + viewH) continue;
+
             const entity = entityManager.entities.get(id);
             if (!entity) continue;
 
-            const t = entity.components.get('Transform');
+            // v는 기존 호환성을 위해 유지 (애니메이션 메타데이터 등)
             const v = entity.components.get('Visual');
-            if (!t || !v) continue;
+            if (!v) continue;
 
-            if (t.x < viewX || t.x > viewX + viewW || t.y < viewY || t.y > viewY + viewH) continue;
-            renderList.push({ id, entity, t, v, y: t.y });
+            renderList.push({ 
+                id, 
+                entity, 
+                x, y, 
+                z: y, 
+                size: rBuffer[rIdx + 4],
+                alpha: rBuffer[rIdx + 5] / 255,
+                frame: rBuffer[rIdx + 2],
+                flipX: rBuffer[rIdx + 3] === 1,
+                facing: rBuffer[rIdx + 6]
+            });
         }
 
-        renderList.sort((a, b) => a.y - b.y);
+        renderList.sort((a, b) => a.z - b.z);
  
         // 🔒 [Debug] AIPATH 모드일 때 블랙리스트(도달 불가) 타겟 수집
         const blacklistedIds = new Set();
@@ -80,21 +101,22 @@ export default class EntityRenderer {
 
         // 1. 🌑 [Unified Shadows] 모든 개체의 그림자를 먼저 렌더링 (Z-Order 최하단)
         for (const item of renderList) {
-            this.renderShadow(ctx, item.t, item.v, item.entity, time);
+            this.renderShadow(ctx, item, time);
         }
 
         // 2. 🌊 [Water Ripples] 물 위에 있는 개체들을 위한 파동 효과
         for (const item of renderList) {
-            this.renderWaterRipples(ctx, item.t, item.entity, time);
+            this.renderWaterRipples(ctx, item, time);
         }
 
         // 3. 🎨 [Main Entities] 실제 개체 렌더링
         for (const item of renderList) {
-            const { id, entity, t, v } = item;
+            const { id, entity, x, y, size, alpha } = item;
             const state = entity.components.get('AIState');
+            const v = entity.components.get('Visual');
 
             if (id === this.engine.selectedId) {
-                this.renderSelectionCircle(ctx, t);
+                this.renderSelectionCircle(ctx, x, y);
             }
 
             const isHighDetail = camera.zoom > 1.5;
@@ -108,7 +130,7 @@ export default class EntityRenderer {
                 // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 줌이 충분할 때 렌더링
                 const shouldShowAIDebug = this.engine.viewFlags.debugAI && (id === this.engine.selectedId || camera.zoom > 1.2);
                 if (shouldShowAIDebug && state) {
-                    this.renderAIDebug(ctx, t, state, id);
+                    this.renderAIDebug(ctx, item, state, id);
                 }
             } else {
                 this.renderResource(entity, ctx, time, wind);
@@ -117,7 +139,7 @@ export default class EntityRenderer {
             // 🏥 [Health Integration] HP바 표시
             const health = entity.components.get('Health');
             if (health && health.currentHp < health.maxHp && health.currentHp > 0) {
-                this.renderHealthBar(ctx, health, t, v.size || 10);
+                this.renderHealthBar(ctx, health, x, y, size);
             }
 
             // 🔒 [Debug] 블랙리스트 타겟 표시
@@ -125,7 +147,7 @@ export default class EntityRenderer {
                 ctx.save();
                 ctx.font = '12px serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('🔒', t.x, t.y - (v.size || 10) - 15);
+                ctx.fillText('🔒', x, y - size - 15);
                 ctx.restore();
             }
 
@@ -137,7 +159,7 @@ export default class EntityRenderer {
                 ctx.textAlign = 'center';
                 // 하트가 위아래로 둥실거리는 효과
                 const floatY = Math.sin(time * 0.005) * 5;
-                ctx.fillText('❤️', t.x, t.y - (v.size || 10) - 20 + floatY);
+                ctx.fillText('❤️', x, y - (v.size || 10) - 20 + floatY);
                 ctx.restore();
             }
         }
@@ -146,12 +168,10 @@ export default class EntityRenderer {
     }
 
     /** 🌑 통합 그림자 렌더링 시스템 */
-    renderShadow(ctx, t, v, entity, time) {
-        if (v.alpha === 0) return;
+    renderShadow(ctx, item, time) {
+        const { x, y, size, entity, alpha } = item;
+        if (alpha === 0) return;
 
-        const size = v.size || 10;
-        const type = v.type;
-        
         let breathScale = 1.0;
         if (entity.components.has('Animal')) {
             breathScale = 1.0 + Math.sin(time * 0.003) * 0.05;
@@ -161,28 +181,28 @@ export default class EntityRenderer {
         const sh = size * 0.6 * breathScale;
 
         // 🚀 [Expert Optimization] ellipse/fill 대신 미리 생성된 그림자 스프라이트 사용
-        // ctx.save/restore 없이 drawImage로만 렌더링하여 성능 극대화
         ctx.drawImage(
             this.shadowSprite, 
-            Math.floor(t.x - sw / 2), 
-            Math.floor(t.y - sh / 2 + 1), 
+            Math.floor(x - sw / 2), 
+            Math.floor(y - sh / 2 + 1), 
             sw, sh
         );
     }
 
     /** 🌊 수면 파동 효과 (타일 기반 감지) */
-    renderWaterRipples(ctx, t, entity, time) {
+    renderWaterRipples(ctx, item, time) {
         if (!this.engine.terrainGen) return;
+        const { x, y } = item;
         
-        const tx = Math.floor(t.x);
-        const ty = Math.floor(t.y);
+        const tx = Math.floor(x);
+        const ty = Math.floor(y);
         const tile = this.engine.terrainGen.getTileAt?.(tx, ty);
         
         // 물 타일(Deep Water, Shallow Water)에서만 활성화
         if (tile === 0 || tile === 1) { 
             ctx.save();
             ctx.translate(tx, ty);
-            const rippleScale = (Math.sin(time * 0.005 + t.x * 0.1) + 1) * 0.5;
+            const rippleScale = (Math.sin(time * 0.005 + x * 0.1) + 1) * 0.5;
             const alpha = 0.3 * (1 - rippleScale);
             
             ctx.beginPath();
@@ -432,20 +452,20 @@ export default class EntityRenderer {
         ctx.restore();
     }
 
-    renderHealthBar(ctx, health, t, size) {
+    renderHealthBar(ctx, health, x, y, size) {
         const barW = Math.max(20, size * 1.5);
         const barH = 3;
-        const x = t.x - barW / 2;
-        const y = t.y - size - 10;
+        const bx = x - barW / 2;
+        const by = y - size - 10;
 
         // 배경
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(x, y, barW, barH);
+        ctx.fillRect(bx, by, barW, barH);
 
         // HP
         const hpWidth = (health.currentHp / health.maxHp) * barW;
         ctx.fillStyle = (health.currentHp / health.maxHp > 0.3) ? '#4caf50' : '#f44336';
-        ctx.fillRect(x, y, hpWidth, barH);
+        ctx.fillRect(bx, by, hpWidth, barH);
     }
 
     getSprite(key, drawFn, width, height) {
@@ -497,17 +517,18 @@ export default class EntityRenderer {
         }
     }
 
-    renderSelectionCircle(ctx, t) {
+    renderSelectionCircle(ctx, x, y) {
         ctx.save();
         ctx.beginPath(); 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; 
         ctx.lineWidth = 2;
-        ctx.arc(t.x, t.y, 10, 0, Math.PI * 2); 
+        ctx.arc(x, y, 10, 0, Math.PI * 2); 
         ctx.stroke();
         ctx.restore();
     }
 
-    renderAIDebug(ctx, t, state, id) {
+    renderAIDebug(ctx, item, state, id) {
+        const { x, y } = item;
         const entity = this.engine.entityManager.entities.get(id);
         const animalComp = entity?.components.get('Animal');
         const isHuman = animalComp?.type === 'human';
@@ -516,7 +537,7 @@ export default class EntityRenderer {
         ctx.fillStyle = isHuman ? '#00f2ff' : 'rgba(255, 255, 255, 0.9)';
         ctx.font = 'bold 8px Inter, Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(state.mode.toUpperCase(), t.x, t.y - 12);
+        ctx.fillText(state.mode.toUpperCase(), x, y - 12);
 
         const target = state.targetId ? this.engine.entityManager.entities.get(state.targetId) : null;
         let targetPos = target ? target.components.get('Transform') : state.fleePos;
@@ -531,7 +552,7 @@ export default class EntityRenderer {
             ctx.lineWidth = 1.5;
             ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.7)' : 'rgba(255, 255, 255, 0.5)';
             ctx.setLineDash([4, 2]);
-            ctx.moveTo(t.x, t.y);
+            ctx.moveTo(x, y);
 
             if (state.path && Array.isArray(state.path) && state.path.length > 0) {
                 for (let i = (state.pathIndex || 0); i < state.path.length; i++) {
@@ -563,11 +584,11 @@ export default class EntityRenderer {
             }
         } else if (state.wanderAngle !== undefined) {
             const len = 15;
-            const tx = t.x + Math.cos(state.wanderAngle) * len;
-            const ty = t.y + Math.sin(state.wanderAngle) * len;
+            const tx = x + Math.cos(state.wanderAngle) * len;
+            const ty = y + Math.sin(state.wanderAngle) * len;
             ctx.beginPath();
             ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)';
-            ctx.moveTo(t.x, t.y);
+            ctx.moveTo(x, y);
             ctx.lineTo(tx, ty);
             const head = 4;
             ctx.lineTo(tx - head * Math.cos(state.wanderAngle - 0.5), ty - head * Math.sin(state.wanderAngle - 0.5));
@@ -580,7 +601,7 @@ export default class EntityRenderer {
         if (state.searchRange > 0 && !state.targetId) {
             const pulse = (Math.sin(this.engine.time * 0.005) + 1) * 0.5;
             ctx.beginPath();
-            ctx.arc(t.x, t.y, state.searchRange, 0, Math.PI * 2);
+            ctx.arc(x, y, state.searchRange, 0, Math.PI * 2);
             ctx.strokeStyle = isHuman ? `rgba(0, 242, 255, ${0.1 + pulse * 0.1})` : `rgba(255, 255, 255, ${0.05 + pulse * 0.05})`;
             ctx.setLineDash([10, 5]);
             ctx.stroke();

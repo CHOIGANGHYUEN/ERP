@@ -1,11 +1,7 @@
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
-import BaseStats from '../../components/stats/BaseStats.js';
-import State from '../../components/behavior/State.js';
-import Age from '../../components/stats/Age.js';
 import TagBitmask from '../../components/stats/TagBitmask.js';
 import GathererComponent from '../../components/resource/GathererComponent.js';
-import Health from '../../components/stats/Health.js';
 
 /**
  * 🐄 AnimalFactory
@@ -59,6 +55,7 @@ export default class AnimalFactory extends IEntityFactory {
         
         builder
             .withTransform(spawnX, spawnY)
+            .withVelocity(0, 0)
             .withVisual({
                 color: config.color || '#ffffff',
                 type: type,
@@ -71,7 +68,7 @@ export default class AnimalFactory extends IEntityFactory {
                 herdId: -1
             })
             .addComponent('TagBitmask', tag)
-            .addComponent('BaseStats', new BaseStats({
+            .withStats({
                 diet: diet,
                 health: config.maxHealth || 100,
                 maxHealth: config.maxHealth || 100,
@@ -80,18 +77,18 @@ export default class AnimalFactory extends IEntityFactory {
                 maxHunger: 100,
                 fatigue: Math.random() * 20,
                 speed: config.moveSpeed || 40 // pixels per second
-            }))
+            })
             .addComponent('Metabolism', {
                 digestionSpeed: config.digestionSpeed || 0.15,
                 storedFertility: 0,
                 isPooping: false
             })
-            .addComponent('AIState', new State())
-            .addComponent('Age', new Age({
+            .withAIState()
+            .withAge({
                 currentAge: options.isBaby ? 0 : 5 + Math.random() * 10,
                 maxAge: config.maxLifespan || (20 + Math.random() * 10)
-            }))
-            .addComponent('Health', new Health(config.baseHealth || 100))
+            })
+            .withHealth(config.baseHealth || 100)
             .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: type === 'bee' ? 20.0 : 10.0 }));
 
         // 공간 해시 등록

@@ -29,6 +29,9 @@
           <div class="debug-stats" v-if="engine">
             FPS: {{ fps }} | Entities: {{ entityCount }} <br/>
             Fertility: {{ (totalFertility / 100).toLocaleString() }} / {{ (totalMaxFertility / 100).toLocaleString() }} ({{ ((totalFertility / totalMaxFertility) * 100).toFixed(1) }}%)
+            <div v-if="dodStats" class="dod-metrics">
+              Memory: {{ dodStats.bufferMemoryMB }} MB | Pooled: {{ dodStats.pooledIds }}
+            </div>
           </div>
         </div>
       </div>
@@ -164,6 +167,7 @@ const fps = ref(0);
 const entityCount = ref(0);
 const totalFertility = ref(0);
 const totalMaxFertility = ref(0);
+const dodStats = ref(null);
 const hoveredTool = ref(null);
 
 const engine = ref(null);
@@ -371,6 +375,7 @@ const initEngine = (mapSettings = {}) => {
     entityCount.value = stats.entityCount;
     totalFertility.value = Math.floor(stats.totalFertility);
     totalMaxFertility.value = Math.floor(stats.totalMaxFertility);
+    dodStats.value = stats.dodStats;
     
     // 🏘️ Store 동기화
     if (stats.villages) {
@@ -532,6 +537,15 @@ const handleGodPower = (toolId) => {
   margin-top: 5px;
   color: #aaa;
   font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.dod-metrics {
+  margin-top: 4px;
+  color: #4fc3f7;
+  font-weight: bold;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 4px;
 }
 
 

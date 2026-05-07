@@ -1,13 +1,9 @@
 
 import IEntityFactory from '../core/IEntityFactory.js';
 import EntityBuilder from '../core/EntityBuilder.js';
-import BaseStats from '../../components/stats/BaseStats.js';
-import State from '../../components/behavior/State.js';
-import Age from '../../components/stats/Age.js';
 import Builder from '../../components/civilization/Builder.js';
 import Inventory from '../../components/resource/Inventory.js';
 import GathererComponent from '../../components/resource/GathererComponent.js';
-import Health from '../../components/stats/Health.js';
 
 /**
  * 👨‍👩‍👧‍👦 HumanFactory
@@ -55,6 +51,7 @@ export default class HumanFactory extends IEntityFactory {
 
         builder
             .withTransform(spawnX, spawnY)
+            .withVelocity(0, 0)
             .withVisual({
                 type: 'human',
                 gender: gender,
@@ -68,7 +65,7 @@ export default class HumanFactory extends IEntityFactory {
                 diet: 'omnivore',
                 gender: gender
             })
-            .addComponent('BaseStats', new BaseStats({
+            .withStats({
                 health: config.maxHealth || 120,
                 maxHealth: config.maxHealth || 120,
                 hunger: options.isBaby ? 80 : (60 + Math.random() * 20),
@@ -76,7 +73,7 @@ export default class HumanFactory extends IEntityFactory {
                 fatigue: Math.random() * 10,
                 speed: config.moveSpeed || 1.1,
                 strength: 15
-            }))
+            })
             .addComponent('Metabolism', {
                 digestionSpeed: config.digestionSpeed || 0.1,
                 stomach: 50, // 초기 위장 상태 (BaseStats와 연동됨)
@@ -84,12 +81,12 @@ export default class HumanFactory extends IEntityFactory {
                 storedFertility: 0,
                 isPooping: false
             })
-            .addComponent('AIState', new State())
-            .addComponent('Age', new Age({
+            .withAIState()
+            .withAge({
                 currentAge: options.isBaby ? 0 : 18 + Math.random() * 5,
                 maxAge: config.maxLifespan || (60 + Math.random() * 20)
-            }))
-            .addComponent('Health', new Health(config.baseHealth || 100))
+            })
+            .withHealth(config.baseHealth || 100)
             .addComponent('Builder', new Builder())
             .addComponent('Inventory', new Inventory(20))
             .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }));

@@ -89,7 +89,8 @@ export default class ForageState extends State {
             const stats = entity.components.get('BaseStats');
             const speed = (stats?.speed || 40); 
             
-            if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine) === -1) {
+            const velocity = entity.components.get('Velocity');
+            if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine, 12, null, null, velocity) === -1) {
                 // 🌊 도달할 수 없는 곳(바다 건너)이면 즉시 포기
                 state.targetId = null;
                 if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '❓', duration: 1500 });

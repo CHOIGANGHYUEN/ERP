@@ -59,13 +59,14 @@ export default class WanderState extends State {
         }
 
         // Pathfinder를 통한 정확한 목적지 추적
-        // 일반적인 걷기 속도 (속도가 40 미만이면 걷기 모션이 적용됨)
+        const velocity = entity.components.get('Velocity');
         const slowMult = stats?.injurySlowMultiplier || 1.0;
         const speed = 35 * slowMult; 
-        const isReached = Pathfinder.followPath(transform, state, state.wanderTarget, speed, this.system.engine);
+        const isReached = Pathfinder.followPath(transform, state, state.wanderTarget, speed, this.system.engine, 12, null, null, velocity);
         
         // 🛑 목표에 도착했거나, 길을 찾지 못해 Pathfinder가 목표를 포기(targetId = null)한 경우
-        if (isReached || state.targetId === null) {
+        // [Critical Fix] isReached가 -1(에러/경로없음)일 때 true로 판정되는 문제 수정
+        if (isReached === true || state.targetId === null) {
             state.wanderTarget = null;
             state.targetId = null;
             return 'idle'; // 이동 완료 후 대기(Idle) 상태로 전환

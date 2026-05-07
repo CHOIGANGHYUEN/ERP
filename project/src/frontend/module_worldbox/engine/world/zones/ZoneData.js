@@ -18,6 +18,11 @@ export default class ZoneData {
 
         // 🗺️ [Tile-Based Territory] 구역에 할당된 타일 목록
         this.territory = new Set(); // Set of "tx,ty"
+
+        // 📚 [Civilization] 구역 내 문화 및 영향력 수치
+        this.culture = 0;
+        this.influence = 0;
+        this.growthPool = 0; // 영토 확장을 위한 에너지 축적
     }
 
     contains(x, y) {

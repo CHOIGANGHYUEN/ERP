@@ -12,28 +12,34 @@ export default class HealthSystem extends System {
 
     update(dt, time) {
         const em = this.entityManager;
+        const sBuffer = em.statsBuffer;
+        const animalIds = em.animalIds;
         
-        // 모든 엔티티 순회 (체력 컴포넌트가 있는 개체 대상)
-        for (const [id, entity] of em.entities) {
-            const health = entity.components.get('Health');
-            if (!health) continue;
+        // 🚀 [Expert Optimization] 개별 엔티티 조회가 아닌 ID 셋을 기반으로 버퍼 직접 순회
+        for (const id of animalIds) {
+            const idx = id * 8; // [hp, maxHp, hunger, maxHunger, fatigue, maxFatigue, str, def]
+            
+            let hp = sBuffer[idx];
+            const maxHp = sBuffer[idx + 1];
+            const fatigue = sBuffer[idx + 4];
 
-            // 1. 🤕 피격 타이머 업데이트 (시각 효과용)
-            if (health.hitTimer > 0) {
+            // 1. 🌱 자가 치유 (Regeneration)
+            if (hp > 0 && hp < maxHp) {
+                // 초당 최대 체력의 0.5% 회복 (피로도가 낮을 때 더 잘 회복됨)
+                const regenMult = Math.max(0.2, 1.0 - (fatigue / 100));
+                const regenAmount = maxHp * 0.005 * regenMult * dt;
+                
+                hp = Math.min(maxHp, hp + regenAmount);
+                sBuffer[idx] = Math.round(hp);
+            }
+
+            // 2. 🤕 피격 효과 타이머는 컴포넌트 데이터에 남아있으므로 개별 업데이트 유지
+            // (DOD는 데이터 연산 중심이며, 시각 효과 등은 여전히 컴포넌트 프록시를 통해 처리 가능)
+            const entity = em.entities.get(id);
+            const health = entity?.components.get('Health');
+            if (health && health.hitTimer > 0) {
                 health.hitTimer = Math.max(0, health.hitTimer - dt);
             }
-
-            // 2. 🌱 자가 치유 (선택 사항: 나중에 종별 스탯에 따라 조정 가능)
-            if (health.currentHp > 0 && health.currentHp < health.maxHp) {
-                // 초당 최대 체력의 1% 회복 (전투 중이 아닐 때만 등 조건 추가 가능)
-                if (health.hitTimer <= 0) {
-                    const regenAmount = health.maxHp * 0.01 * dt;
-                    health.currentHp = Math.min(health.maxHp, health.currentHp + regenAmount);
-                }
-            }
-
-            // 3. 💀 사망 이벤트 트리거링 (이미 DeathProcessor가 하고 있지만, 여기서 상태를 확정할 수도 있음)
-            // if (health.currentHp <= 0) { ... }
         }
     }
 }

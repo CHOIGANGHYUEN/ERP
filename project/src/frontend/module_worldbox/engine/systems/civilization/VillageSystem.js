@@ -116,6 +116,9 @@ export default class VillageSystem extends System {
                 this._checkExpansion(village);
                 village._expansionCooldown = 120.0; // 다음 개척까지 2분 대기
             }
+
+            // 🏛️ [Nation Dependency] 국가의 정책 및 상태에 따른 마을 영향력 업데이트
+            this._updateNationalInfluence(village, dt);
         }
 
         // 🚩 국가 관리: 마을이 생겼는데 국가가 없다면 창설
@@ -545,14 +548,47 @@ export default class VillageSystem extends System {
 
         const ns = this.engine.systemManager?.nationSystem;
         const nation = ns?.nations.get(village.nationId);
+        if (!nation) return;
 
-        if (nation && nation.kingId) {
-            // 왕이 있으면 건설 속도 20% 보너스
+        // 1. 왕의 존재 여부에 따른 보너스
+        if (nation.kingId) {
             village.buffs.constructionSpeed = 1.2;
             village.buffs.morale = 1.1;
         } else {
             village.buffs.constructionSpeed = 1.0;
             village.buffs.morale = 1.0;
+        }
+
+        // 2. 국가 기술 수준(Tech)에 따른 추가 보너스
+        const techLevel = Math.floor(nation.tech || 0);
+        village.buffs.gatherEfficiency = 1.0 + (techLevel * 0.05); // 레벨당 5% 채집 효율 증가
+        village.buffs.constructionSpeed *= (1.0 + techLevel * 0.02); // 레벨당 2% 건설 속도 증가
+    }
+
+    /** 🏛️ [National Influence] 국가의 정책을 마을에 반영합니다. */
+    _updateNationalInfluence(village, dt) {
+        if (village.nationId === -1) return;
+        const ns = this.engine.systemManager?.nationSystem;
+        const nation = ns?.nations.get(village.nationId);
+        if (!nation || !nation.policies) return;
+
+        // 개척 정책: 확장이 잦을수록 개척 쿨다운 감소
+        if (nation.policies.expansion > 1.0) {
+            village._expansionCooldown -= (dt * (nation.policies.expansion - 1.0));
+        }
+
+        // 특정 분야 집중 (Focus)
+        switch (nation.policies.focus) {
+            case 'military':
+                village.buffs.morale = (village.buffs.morale || 1.0) * 1.2;
+                break;
+            case 'economy':
+                village.buffs.gatherEfficiency *= 1.1;
+                break;
+            case 'culture':
+                // 문화 집중 시 영토 확장 속도 증가 (Task 43 연계)
+                village.cultureRate = 1.5;
+                break;
         }
     }
 

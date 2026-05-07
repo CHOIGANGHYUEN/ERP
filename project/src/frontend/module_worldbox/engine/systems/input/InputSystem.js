@@ -178,6 +178,31 @@ export default class InputSystem extends System {
         }
     }
 
+    findNearestEntity(pos, radius) {
+        if (!this.engine.spatialHash) return null;
+        let nearestId = null;
+        let minDistSq = radius * radius;
+        
+        this.engine.spatialHash.eachInRange(pos.x, pos.y, radius, (id) => {
+            const ent = this.entityManager.entities.get(id);
+            if (!ent) return;
+            
+            const transform = ent.components.get('Transform');
+            if (!transform) return;
+            
+            const dx = transform.x - pos.x;
+            const dy = transform.y - pos.y;
+            const distSq = dx * dx + dy * dy;
+            
+            if (distSq < minDistSq) {
+                minDistSq = distSq;
+                nearestId = id;
+            }
+        });
+        
+        return nearestId;
+    }
+
     update(dt, time) {
         // InputSystem은 DOM 이벤트 드리븐으로 동작하므로 매 프레임 업데이트는 비워둡니다.
     }

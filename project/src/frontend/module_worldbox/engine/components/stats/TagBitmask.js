@@ -17,7 +17,26 @@ export default class TagBitmask extends Component {
 
     constructor(mask = TagBitmask.NONE) {
         super('TagBitmask');
-        this.mask = mask;
+        this._mask = mask;
+        this._buffer = null;
+        this._index = -1;
+    }
+
+    /** 🚀 [Expert Optimization] 버퍼 연결 */
+    linkBuffer(buffer, index) {
+        const isFirstLink = (this._buffer === null);
+        this._buffer = buffer;
+        this._index = index;
+        
+        if (isFirstLink && this._buffer) {
+            this._buffer[this._index] = this._mask;
+        }
+    }
+
+    get mask() { return this._buffer ? this._buffer[this._index] : this._mask; }
+    set mask(v) {
+        if (this._buffer) this._buffer[this._index] = v;
+        else this._mask = v;
     }
 
     add(tag) { this.mask |= tag; }

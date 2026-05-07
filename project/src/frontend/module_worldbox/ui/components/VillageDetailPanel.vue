@@ -32,22 +32,22 @@
           <div class="stats-section">
             <div class="section-title">LOGISTICS & STOCK</div>
             <div class="res-grid">
-              <div class="res-item" :class="{ 'critical': v.food < v.foodNeed }">
+              <div v-if="v.food !== undefined" class="res-item" :class="{ 'critical': v.food < v.foodNeed }">
                 <div class="res-info">
                   <span class="res-icon">🍖</span>
                   <span class="res-label">Food</span>
-                  <span class="res-values">{{ v.food }} / {{ v.foodNeed }}</span>
+                  <span class="res-values">{{ Math.floor(v.food) }} / {{ Math.floor(v.foodNeed || 0) }}</span>
                 </div>
                 <div class="res-progress-bg">
                   <div class="res-progress-fill food" :style="{ width: Math.min(100, (v.food/150)*100) + '%' }"></div>
                 </div>
               </div>
 
-              <div class="res-item" :class="{ 'critical': v.wood < v.woodNeed }">
+              <div v-if="v.wood !== undefined" class="res-item" :class="{ 'critical': v.wood < v.woodNeed }">
                 <div class="res-info">
                   <span class="res-icon">🪵</span>
                   <span class="res-label">Wood</span>
-                  <span class="res-values">{{ v.wood }} / {{ v.woodNeed }}</span>
+                  <span class="res-values">{{ Math.floor(v.wood) }} / {{ Math.floor(v.woodNeed || 0) }}</span>
                 </div>
                 <div class="res-progress-bg">
                   <div class="res-progress-fill wood" :style="{ width: Math.min(100, (v.wood/150)*100) + '%' }"></div>

@@ -115,7 +115,8 @@ export default class GatherState extends State {
         } else {
             // 사거리 밖이면 이동
             state.isChopping = false;
-            const moveStatus = Pathfinder.followPath(transform, state, tPos, 55, this.system.engine);
+            const velocity = entity.components.get('Velocity');
+            const moveStatus = Pathfinder.followPath(transform, state, tPos, 55, this.system.engine, 12, null, null, velocity);
 
             if (moveStatus === -1) {
                 // 🚫 [Timed Blacklist] 길찾기 실패 시 30초간 무시 (이후 다시 시도 가능)

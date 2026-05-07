@@ -12,6 +12,148 @@ export default class ZoneManager {
         if (this.eventBus) {
             this.eventBus.on('ZONE_RESOURCE_EXHAUSTED', this.handleZoneExhausted.bind(this));
         }
+
+        this._updateTimer = 0;
+    }
+
+    update(dt) {
+        this._updateTimer += dt;
+        if (this._updateTimer < 5.0) return; // 5초마다 한 번씩 영토 확장 체크
+        this._updateTimer = 0;
+
+        const vs = this.engine.systemManager?.villageSystem;
+        if (!vs) return;
+
+        for (const village of vs.villages.values()) {
+            this._processVillageExpansion(village, dt);
+        }
+    }
+
+    /** 📈 [Expansion] 마을의 문화와 인구에 비례하여 영토를 확장합니다. */
+    _processVillageExpansion(village, dt) {
+        const ns = this.engine.systemManager?.nationSystem;
+        const nation = village.nationId !== -1 ? ns?.getNation(village.nationId) : null;
+        
+        // 확장 강도 계산: 인구 + 국가 문화/기술 보너스
+        const popFactor = Math.sqrt(village.members.size) * 0.5;
+        const cultureFactor = (nation?.culture || 0) * 0.1;
+        const policyFactor = village.cultureRate || 1.0;
+        
+        const expansionStrength = (popFactor + cultureFactor) * policyFactor;
+
+        // 주거 구역과 벌목 구역 각각 확장 시도
+        this._attemptExpansion(village.id, village.residentialZoneId, expansionStrength);
+        this._attemptExpansion(village.id, village.lumberZoneId, expansionStrength * 0.8);
+    }
+
+    _attemptExpansion(villageId, zoneId, strength) {
+        const zone = this.zones.get(zoneId);
+        if (!zone || !zone.territory || zone.territory.size === 0) return;
+
+        zone.growthPool += strength;
+        
+        // 임계값 도달 시 확장 (영토가 넓어질수록 더 많은 에너지가 필요함)
+        const threshold = 10 + (zone.territory.size * 0.5);
+        if (zone.growthPool >= threshold) {
+            zone.growthPool = 0;
+            this._expandOneTile(villageId, zoneId);
+        }
+    }
+
+    _expandOneTile(villageId, zoneId) {
+        const zone = this.zones.get(zoneId);
+        const vs = this.engine.systemManager?.villageSystem;
+        const village = vs?.getVillage(villageId);
+        if (!zone || !village) return;
+
+        // 인접한 빈 타일 탐색
+        const candidates = [];
+        const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+        const tg = this.engine.terrainGen;
+
+        for (const key of zone.territory) {
+            const tx = key & 0xFFFF;
+            const ty = key >> 16;
+            for (const [dx, dy] of dirs) {
+                const nx = tx + dx, ny = ty + dy;
+                const nKey = (ny << 16) | nx;
+                
+                // 1. 맵 경계 체크
+                if (nx < 0 || nx >= this.engine.mapWidth / 16 || ny < 0 || ny >= this.engine.mapHeight / 16) continue;
+                
+                // 2. 이미 점유된 타일인 경우 처리 (Conflict Logic)
+                const tg = this.engine.terrainGen;
+                const territoryBuffer = tg?.territoryBuffer;
+                const idx = (ny * 16 + 8) * this.engine.mapWidth + (nx * 16 + 8); // 타일 중앙 기준 인덱스
+                const currentOwnerId = territoryBuffer ? territoryBuffer[idx] : 0;
+
+                if (currentOwnerId > 0) {
+                    if (currentOwnerId === villageId) continue; // 내 타일이면 패스
+                    
+                    // 타지마을 타일인 경우: 내 확장 강도가 상대의 방어력(문화/인구)보다 월등히 높아야 탈취 가능
+                    const otherVillage = vs.getVillage(currentOwnerId);
+                    if (otherVillage) {
+                        const myStrength = strength;
+                        const otherDefense = (Math.sqrt(otherVillage.members.size) * 0.5) + ((ns?.getNation(otherVillage.nationId)?.culture || 0) * 0.1);
+                        
+                        // ⚔️ 탈취 시도 (2배 이상 강력할 때)
+                        if (myStrength > otherDefense * 2.0) {
+                            candidates.push({ nx, ny, nKey, isConflict: true, oldOwner: currentOwnerId });
+                        }
+                    }
+                    continue;
+                }
+
+                // 3. 지형 확인 (땅이어야 함)
+                if (tg && !tg.isLandAt(nx * 16 + 8, ny * 16 + 8)) continue;
+
+                candidates.push({ nx, ny, nKey });
+            }
+        }
+
+        if (candidates.length > 0) {
+            // 랜덤하게 하나 선택하여 확장 (탈취 타겟이 있으면 우선순위 고려 가능하지만 여기서는 랜덤)
+            const pick = candidates[Math.floor(Math.random() * candidates.length)];
+            
+            if (pick.isConflict) {
+                // 기존 소유자로부터 제거
+                const oldVillage = vs.getVillage(pick.oldOwner);
+                if (oldVillage) {
+                    oldVillage.territory.delete(pick.nKey);
+                    // 기존 구역에서도 제거 (모든 구역 탐색)
+                    for (const zone of this.zones.values()) {
+                        if (zone.villageId === pick.oldOwner) {
+                            this.removeTileFromZone(zone.id, pick.nx, pick.ny);
+                        }
+                    }
+                }
+                GlobalLogger.warn(`⚔️ Border Conflict: Village ${villageId} captured tile (${pick.nx}, ${pick.ny}) from Village ${pick.oldOwner}`);
+            }
+
+            // 마을 영토에 추가
+            village.territory.add(pick.nKey);
+            
+            // 구역에 추가
+            this.addTileToZone(zoneId, pick.nx, pick.ny);
+            
+            // 🎨 [Sync] TerrainGen 버퍼 동기화
+            const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
+            if (territoryBuffer) {
+                for (let dy = 0; dy < 16; dy++) {
+                    const rowOff = (pick.ny * 16 + dy) * this.engine.mapWidth;
+                    for (let dx = 0; dx < 16; dx++) {
+                        const idx = rowOff + (pick.nx * 16 + dx);
+                        if (idx >= 0 && idx < territoryBuffer.length) {
+                            territoryBuffer[idx] = villageId;
+                        }
+                    }
+                }
+                // 청크 더럽게 표시하여 리렌더링 유도
+                this.engine.chunkManager?.markDirty(pick.nx * 16, pick.ny * 16);
+            }
+
+            GlobalLogger.info(`🌍 Territory Expanded: Village ${villageId} claimed tile (${pick.nx}, ${pick.ny})`);
+        }
     }
 
     createZone(x, y, width, height, type) {
@@ -100,19 +242,23 @@ export default class ZoneManager {
 
         targetZone.territory.add(key);
         this.tileToZoneMap.set(key, zoneId);
-        this.syncVillageZone(zoneId);
+        
+        // 경계 업데이트
+        zone.bounds.minX = Math.min(zone.bounds.minX, tx * 16);
+        zone.bounds.minY = Math.min(zone.bounds.minY, ty * 16);
+        zone.bounds.maxX = Math.max(zone.bounds.maxX, (tx + 1) * 16);
+        zone.bounds.maxY = Math.max(zone.bounds.maxY, (ty + 1) * 16);
     }
 
-    /** 🗺️ 특정 타일을 구역에서 제거합니다. */
+    /** 🗺️ [Modification] 구역에서 타일을 제거합니다. */
     removeTileFromZone(zoneId, tx, ty) {
         const zone = this.zones.get(zoneId);
         if (!zone) return;
         const key = (ty << 16) | tx;
-        zone.territory.delete(key);
-        if (this.tileToZoneMap.get(key) === zoneId) {
+        if (zone.territory.delete(key)) {
             this.tileToZoneMap.delete(key);
+            // 경계 재계산은 비용이 크므로 다음 밸런싱 때 처리하거나 대략적으로 유지
         }
-        this.syncVillageZone(zoneId);
     }
 
     /**

@@ -156,10 +156,10 @@ export default class AnimalBehaviorSystem extends System {
         state.abstractIndex = 0;
         state.interruptible = true; // 🛡️ 상태 전이 시 기본적으로 중단 가능으로 초기화
 
-        const transform = entity.components.get('Transform');
-        if (transform) {
-            transform.vx = 0;
-            transform.vy = 0;
+        const velocity = entity.components.get('Velocity');
+        if (velocity) {
+            velocity.vx = 0;
+            velocity.vy = 0;
         }
 
         // 타겟 유지 조건

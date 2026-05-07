@@ -57,7 +57,8 @@ export default class BuildState extends State {
         if (!bPos) return AnimalStates.IDLE;
 
         // 도착 여부 확인 (Pathfinder 사용, 40px 범위로 상향)
-        const isReached = Pathfinder.followPath(transform, state, bPos, 70, this.system.engine, 40, 2000, blueprintId);
+        const velocity = entity.components.get('Velocity');
+        const isReached = Pathfinder.followPath(transform, state, bPos, 70, this.system.engine, 40, 2000, blueprintId, velocity);
         
         if (isReached === true) {
             // 도착 시 정지 및 연출 (실제 자원 소모와 진행도는 ConstructionSystem에서 처리)

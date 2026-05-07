@@ -19,9 +19,10 @@ export default class EatState extends State {
         const target = this.system.entityManager.entities.get(state.targetId);
 
         // 🚀 [User Request] 관성 제거: 식사 중에는 이동 정지
-        if (transform) {
-            transform.vx = 0;
-            transform.vy = 0;
+        const velocity = entity.components.get('Velocity');
+        if (velocity) {
+            velocity.vx = 0;
+            velocity.vy = 0;
         }
 
         // 1. 타겟 소멸 시 복귀

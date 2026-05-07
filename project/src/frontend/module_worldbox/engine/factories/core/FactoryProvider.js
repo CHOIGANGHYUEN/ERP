@@ -1,53 +1,94 @@
+import ObjectPool from '../../utils/ObjectPool.js';
+import Transform from '../../components/motion/Transform.js';
+import Velocity from '../../components/motion/Velocity.js';
+import BaseStats from '../../components/stats/BaseStats.js';
+import Health from '../../components/stats/Health.js';
+import Visual from '../../components/render/Visual.js';
+import State from '../../components/behavior/State.js';
+import Age from '../../components/stats/Age.js';
+
+// Factories
 import AnimalFactory from '../entities/AnimalFactory.js';
 import HumanFactory from '../entities/HumanFactory.js';
+import ItemFactory from '../entities/ItemFactory.js';
 import NatureFactory from '../entities/NatureFactory.js';
 import ResourceFactory from '../entities/ResourceFactory.js';
 import BuildingFactory from '../entities/BuildingFactory.js';
-import ToolFactory from '../entities/ToolFactory.js';
-import ItemFactory from '../entities/ItemFactory.js';
 
 /**
- * 🏢 FactoryProvider
- * 객체 타입에 따라 적절한 팩토리를 매핑하고 반환하는 중앙 레지스트리입니다.
- * 개방-폐쇄 원칙(OCP)과 의존성 역전 원칙(DIP)을 준수합니다.
+ * 🏭 FactoryProvider
+ * 
+ * 1. 엔티티 생성에 필요한 모든 컴포넌트들의 풀(Pool)을 관리합니다. (DOD 최적화)
+ * 2. 다양한 도메인 팩토리(Animal, Human 등)를 등록하고 중앙 스폰 인터페이스를 제공합니다.
  */
-export default class FactoryProvider {
-    constructor(engine) {
-        this.engine = engine;
+class FactoryProvider {
+    constructor() {
+        this.engine = null;
+        this.pools = new Map();
         this.factories = new Map();
+        this._initPools();
+    }
+
+    /** 🚀 [Expert Optimization] 엔진 주입 및 팩토리 초기화 */
+    init(engine) {
+        this.engine = engine;
         
-        // 🚀 초기 팩토리 등록
-        this._registerDefaultFactories();
+        // 도메인 팩토리 등록
+        this.factories.set('animal', new AnimalFactory(engine));
+        this.factories.set('human', new HumanFactory(engine));
+        this.factories.set('resource', new ItemFactory(engine)); // legacy item factory
+        this.factories.set('item', new ItemFactory(engine));
+        this.factories.set('nature', new NatureFactory(engine));
+        this.factories.set('building', new BuildingFactory(engine));
+        this.factories.set('material', new ResourceFactory(engine));
     }
 
-    _registerDefaultFactories() {
-        this.register('animal', new AnimalFactory(this.engine));
-        this.register('human', new HumanFactory(this.engine));
-        this.register('nature', new NatureFactory(this.engine));
-        this.register('resource', new ResourceFactory(this.engine));
-        this.register('building', new BuildingFactory(this.engine));
-        this.register('tool', new ToolFactory(this.engine));
-        this.register('item', new ItemFactory(this.engine));
+    _initPools() {
+        this.pools.set('Transform', new ObjectPool(() => new Transform(), (c) => c.reset(), 100));
+        this.pools.set('Velocity', new ObjectPool(() => new Velocity(), (c) => c.reset(), 100));
+        this.pools.set('BaseStats', new ObjectPool(() => new BaseStats(), (c) => c.reset(), 100));
+        this.pools.set('Health', new ObjectPool(() => new Health(), (c) => {}, 100));
+        this.pools.set('Visual', new ObjectPool(() => new Visual(), (c) => {}, 100));
+        this.pools.set('AIState', new ObjectPool(() => new State(), (c) => {}, 100));
+        this.pools.set('Age', new ObjectPool(() => new Age(), (c) => {}, 100));
     }
 
-    /** 새 팩토리를 동적으로 등록 (OCP 준수) */
-    register(category, factory) {
-        this.factories.set(category, factory);
-    }
-
-    /** 카테고리에 맞는 팩토리 반환 */
-    getFactory(category) {
-        const factory = this.factories.get(category);
+    /** 🚀 [Expert Interface] 중앙 스폰 브릿지 */
+    spawn(category, type, x, y, options = {}) {
+        const factory = this.factories.get(category.toLowerCase());
         if (!factory) {
             console.error(`Factory for category '${category}' not found.`);
             return null;
         }
-        return factory;
+        return factory.create(type, x, y, options);
     }
 
-    /** 편의 메서드: 카테고리와 타입을 지정하여 즉시 생성 */
-    spawn(category, type, x, y, options = {}) {
-        const factory = this.getFactory(category);
-        return factory ? factory.create(type, x, y, options) : null;
+    getFactory(category) {
+        return this.factories.get(category.toLowerCase());
+    }
+
+    /**
+     * 특정 타입의 컴포넌트를 풀에서 가져옵니다.
+     */
+    getComponent(type, options = {}) {
+        const pool = this.pools.get(type);
+        if (!pool) return null;
+
+        const component = pool.get();
+        if (options && typeof options === 'object') {
+            Object.assign(component, options);
+        }
+        return component;
+    }
+
+    /**
+     * 사용이 끝난 컴포넌트를 풀에 반환합니다.
+     */
+    releaseComponent(type, component) {
+        const pool = this.pools.get(type);
+        if (pool) pool.release(component);
     }
 }
+
+export const factoryProvider = new FactoryProvider();
+export default factoryProvider;

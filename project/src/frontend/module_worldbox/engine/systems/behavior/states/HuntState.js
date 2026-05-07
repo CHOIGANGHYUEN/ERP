@@ -44,9 +44,12 @@ export default class HuntState extends State {
         const distSq = dx * dx + dy * dy;
 
         // 초근접 사거리 도달 시 공격/타격 루프 수행
+        const velocity = entity.components.get('Velocity');
         if (distSq <= 144) { // 12px 반경
-            transform.vx *= 0.1;
-            transform.vy *= 0.1;
+            if (velocity) {
+                velocity.vx *= 0.1;
+                velocity.vy *= 0.1;
+            }
 
             // ⚔️ [Damage Loop] 1초(60틱)마다 데미지 부여 (dt 누적 활용)
             state.attackCooldown = (state.attackCooldown || 0) - dt;
@@ -92,7 +95,7 @@ export default class HuntState extends State {
             const slowMult = stats?.injurySlowMultiplier || 1.0;
             const speed = (stats?.speed || 45) * 1.2 * slowMult; // 사냥 시에는 평소보다 20% 더 빠르게 질주
             // 🚀 [Expert Optimization] 사냥 중에는 경로를 500ms마다 재계산하여 먹잇감의 이동을 추적
-            const result = Pathfinder.followPath(transform, state, tPos, speed, this.system.engine, 12, 500);
+            const result = Pathfinder.followPath(transform, state, tPos, speed, this.system.engine, 12, 500, null, velocity);
             
             if (result === -1) {
                 state.failedPathCount = (state.failedPathCount || 0) + 1;

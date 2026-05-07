@@ -1,6 +1,7 @@
 import ResourceNode from '../components/resource/ResourceNode.js';
 import Transform from '../components/motion/Transform.js';
 import Visual from '../components/render/Visual.js';
+import { factoryProvider } from '../factories/core/FactoryProvider.js';
 import resourceConfig from '../config/resource_balance.json'; // resource_balance.json 임포트
 
 export default class EntityManager {
@@ -11,25 +12,59 @@ export default class EntityManager {
         this.resourceIds = new Set();
         this.buildingIds = new Set();
         this.nextId = 0;
-        this.entityPool = []; 
 
         // 🚀 [Expert Optimization] TypedArray 기반 컴포넌트 데이터 캐싱 (DOD)
         this.maxEntities = 10000;
         this.transformBuffer = new Float32Array(this.maxEntities * 2); // [x, y]
         this.velocityBuffer = new Float32Array(this.maxEntities * 4);  // [vx, vy, ax, ay]
-        this.statsBuffer = new Float32Array(this.maxEntities * 4);     // [hp, hunger, fatigue, speed]
+        
+        // 📊 [Expert Design] Stats Buffer Layout (8 slots per entity)
+        // 0: hp, 1: maxHp, 2: hunger, 3: maxHunger, 4: fatigue, 5: maxFatigue, 6: strength, 7: defense
+        this.statsBuffer = new Int32Array(this.maxEntities * 8); 
+        
+        // 🌊 [Expert Design] Stats Float Buffer Layout (4 slots per entity)
+        // 0: speed, 1: digestionQuality, 2: waste, 3: storedFertility
+        this.statsFloatBuffer = new Float32Array(this.maxEntities * 4);
+
+        // 🧠 [Expert Design] State Buffer (Bitmask & Mode)
+        // 0: modeIndex, 1: bitmask (1: grabbed, 2: dead, 4: hidden, 8: selected)
+        this.stateBuffer = new Int32Array(this.maxEntities * 2);
+
+        // 🎨 [Expert Design] Render Buffer
+        // 0: typeIdx, 1: subtypeIdx, 2: frameIdx, 3: flipX, 4: size, 5: alpha(0-255), 6: facing
+        this.renderBuffer = new Int32Array(this.maxEntities * 8);
+
+        // 🧬 [Expert Design] Lifecycle Buffer (Alive Flag)
+        // 0: isAlive (1 or 0)
+        this.aliveBuffer = new Uint8Array(this.maxEntities);
+
+        // 🏷️ [Expert Design] Tag Buffer (Bitmask)
+        // 0: tagMask
+        this.tagBuffer = new Uint32Array(this.maxEntities);
+        
+        // ♻️ [Pool] ID 재사용을 위한 큐
+        this.freeIds = [];
     }
 
     createEntity() {
+        // ♻️ [Expert Optimization] 풀에서 ID 재사용
         let id;
-        if (this.entityPool.length > 0) {
-            id = this.entityPool.pop();
+        if (this.freeIds.length > 0) {
+            id = this.freeIds.pop();
         } else {
             id = this.nextId++;
-            this._ensureBufferCapacity(id);
+            if (id >= this.maxEntities) {
+                this._expandBuffers();
+            }
         }
 
-        this.entities.set(id, { id, components: new Map() });
+        this.aliveBuffer[id] = 1; // 활성화 플래그 ON
+
+        const entity = {
+            id,
+            components: new Map()
+        };
+        this.entities.set(id, entity);
         return id;
     }
 
@@ -37,49 +72,116 @@ export default class EntityManager {
     _ensureBufferCapacity(id) {
         if (id < this.maxEntities) return;
         
-        const newMax = Math.max(id + 1, this.maxEntities * 2);
+        const newMax = Math.max(id + 1, Math.floor(this.maxEntities * 1.5));
+        console.log(`📏 EntityManager: Expanding buffer capacity to ${newMax}...`);
+
         const newTransform = new Float32Array(newMax * 2);
         const newVelocity = new Float32Array(newMax * 4);
-        const newStats = new Float32Array(newMax * 4);
+        const newStats = new Int32Array(newMax * 8);
+        const newStatsFloat = new Float32Array(newMax * 4);
+        const newState = new Int32Array(newMax * 2);
+        const newRender = new Int32Array(newMax * 8);
+        const newAlive = new Uint8Array(newMax);
         
+        // 기존 데이터 복사 (TypedArray.set은 매우 빠름)
         newTransform.set(this.transformBuffer);
         newVelocity.set(this.velocityBuffer);
         newStats.set(this.statsBuffer);
+        newStatsFloat.set(this.statsFloatBuffer);
+        newState.set(this.stateBuffer);
+        newRender.set(this.renderBuffer);
+        newAlive.set(this.aliveBuffer);
+        newTag.set(this.tagBuffer);
         
+        // 참조 교체
         this.transformBuffer = newTransform;
         this.velocityBuffer = newVelocity;
         this.statsBuffer = newStats;
+        this.statsFloatBuffer = newStatsFloat;
+        this.stateBuffer = newState;
+        this.renderBuffer = newRender;
+        this.aliveBuffer = newAlive;
+        this.tagBuffer = newTag;
         this.maxEntities = newMax;
-        console.log(`📏 EntityManager: Buffer resized to ${newMax} slots.`);
+
+        // 🚀 [Critical Fix] 기존 모든 컴포넌트들을 새 버퍼에 재연결 (DOD 동기화)
+        // 이 과정에서 컴포넌트 내부의 _buffer 참조가 최신화됩니다.
+        this._relinkAllComponents();
     }
 
-    removeEntity(id, spatialHash = null) {
-        const entity = this.entities.get(id);
-        if (entity) {
-            // 🚀 [Synchronization] 공간 해시에서 즉시 제거 (유령 타겟 방지)
-            const sh = spatialHash || this.spatialHash;
-            if (sh) {
-                const transform = entity.components.get('Transform');
-                if (transform) {
-                    sh.remove(id, transform.x, transform.y);
+    /** 🚀 모든 활성 엔티티의 컴포넌트들을 버퍼에 재연결 */
+    _relinkAllComponents() {
+        for (const [id, entity] of this.entities) {
+            const transform = entity.components.get('Transform');
+            const velocity = entity.components.get('Velocity');
+            const stats = entity.components.get('BaseStats');
+
+            // 1. Velocity 먼저 연결 (Transform이 Velocity를 참조하므로 순서 중요)
+            if (velocity && velocity.linkBuffer) {
+                velocity.linkBuffer(this.velocityBuffer, id * 4);
+            }
+
+            // 2. Transform 연결 및 Velocity 링크 갱신
+            if (transform && transform.linkBuffer) {
+                transform.linkBuffer(this.transformBuffer, id * 2);
+                if (velocity) {
+                    transform.velocity = velocity; // 내부적으로 linkVelocityBuffer 호출함
                 }
             }
 
-            const building = entity.components.get('Building');
-            if (building) {
-                console.warn(`🏢 Removing Building Entity! ID: ${id}, Type: ${building.type}`);
+            // 3. Stats 연결
+            if (stats && stats.linkBuffer) {
+                stats.linkBuffer(this.statsBuffer, id * 8, this.statsFloatBuffer, id * 4);
             }
             
-            this.animalIds.delete(id);
-            this.humanIds.delete(id); // 👤 인간 인덱스 제거
-            this.resourceIds.delete(id);
-            this.buildingIds.delete(id);
-            
-            // 🚀 [Memory Optimization] 컴포넌트 맵을 명시적으로 비워 참조 해제
-            entity.components.clear();
-            
-            this.entities.delete(id); // 활성 맵에서는 제거
-            this.entityPool.push(id); // 재활용 대기소로 이동
+            // 4. Health 연결 (BaseStats와 동일한 HP 슬롯 공유)
+            const health = entity.components.get('Health');
+            if (health && health.linkBuffer) {
+                health.linkBuffer(this.statsBuffer, id * 8);
+            }
+
+            // 5. State & Render 연결
+            const aiState = entity.components.get('AIState');
+            if (aiState && aiState.linkBuffer) {
+                aiState.linkBuffer(this.stateBuffer, id * 2);
+            }
+            const visual = entity.components.get('Visual');
+            if (visual && visual.linkBuffer) {
+                visual.linkBuffer(this.renderBuffer, id * 8);
+            }
+            const tag = entity.components.get('TagBitmask');
+            if (tag && tag.linkBuffer) {
+                tag.linkBuffer(this.tagBuffer, id);
+            }
+        }
+    }
+
+    removeEntity(id) {
+        if (!this.entities.has(id)) return;
+
+        const entity = this.entities.get(id);
+        
+        // 1. 🧹 [Cleanup] 각 카테고리별 ID 셋에서 제거
+        this.animalIds.delete(id);
+        this.humanIds.delete(id); // 👤 인간 인덱스 제거
+        this.resourceIds.delete(id);
+        this.buildingIds.delete(id);
+
+        // 2. 🧬 [Lifecycle] Alive 플래그 OFF 및 버퍼 초기화 (선택 사항)
+        this.aliveBuffer[id] = 0;
+        
+        // 3. ♻️ [Pool] ID 및 컴포넌트 반납
+        for (const [name, component] of entity.components) {
+            factoryProvider.releaseComponent(name, component);
+        }
+        entity.components.clear();
+        
+        this.freeIds.push(id);
+        this.entities.delete(id);
+
+        // 4. 📢 이벤트 발행 (DeathProcessor 등이 수신)
+        if (this.eventBus) {
+            this.eventBus.emit('ENTITY_REMOVED', { id, entity });
         }
     }
 
@@ -92,8 +194,9 @@ export default class EntityManager {
         this.humanIds.clear();
         this.resourceIds.clear();
         this.buildingIds.clear();
-        this.entityPool = [];
+        this.freeIds = [];
         this.nextId = 0;
+        this.aliveBuffer.fill(0);
     }
 
     addComponent(entityId, component, overrideName = null) {
@@ -114,18 +217,53 @@ export default class EntityManager {
             // 🚀 [Expert Optimization] TypedArray 버퍼 연결 (DOD)
             if (name === 'Transform') {
                 if (component.linkBuffer) component.linkBuffer(this.transformBuffer, entityId * 2);
+                const velocity = entity.components.get('Velocity');
+                if (velocity) component.velocity = velocity;
+                
+                // 🚀 [Expert Design] 정적 개체(건물, 자원)는 공간 해시에 즉시 등록
+                if (this.spatialHash && (this.buildingIds.has(entityId) || this.resourceIds.has(entityId))) {
+                    this.spatialHash.insert(entityId, component.x, component.y, true);
+                }
             } else if (name === 'Velocity') {
                 if (component.linkBuffer) component.linkBuffer(this.velocityBuffer, entityId * 4);
+                const transform = entity.components.get('Transform');
+                if (transform) transform.velocity = component;
             } else if (name === 'BaseStats') {
-                if (component.linkBuffer) component.linkBuffer(this.statsBuffer, entityId * 4);
+                if (component.linkBuffer) component.linkBuffer(this.statsBuffer, entityId * 8, this.statsFloatBuffer, entityId * 4);
+                // Health 컴포넌트가 있다면 동기화
+                const health = entity.components.get('Health');
+                if (health && health.linkBuffer) health.linkBuffer(this.statsBuffer, entityId * 8);
+            } else if (name === 'Health') {
+                if (component.linkBuffer) component.linkBuffer(this.statsBuffer, entityId * 8);
+                // BaseStats 컴포넌트가 있다면 동기화
+                const stats = entity.components.get('BaseStats');
+                if (stats && stats.linkBuffer) stats.linkBuffer(this.statsBuffer, entityId * 8, this.statsFloatBuffer, entityId * 4);
+            } else if (name === 'AIState') {
+                if (component.linkBuffer) component.linkBuffer(this.stateBuffer, entityId * 2);
+            } else if (name === 'Visual') {
+                if (component.linkBuffer) component.linkBuffer(this.renderBuffer, entityId * 8);
+            } else if (name === 'TagBitmask') {
+                if (component.linkBuffer) component.linkBuffer(this.tagBuffer, entityId);
             }
 
             if (name === 'Animal') {
                 this.animalIds.add(entityId);
                 if (component.type === 'human') this.humanIds.add(entityId);
             }
-            if (name === 'Resource' || name === 'DroppedItem') this.resourceIds.add(entityId);
-            if (name === 'Building' || name === 'Structure') this.buildingIds.add(entityId);
+            if (name === 'Resource' || name === 'DroppedItem') {
+                this.resourceIds.add(entityId);
+                const transform = entity.components.get('Transform');
+                if (transform && this.spatialHash) {
+                    this.spatialHash.insert(entityId, transform.x, transform.y, true);
+                }
+            }
+            if (name === 'Building' || name === 'Structure') {
+                this.buildingIds.add(entityId);
+                const transform = entity.components.get('Transform');
+                if (transform && this.spatialHash) {
+                    this.spatialHash.insert(entityId, transform.x, transform.y, true);
+                }
+            }
         }
     }
 

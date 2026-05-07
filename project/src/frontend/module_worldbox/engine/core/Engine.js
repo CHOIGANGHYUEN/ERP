@@ -46,8 +46,10 @@ export default class Engine {
         this.mapWidth = options.width || 2400;
         this.mapHeight = options.height || 2400;
 
-        // 👁️ RESTORED: Intelligent Camera with Boundary & Mouse-Center Zoom
         this.camera = new Camera(this.width, this.height, this.mapWidth, this.mapHeight);
+
+        // 🚀 [Culling Optimization] 청크 사이즈를 512로 변경 (과도한 청크 생성으로 인한 캔버스 고갈 방지)
+        this.chunkManager = new ChunkManager(this, 512);
 
         // 🚀 FULL SCREEN INIT: Auto-scale to fill the viewport
         const fitZoom = Math.max(this.width / this.mapWidth, this.height / this.mapHeight);
@@ -59,7 +61,8 @@ export default class Engine {
         this.eventBus = new EventBus(); // 📡 Global Event Network 생성
         this.renderer = new EntityRenderer(this);
 
-        this.factoryProvider = new FactoryProvider(this);
+        this.factoryProvider = FactoryProvider;
+        this.factoryProvider.init(this);
         // 🚀 주입: 팩토리들이 설정을 참조할 수 있도록 엔진 참조 확인
 
         // 단일 책임 원칙(SRP) 준수를 위한 시스템 매니저 도입
@@ -130,8 +133,6 @@ export default class Engine {
 
         this.onEntitySelect = null;
         this.selectedId = null;
-        // 🚀 [Culling Optimization] 청크 사이즈를 512로 변경 (과도한 청크 생성으로 인한 캔버스 고갈 방지)
-        this.chunkManager = new ChunkManager(this, 512);
         this.isFollowing = false;
 
         this.monitor = new StatsMonitor(this);

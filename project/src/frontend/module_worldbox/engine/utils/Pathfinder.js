@@ -465,7 +465,7 @@ export default class Pathfinder {
         };
     }
 
-    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcIntervalOverride = null, targetIdOverride = null) {
+    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcIntervalOverride = null, targetIdOverride = null, velocity = null) {
         const now = Date.now();
         const currentTargetId = targetIdOverride || state.targetId;
         
@@ -510,10 +510,13 @@ export default class Pathfinder {
                     const [nextX, nextY] = state.abstractPath[state.abstractIndex].split(',').map(Number);
                     state.path = this.findPath(transform.x, transform.y, nextX, nextY, engine);
                     state.pathIndex = 0;
-                    if (!state.path) return -1;
+                    if (!state.path || state.path.length === 0) {
+                        console.warn(`[Pathfinder] No path found for entity to target. Returning -1.`);
+                        return -1;
+                    }
                 } else {
-                    transform.vx = 0;
-                    transform.vy = 0;
+                    if (velocity) { velocity.vx = 0; velocity.vy = 0; }
+                    else { transform.vx = 0; transform.vy = 0; }
                     return -1;
                 }
             }
@@ -521,8 +524,8 @@ export default class Pathfinder {
             const dxEnd = targetPos.x - transform.x;
             const dyEnd = targetPos.y - transform.y;
             if (dxEnd * dxEnd + dyEnd * dyEnd <= targetRadius * targetRadius) {
-                transform.vx = 0;
-                transform.vy = 0;
+                if (velocity) { velocity.vx = 0; velocity.vy = 0; }
+                else { transform.vx = 0; transform.vy = 0; }
                 state.path = null;
                 state.abstractPath = null;
                 return true;
@@ -558,8 +561,13 @@ export default class Pathfinder {
                     const ny = targetWp.y - transform.y;
                     const d = Math.hypot(nx, ny);
                     if (d > 0.1) {
-                        transform.vx = (nx / d) * speed;
-                        transform.vy = (ny / d) * speed;
+                        if (velocity) {
+                            velocity.vx = (nx / d) * speed;
+                            velocity.vy = (ny / d) * speed;
+                        } else {
+                            transform.vx = (nx / d) * speed;
+                            transform.vy = (ny / d) * speed;
+                        }
                     }
                     return false;
                 }

@@ -89,6 +89,7 @@ export default class SystemManager {
     }
 
     update(dt, time) {
+        if (!this.engine) return;
         const frameCount = this.engine.frameCount || 0;
         const monitor = this.engine.monitor;
 
@@ -125,6 +126,7 @@ export default class SystemManager {
             this.villageSystem.update(dt5, time);
             this.construction.update(dt5, time);
             this.spawner.update(dt5, time);
+            this.zoneManager.update(dt5); // 🗺️ 영토 확장 체크
         }
 
         // 🧪 Lifecycle & Stats (6Hz) - Staggered

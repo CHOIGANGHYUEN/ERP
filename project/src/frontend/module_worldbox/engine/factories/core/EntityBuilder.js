@@ -1,5 +1,4 @@
-import Transform from '../../components/motion/Transform.js';
-import Visual from '../../components/render/Visual.js';
+import { factoryProvider } from './FactoryProvider.js';
 
 /**
  * 🛠️ EntityBuilder
@@ -17,14 +16,35 @@ export default class EntityBuilder {
     }
 
     withTransform(x, y) {
-        const transform = new Transform(x, y);
+        const transform = factoryProvider.getComponent('Transform', { x, y });
         transform.vx = 0;
         transform.vy = 0;
         return this.addComponent('Transform', transform);
     }
 
+    /** 🚀 [DOD Support] 이동 가능 개체를 위한 벨로시티 컴포넌트 추가 */
+    withVelocity(vx = 0, vy = 0) {
+        return this.addComponent('Velocity', factoryProvider.getComponent('Velocity', { vx, vy }));
+    }
+
     withVisual(options) {
-        return this.addComponent('Visual', new Visual(options));
+        return this.addComponent('Visual', factoryProvider.getComponent('Visual', options));
+    }
+
+    withStats(options) {
+        return this.addComponent('BaseStats', factoryProvider.getComponent('BaseStats', options));
+    }
+
+    withHealth(maxHp) {
+        return this.addComponent('Health', factoryProvider.getComponent('Health', { currentHp: maxHp, maxHp }));
+    }
+
+    withAIState(options = {}) {
+        return this.addComponent('AIState', factoryProvider.getComponent('AIState', options));
+    }
+
+    withAge(options) {
+        return this.addComponent('Age', factoryProvider.getComponent('Age', options));
     }
 
     build() {

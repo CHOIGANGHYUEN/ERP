@@ -6,13 +6,14 @@ export default class CollisionSystem {
     static resolveSeparation(id, x, y, spatialHash, em, radius = 15) {
         if (!spatialHash) return { pushX: 0, pushY: 0 };
         
-        const nearby = spatialHash.query(x, y, radius);
         let pushX = 0;
         let pushY = 0;
         let count = 0;
+        const radSq = radius * radius;
 
-        for (const otherId of nearby) {
-            if (otherId === id) continue;
+        // 🚀 [Expert Optimization] query() 대신 garbage-free 콜백 기반 eachInRange() 사용
+        spatialHash.eachInRange(x, y, radius, (otherId) => {
+            if (otherId === id) return;
             
             const otherIdx = otherId * 2;
             const ox = em.transformBuffer[otherIdx];
@@ -22,15 +23,14 @@ export default class CollisionSystem {
             const dy = y - oy;
             const distSq = dx * dx + dy * dy;
 
-            if (distSq < radius * radius && distSq > 0.01) {
+            if (distSq < radSq && distSq > 0.01) {
                 const dist = Math.sqrt(distSq);
-                // 거리가 가까울수록 강하게 밀어냄 (1/d)
                 const force = (radius - dist) / radius;
                 pushX += (dx / dist) * force;
                 pushY += (dy / dist) * force;
                 count++;
             }
-        }
+        });
 
         if (count > 0) {
             return { pushX: pushX / count, pushY: pushY / count };

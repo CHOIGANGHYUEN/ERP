@@ -1,4 +1,5 @@
 import System from '../../core/System.js';
+import { StateNames } from '../../components/behavior/State.js';
 
 /**
  * 🎞️ SpriteManager System
@@ -13,8 +14,43 @@ export default class SpriteManager extends System {
 
     update(dt, time) {
         const em = this.entityManager;
-        for (const [id, entity] of em.entities) {
-            this.updateAnimations(entity, dt);
+        const rBuffer = em.renderBuffer;
+        const sBuffer = em.stateBuffer;
+        const animalIds = em.animalIds;
+
+        for (const id of animalIds) {
+            const rIdx = id * 8;
+            const sIdx = id * 2;
+
+            // 1. 현재 상태 인덱스 가져오기
+            const modeIdx = sBuffer[sIdx];
+            const mode = StateNames[modeIdx] || 'idle';
+
+            // 2. Visual 컴포넌트에서 애니메이션 메타데이터 참조 (프레임 연산은 버퍼에 기록)
+            const entity = em.entities.get(id);
+            const visual = entity?.components.get('Visual');
+            if (!visual) continue;
+
+            const anim = visual.animations[mode];
+            if (!anim || !anim.frames) continue;
+
+            // 3. 프레임 타이머 업데이트 및 버퍼 쓰기
+            visual.frameTimer += dt * 1000;
+            if (visual.frameTimer >= anim.speed) {
+                visual.frameTimer = 0;
+                
+                const isLoop = anim.loop !== false;
+                let currentFrame = rBuffer[rIdx + 2];
+                const nextFrameIdx = currentFrame + 1;
+
+                if (nextFrameIdx < anim.frames.length) {
+                    rBuffer[rIdx + 2] = nextFrameIdx;
+                } else if (isLoop) {
+                    rBuffer[rIdx + 2] = 0;
+                } else {
+                    rBuffer[rIdx + 2] = anim.frames.length - 1;
+                }
+            }
         }
     }
 

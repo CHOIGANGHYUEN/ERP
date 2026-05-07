@@ -31,20 +31,20 @@
             </div>
           </div>
 
-          <div class="resource-section">
+          <div v-if="nation.resources" class="resource-section">
             <div class="section-title">🏛️ NATIONAL TREASURY</div>
             <div class="resource-grid">
               <div class="res-item">
                 <span class="res-icon">🪵</span>
-                <span class="res-val">{{ Math.floor(nation.resources.wood) }}</span>
+                <span class="res-val">{{ Math.floor(nation.resources.wood || 0) }}</span>
               </div>
               <div class="res-item">
                 <span class="res-icon">🍎</span>
-                <span class="res-val">{{ Math.floor(nation.resources.food) }}</span>
+                <span class="res-val">{{ Math.floor(nation.resources.food || 0) }}</span>
               </div>
               <div class="res-item">
                 <span class="res-icon">🪨</span>
-                <span class="res-val">{{ Math.floor(nation.resources.stone) }}</span>
+                <span class="res-val">{{ Math.floor(nation.resources.stone || 0) }}</span>
               </div>
               <div class="res-item">
                 <span class="res-icon">💰</span>

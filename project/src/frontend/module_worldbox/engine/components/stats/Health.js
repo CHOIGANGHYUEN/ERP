@@ -7,13 +7,43 @@ import Component from '../../core/Component.js';
 export default class Health extends Component {
     constructor(maxHp = 100) {
         super('Health');
-        this.maxHp = maxHp;
-        this.currentHp = maxHp;
+        this._currentHp = maxHp;
+        this._maxHp = maxHp;
         
+        this._buffer = null;
+        this._index = -1;
+
         // 🤕 피격 피드백 관련 상태
         this.isHit = false;     // 현재 프레임에서 타격받았는지 여부
         this.hitTimer = 0;      // 피격 애니메이션(흔들림, 틴트) 지속 시간
         this.lastHitTime = 0;   // 마지막 피격 타임스탬프
+    }
+
+    /** 🚀 [Expert Optimization] 버퍼 연결 */
+    linkBuffer(buffer, index) {
+        const isFirstLink = (this._buffer === null);
+        this._buffer = buffer;
+        this._index = index;
+        
+        if (isFirstLink && this._buffer) {
+            this._buffer[this._index] = this._currentHp;
+            this._buffer[this._index + 1] = this._maxHp;
+        }
+    }
+
+    get currentHp() { return this._buffer ? this._buffer[this._index] : this._currentHp; }
+    set currentHp(v) { 
+        if (this._buffer) this._buffer[this._index] = v;
+        else this._currentHp = v;
+    }
+
+    get health() { return this.currentHp; }
+    set health(v) { this.currentHp = v; }
+
+    get maxHp() { return this._buffer ? this._buffer[this._index + 1] : this._maxHp; }
+    set maxHp(v) { 
+        if (this._buffer) this._buffer[this._index + 1] = v;
+        else this._maxHp = v;
     }
 
     /**

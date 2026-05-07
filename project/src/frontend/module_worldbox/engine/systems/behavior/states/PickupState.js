@@ -99,7 +99,8 @@ export default class PickupState extends State {
             const stats = entity.components.get('BaseStats');
             const speed = (stats?.speed || 40);
 
-            if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine) === -1) {
+            const velocity = entity.components.get('Velocity');
+            if (Pathfinder.followPath(transform, state, tPos, speed, this.system.engine, 12, null, null, velocity) === -1) {
                 if (!state.unreachableTargets) state.unreachableTargets = new Set();
                 state.unreachableTargets.add(state.targetId);
                 state.targetId = null;

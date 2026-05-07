@@ -18,6 +18,14 @@ export const AnimalStates = {
     GRABBED: 'grabbed'
 };
 
+export const StateIndices = {
+    'idle': 0, 'wander': 1, 'sleep': 2, 'run': 3, 'flee': 4,
+    'evade': 5, 'hunt': 6, 'forage': 7, 'eat': 8, 'graze': 9,
+    'pickup': 10, 'die': 11, 'grabbed': 12
+};
+
+export const StateNames = Object.keys(StateIndices);
+
 
 
 /**
@@ -39,35 +47,67 @@ export default class State extends Component {
     constructor(options = {}) {
         super('AIState');
 
+        this._buffer = null;
+        this._index = -1;
+
         // 객체로 전달받거나, 단일 문자열로 전달받는 경우 모두 대응
+        let initialMode;
         if (typeof options === 'string') {
-            this.mode = options;
+            initialMode = options;
         } else {
-            this.mode = options.mode || AnimalStates.IDLE;
+            initialMode = options.mode || AnimalStates.IDLE;
         }
+        this._mode = initialMode;
 
-        this.targetId = options.targetId || null;         // 상호작용 중인 타겟 Entity ID (사냥감, 채집물 등)
-        this.wanderAngle = Math.random() * Math.PI * 2; // 배회(Wander) 방향 (무작위)
-        this.stateTimer = 0;          // 특정 상태(대기, 휴식 등)에 머문 시간 기록용
-        this.searchCooldown = 0;      // 먹이 탐색 쿨다운
-
-        // 🧠 [Ecological Cycle Update] 상태 스택 (인터럽트 대응)
+        this.targetId = options.targetId || null;
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        this.stateTimer = 0;
+        this.searchCooldown = 0;
         this.modeStack = [];
-
-        this.failedPathCount = 0;      // 현재 타겟에 대한 경로 탐색 실패 횟수
-        this.blacklist = new Map();    // { targetId: expirationTime } - 일시적 무시 대상 목록
-        this.unreachableTargets = new Set(); // 🚫 [Stability] 경로 탐색 실패 타겟 캐시 (Set 유지)
-
-        this.searchRange = 0;          // 최근 탐색 반경
-        this.targetName = null;        // 현재 타겟의 명칭 (UI/디버그용)
-        this.interruptible = options.interruptible !== undefined ? options.interruptible : true; // 🛡️ 상태 중단 가능 여부
-        this.thinkTimer = 0;      // 🧠 판단 주기 타이머 (Throttling)
-        
-        // 🗺️ [HPA* Path] 계층적 경로 데이터
+        this.failedPathCount = 0;
+        this.blacklist = new Map();
+        this.unreachableTargets = new Set();
+        this.searchRange = 0;
+        this.targetName = null;
+        this.interruptible = options.interruptible !== undefined ? options.interruptible : true;
+        this.thinkTimer = 0;
         this.path = null;
         this.pathIndex = 0;
         this.abstractPath = null;
         this.abstractIndex = 0;
+    }
+
+    /** 🚀 [Expert Optimization] 버퍼 연결 */
+    linkBuffer(buffer, index) {
+        const isFirstLink = (this._buffer === null);
+        this._buffer = buffer;
+        this._index = index;
+        
+        if (isFirstLink && this._buffer) {
+            this._buffer[this._index] = StateIndices[this._mode] || 0;
+            this._updateBitmask();
+        }
+    }
+
+    _updateBitmask() {
+        if (!this._buffer) return;
+        let mask = 0;
+        if (this._mode === 'grabbed') mask |= 1;
+        if (this._mode === 'die') mask |= 2;
+        this._buffer[this._index + 1] = mask;
+    }
+
+    get mode() {
+        if (this._buffer) return StateNames[this._buffer[this._index]] || 'idle';
+        return this._mode;
+    }
+
+    set mode(v) {
+        this._mode = v;
+        if (this._buffer) {
+            this._buffer[this._index] = StateIndices[v] || 0;
+            this._updateBitmask();
+        }
     }
 
     /** 🚫 타겟을 일시적 블랙리스트에 추가 */

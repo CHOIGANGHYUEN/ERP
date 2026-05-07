@@ -9,7 +9,24 @@ export default class System {
     constructor(entityManager, eventBus) {
         if (!entityManager) throw new Error("System requires an EntityManager");
         this.entityManager = entityManager;
-        this.eventBus = eventBus || null; // 추후 필수 파라미터로 강제
+        this.eventBus = eventBus || null;
+        this.requiredMask = 0; // 🏷️ [DOD] 시스템이 처리할 컴포넌트 비트마스크
+    }
+
+    /** 🚀 [Expert Optimization] 비트마스크 기반 고속 필터링 */
+    getFilteredIndices(mask) {
+        const em = this.entityManager;
+        const tagBuffer = em.tagBuffer;
+        const aliveBuffer = em.aliveBuffer;
+        const result = [];
+        
+        // TypedArray를 순회하며 비트 연산으로 필터링 (JS 엔진의 SIMD 최적화 활용 가능)
+        for (let i = 0; i < em.nextId; i++) {
+            if (aliveBuffer[i] && (tagBuffer[i] & mask) === mask) {
+                result.push(i);
+            }
+        }
+        return result;
     }
 
     update(dt, time) {

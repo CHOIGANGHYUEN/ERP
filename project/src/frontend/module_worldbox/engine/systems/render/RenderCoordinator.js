@@ -88,6 +88,11 @@ export default class RenderCoordinator extends System {
             this.renderWindOverlay(offCtx);
         }
 
+        // [세력권 오버레이]
+        if (engine.viewFlags.influence) {
+            this.renderInfluenceOverlay(offCtx);
+        }
+
         offCtx.restore();
 
         // [레이어 3] 마을 및 구역 타일 오버레이 (World Space)
@@ -351,6 +356,40 @@ export default class RenderCoordinator extends System {
             ctx.textBaseline = 'top';
             for (let i = 0; i < lines.length; i++) {
                 ctx.fillText(lines[i], boxX + padding, boxY + padding + i * lineHeight);
+            }
+        }
+        ctx.restore();
+    }
+
+    /** 🗺️ [Influence View] 국가 및 마을 세력권 시각화 */
+    renderInfluenceOverlay(ctx) {
+        const ns = this.engine.systemManager?.nationSystem;
+        if (!ns) return;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen'; // 밝게 합성
+
+        for (const nation of ns.nations.values()) {
+            const color = nation.color;
+            ctx.fillStyle = `rgba(${(color >> 16) & 0xFF}, ${(color >> 8) & 0xFF}, ${color & 0xFF}, 0.15)`;
+            
+            // 국가의 모든 마을 영토를 순회하며 영향력 시각화
+            for (const villageId of nation.villages) {
+                const village = this.engine.systemManager.villageSystem.getVillage(villageId);
+                if (!village) continue;
+
+                // 🚀 [Expert Optimization] 실제 모든 타일을 그리는 대신 중심점 기준 그라데이션으로 대략적 표현
+                const grad = ctx.createRadialGradient(
+                    village.centerX, village.centerY, 0,
+                    village.centerX, village.centerY, 150 + (nation.culture * 2)
+                );
+                grad.addColorStop(0, `rgba(${(color >> 16) & 0xFF}, ${(color >> 8) & 0xFF}, ${color & 0xFF}, 0.3)`);
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(village.centerX, village.centerY, 150 + (nation.culture * 2), 0, Math.PI * 2);
+                ctx.fill();
             }
         }
         ctx.restore();

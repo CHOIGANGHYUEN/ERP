@@ -72,4 +72,17 @@ export default class GridUtils {
 
         return points;
     }
+
+    /**
+     * 📐 [Influence] 중심점으로부터의 거리와 세기(Strength)를 기반으로 특정 좌표의 영향력을 계산합니다.
+     * 거리가 멀어질수록 영향력은 감쇄합니다.
+     */
+    static calculateInfluence(x, y, centerX, centerY, strength, falloff = 0.5) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // 지수적 감쇄 모델 (Influence = Strength / (1 + dist * falloff))
+        return strength / (1 + dist * falloff);
+    }
 }

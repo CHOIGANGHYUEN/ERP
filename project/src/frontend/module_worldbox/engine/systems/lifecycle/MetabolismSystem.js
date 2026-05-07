@@ -19,132 +19,109 @@ export default class MetabolismSystem extends System {
         this.updateAccumulator = 0;
 
         const em = this.entityManager;
-        const engine = this.engine;
-        const camera = engine?.camera;
+        const sBuffer = em.statsBuffer;
+        const sfBuffer = em.statsFloatBuffer;
+        const tBuffer = em.transformBuffer;
+
+        const camera = this.engine?.camera;
         const margin = 100;
         const viewX = camera ? camera.x - margin : 0;
         const viewY = camera ? camera.y - margin : 0;
         const viewW = camera ? (camera.width / camera.zoom) + (margin * 2) : 0;
         const viewH = camera ? (camera.height / camera.zoom) + (margin * 2) : 0;
 
+        const speciesConfig = this.engine?.speciesConfig || {};
+
         // 🐕 모든 생명체 대사 처리 (Animals & Humans)
         for (const id of em.animalIds) {
-            const entity = em.entities.get(id);
-            if (!entity) continue;
+            const idx = id * 8;
+            const fIdx = id * 4;
+            const tIdx = id * 2;
 
-            const transform = entity.components.get('Transform');
-            const stats = entity.components.get('BaseStats');
-            const animal = entity.components.get('Animal');
-            if (!stats || !animal || !transform) continue;
+            const x = tBuffer[tIdx];
+            const y = tBuffer[tIdx + 1];
 
             // 🚀 [Expert Optimization] 대사 LOD 적용
-            const isVisible = camera && (transform.x > viewX && transform.x < viewX + viewW &&
-                transform.y > viewY && transform.y < viewY + viewH);
+            const isVisible = camera && (x > viewX && x < viewX + viewW && y > viewY && y < viewY + viewH);
 
-            // 화면 밖 개체는 1초에 한 번만 대사 처리 (effectiveDt 보정)
             if (!isVisible) {
-                // 개체 ID와 시간을 조합하여 업데이트 타이밍 분산 (Staggered Update)
-                const updateInterval = 1.0; // 1초
-                const lastUpdate = entity._lastMetabolismUpdate || 0;
-                if (time - lastUpdate < updateInterval * 1000) continue;
-
-                // 밀린 시간만큼 한꺼번에 처리하기 위해 dt 보정
-                const lodDt = (time - lastUpdate) / 1000;
-                entity._lastMetabolismUpdate = time;
-                this._updateMetabolism(id, entity, stats, animal, transform, lodDt);
+                // 화면 밖 개체는 업데이트 타이밍 분산 (Staggered Update)
+                if ((id + this.engine.frameCount) % 10 !== 0) continue;
+                this._processMetabolismLoop(id, effectiveDt * 10, sBuffer, sfBuffer, idx, fIdx, speciesConfig);
             } else {
-                // 화면 내 개체는 기존처럼 0.1초마다 정밀 업데이트
-                entity._lastMetabolismUpdate = time;
-                this._updateMetabolism(id, entity, stats, animal, transform, effectiveDt);
+                this._processMetabolismLoop(id, effectiveDt, sBuffer, sfBuffer, idx, fIdx, speciesConfig);
             }
         }
 
         // 💩 6. 배설물 분해 (10Hz로 최적화 및 대상 제한)
-        // 전수 조사 대신 분해 대상이 될 수 있는 리소스들만 필터링 (향후 전용 Set 관리 권장)
-        let processedCount = 0;
-        const maxProcessPerTick = 50; // 한 틱에 최대 50개만 처리
+        this._processDecompositions(em, effectiveDt);
+    }
 
-        for (const id of em.resourceIds) {
-            const entity = em.entities.get(id);
-            if (!entity) continue;
-            
-            const resource = entity.components.get('Resource');
-            if (resource && resource.isFertilizer) {
-                const transform = entity.components.get('Transform');
-                if (transform) {
-                    this.processDecomposition(id, entity, resource, transform, effectiveDt);
-                    processedCount++;
-                    if (processedCount >= maxProcessPerTick) break;
-                }
+    _processMetabolismLoop(id, dt, sBuffer, sfBuffer, idx, fIdx, speciesConfig) {
+        const em = this.entityManager;
+        const entity = em.entities.get(id);
+        if (!entity) return;
+
+        const animal = entity.components.get('Animal');
+        if (!animal) return;
+
+        const config = speciesConfig[animal.type] || {};
+        
+        // ⏳ 1. 허기 및 피로도 감쇄 (DOD Buffer Write)
+        const hungerDecay = (config.hungerDecayRate || 0.1) * dt;
+        const fatigueIncrease = (config.fatigueIncreaseRate || 0.05) * dt;
+
+        sBuffer[idx + 2] = Math.max(0, sBuffer[idx + 2] - Math.round(hungerDecay)); // currentHunger
+        sBuffer[idx + 4] = Math.min(sBuffer[idx + 5] || 100, sBuffer[idx + 4] + Math.round(fatigueIncrease)); // currentFatigue
+
+        // 👴 2. 노화 처리
+        const age = entity.components.get('Age');
+        if (age) {
+            age.currentAge += dt * 0.0013889;
+            if (age.currentAge >= age.maxAge) {
+                sBuffer[idx] = 0; // 자연사
             }
+        }
+
+        // 💀 3. 아사 처리
+        if (sBuffer[idx + 2] <= 0) {
+            sBuffer[idx] = Math.max(0, sBuffer[idx] - Math.round(dt * 2.0));
+        }
+
+        // 🤕 4. 부상 회복 (BaseStats 프록시를 통해 처리 - 타이머 데이터가 컴포넌트에 있으므로)
+        const stats = entity.components.get('BaseStats');
+        if (stats && stats.injurySlowTimer > 0) {
+            stats.injurySlowTimer -= dt;
+            if (stats.injurySlowTimer <= 0) {
+                stats.injurySlowTimer = 0;
+                stats.injurySlowMultiplier = 1.0;
+            }
+        }
+
+        // 💩 5. 배설 로직 (기존 로직 유지하되 버퍼 활용)
+        const metabolism = entity.components.get('Metabolism');
+        const transform = entity.components.get('Transform');
+        if (metabolism && transform) {
+            metabolism.stomach = (sBuffer[idx + 2] / (sBuffer[idx + 3] || 100)) * metabolism.maxStomach;
+            metabolism.storedFertility = sfBuffer[fIdx + 3];
+            this.processInternalMetabolism(id, entity, animal, metabolism, transform, dt);
+            sfBuffer[fIdx + 3] = metabolism.storedFertility;
         }
     }
 
-    _updateMetabolism(id, entity, stats, animal, transform, effectiveDt) {
-        const engine = this.engine;
-        const speciesConfig = engine?.speciesConfig || {};
-        const config = speciesConfig[animal.type] || {};
-        const age = entity.components.get('Age');
-        const jobCtrl = entity.components.get('JobController');
-        const metabolism = entity.components.get('Metabolism');
+    _processDecompositions(em, dt) {
+        let processedCount = 0;
+        const maxProcessPerTick = 50;
 
-        // ⏳ 1. 허기 및 피로도 감쇄 (effectiveDt 사용)
-        const hungerDecay = (config.hungerDecayRate || 0.1) * effectiveDt;
-        const fatigueIncrease = (config.fatigueIncreaseRate || 0.05) * effectiveDt;
+        for (const id of em.resourceIds) {
+            const entity = em.entities.get(id);
+            const resource = entity?.components.get('Resource');
+            const transform = entity?.components.get('Transform');
 
-        stats.hunger = Math.max(0, stats.hunger - hungerDecay);
-        stats.fatigue = Math.min(stats.maxFatigue || 100, stats.fatigue + fatigueIncrease);
-
-        // 👴 2. 노화 처리 (effectiveDt 사용)
-        if (age) {
-            age.currentAge += effectiveDt * 0.0013889;
-
-            // 🔄 수명 단계(Stage) 업데이트 (애니메이션/크기 변화 반영)
-            if (Math.random() < 0.05) age.updateStage(entity); // 5% 확률로 정기 업데이트
-
-            if (age.currentAge >= age.maxAge) {
-                stats.health = 0; // 자연사
-            }
-        }
-
-        // 💀 3. 아사 처리 (effectiveDt 사용)
-        if (stats.hunger <= 0) {
-            const damage = effectiveDt * 2.0;
-            stats.health -= damage;
-
-            if (stats.health <= 0) {
-                GlobalLogger.warn(`💀 [Death] Entity ${id} (${animal.type}) died of STARVATION.`);
-            }
-        }
-
-        // 👴 노화 사망 로그
-        if (age && age.currentAge >= age.maxAge && stats.health <= 0) {
-            GlobalLogger.warn(`👵 [Death] Entity ${id} (${animal.type}) died of OLD AGE.`);
-        }
-
-        // 🆘 4. 생존 인터럽트 트리거 (JobController 보유 시)
-        if (jobCtrl) {
-            if (stats.hunger < 30) {
-                jobCtrl.requestSurvivalInterrupt(entity, 'eat');
-            } else if (stats.fatigue > 80) {
-                jobCtrl.requestSurvivalInterrupt(entity, 'sleep');
-            }
-        }
-
-        // 💩 5. 배설 로직 (effectiveDt 사용)
-        if (metabolism && transform) {
-            metabolism.stomach = (stats.hunger / (stats.maxHunger || 100)) * metabolism.maxStomach;
-            metabolism.storedFertility = stats.storedFertility || 0;
-            this.processInternalMetabolism(id, entity, animal, metabolism, transform, effectiveDt, stats);
-            if (stats) stats.storedFertility = metabolism.storedFertility;
-        }
-
-        // 🤕 7. 부상 회복 (effectiveDt 사용)
-        if (stats.injurySlowTimer > 0) {
-            stats.injurySlowTimer -= effectiveDt;
-            if (stats.injurySlowTimer <= 0) {
-                stats.injurySlowTimer = 0;
-                stats.injurySlowMultiplier = 1.0; // 정상 속도 회복
+            if (resource && resource.isFertilizer && transform) {
+                this.processDecomposition(id, entity, resource, transform, dt);
+                processedCount++;
+                if (processedCount >= maxProcessPerTick) break;
             }
         }
     }

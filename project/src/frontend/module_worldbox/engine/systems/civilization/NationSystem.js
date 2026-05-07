@@ -11,7 +11,8 @@ export default class NationSystem extends System {
         this.engine = engine;
         this.nations = new Map();
         this.nextNationId = 1;
-        this.relationships = new Map(); // Map<string, string> - key: "id1_id2", value: "peace" | "war"
+        this.relationships = new Map(); // Map<string, number> - key: "id1_id2", value: opinion (0-100)
+        this.diplomaticStates = new Map(); // Map<string, string> - value: "peace" | "war" | "ally"
     }
 
     getNation(id) {
@@ -19,13 +20,58 @@ export default class NationSystem extends System {
     }
 
     update(dt, time) {
-        // 국가 단위의 통계 및 정책 업데이트 (향후 전쟁/외교 로직 확장 가능)
+        // 국가 단위의 통계 및 정책 업데이트
         for (const nation of this.nations.values()) {
             this._updateNationStats(nation);
             this._checkKingStatus(nation);
             this._collectTaxes(nation); // 💰 세금 징수
             this._investInVillages(nation); // 🎁 왕실 지원금 하사
             this._updatePrestige(nation, dt); // 🏆 위신 업데이트
+            this._updateNationalProgress(nation, dt); // 📚 문화 및 기술 발전
+        }
+        
+        this._updateDiplomacy(dt); // 🤝 외교 관계 점진적 변화
+    }
+
+    /** 📚 [Civilization] 국가의 문화와 기술을 발전시킵니다. */
+    _updateNationalProgress(nation, dt) {
+        // 인구와 위신에 비례하여 발전 속도 결정
+        const baseRate = 0.05 * dt;
+        const popBonus = Math.log10(Math.max(10, nation.totalPopulation)) * 0.1;
+        const prestigeBonus = (nation.prestige / 1000) * 0.2;
+        
+        const progress = baseRate * (1 + popBonus + prestigeBonus);
+        
+        nation.culture += progress;
+        nation.tech += progress * 0.5; // 기술은 문화보다 느리게 발전
+
+        // 기술 수준에 따른 시대 보너스 (향후 확장 가능)
+        if (Math.floor(nation.tech) > (nation.lastTechLevel || 0)) {
+            nation.lastTechLevel = Math.floor(nation.tech);
+            this.eventBus.emit('TECH_LEVEL_UP', { nationId: nation.id, level: nation.lastTechLevel });
+            GlobalLogger.success(`🚀 ${nation.name} reached Tech Level ${nation.lastTechLevel}!`);
+        }
+    }
+
+    /** 🤝 [Diplomacy] 국가 간 관계를 시간에 따라 서서히 변화시킵니다. */
+    _updateDiplomacy(dt) {
+        for (const [key, opinion] of this.relationships) {
+            const [id1, id2] = key.split('_').map(Number);
+            const n1 = this.nations.get(id1);
+            const n2 = this.nations.get(id2);
+            if (!n1 || !n2) continue;
+
+            // 관계 상태에 따른 자연적 회복/악화 (중립 50으로 수렴)
+            let delta = (50 - opinion) * 0.01 * dt;
+            
+            // 전쟁 중이면 관계 악화 가속
+            if (this.diplomaticStates.get(key) === 'war') {
+                delta -= 0.1 * dt;
+            } else if (this.diplomaticStates.get(key) === 'ally') {
+                delta += 0.05 * dt;
+            }
+
+            this.relationships.set(key, Math.max(0, Math.min(100, opinion + delta)));
         }
     }
 
@@ -115,16 +161,43 @@ export default class NationSystem extends System {
     }
 
     getRelationship(id1, id2) {
-        if (id1 === id2) return 'self';
+        if (id1 === id2) return { opinion: 100, state: 'peace' };
         const key = [id1, id2].sort().join('_');
-        return this.relationships.get(key) || 'peace';
+        const opinion = this.relationships.get(key) ?? 50;
+        const state = this.diplomaticStates.get(key) || 'peace';
+        return { opinion, state };
     }
 
-    setRelationship(id1, id2, status) {
+    /** ⚔️ [Diplomacy] 두 국가가 전쟁 중인지 확인합니다. */
+    isAtWar(id1, id2) {
+        if (id1 === id2 || id1 === -1 || id2 === -1) return false;
         const key = [id1, id2].sort().join('_');
-        this.relationships.set(key, status);
-        GlobalLogger.info(`🤝 Diplomacy: ${this.nations.get(id1)?.name} and ${this.nations.get(id2)?.name} are now at ${status.toUpperCase()}`);
-        this.eventBus.emit('DIPLOMACY_CHANGED', { nation1: id1, nation2: id2, status });
+        return this.diplomaticStates.get(key) === 'war';
+    }
+
+    setRelationship(id1, id2, status, opinionDelta = 0) {
+        const key = [id1, id2].sort().join('_');
+        
+        if (opinionDelta !== 0) {
+            const current = this.relationships.get(key) ?? 50;
+            this.relationships.set(key, Math.max(0, Math.min(100, current + opinionDelta)));
+        }
+
+        if (status) {
+            this.diplomaticStates.set(key, status);
+            GlobalLogger.info(`🤝 Diplomacy: ${this.nations.get(id1)?.name} and ${this.nations.get(id2)?.name} are now in ${status.toUpperCase()} state`);
+            this.eventBus.emit('DIPLOMACY_CHANGED', { nation1: id1, nation2: id2, status });
+        }
+    }
+
+    /** 🏛️ [Policy] 국가 정책을 설정합니다. */
+    applyPolicy(nationId, policyType, value) {
+        const nation = this.nations.get(nationId);
+        if (nation) {
+            nation.policies[policyType] = value;
+            GlobalLogger.info(`📜 Policy Applied: ${nation.name} set ${policyType} to ${value}`);
+            this.eventBus.emit('POLICY_CHANGED', { nationId, policyType, value });
+        }
     }
 
     createNation(name, color) {
@@ -136,6 +209,9 @@ export default class NationSystem extends System {
             villages: new Set(),
             kingId: null,
             prestige: 0,
+            culture: 0,
+            tech: 0,
+            lastTechLevel: 0,
             totalPopulation: 0,
             resources: {
                 wood: 100,
@@ -143,7 +219,11 @@ export default class NationSystem extends System {
                 stone: 50,
                 gold: 0
             },
-            taxRate: 0.1 // 💰 10% 세율
+            taxRate: 0.1, // 💰 10% 세율
+            policies: {
+                expansion: 1.0, // 개척 의지
+                focus: 'balanced' // 'military', 'economy', 'culture'
+            }
         };
         
         // 🎨 [Optimization] Pre-calculate integer color

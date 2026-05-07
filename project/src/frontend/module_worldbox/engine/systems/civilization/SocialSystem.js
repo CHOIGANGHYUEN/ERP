@@ -70,8 +70,23 @@ export default class SocialSystem extends System {
             const targetAnimal = target.components.get('Animal');
             const targetSocial = target.components.get('Social');
             
-            // 1. 마을 소속 확인
-            if (targetCiv?.villageId !== civ.villageId) return;
+            // 1. 마을 소속 확인 (동일 마을 내 연애 선호)
+            if (targetCiv?.villageId !== civ.villageId) {
+                // 마을이 다르더라도 같은 국가라면 일정 확률로 허용 (향후 이민/유동성 확장)
+                const vs = this.engine.systemManager?.villageSystem;
+                const v1 = vs?.getVillage(civ.villageId);
+                const v2 = vs?.getVillage(targetCiv?.villageId);
+                
+                if (!v1 || !v2 || v1.nationId !== v2.nationId) {
+                    // 국가가 다르다면 외교 상태 확인
+                    const ns = this.engine.systemManager?.nationSystem;
+                    const rel = ns?.getRelationship(v1?.nationId, v2?.nationId);
+                    if (!rel || rel.state === 'war' || rel.opinion < 30) return; // 전쟁 중이거나 관계가 매우 나쁘면 불가
+                } else {
+                    // 같은 국가 내 다른 마을이면 50% 확률로만 진행 (마을 결속력)
+                    if (Math.random() < 0.5) return;
+                }
+            }
 
             // 2. 성별 확인 (이성끼리만 결혼)
             if (targetAnimal?.gender === animal.gender) return;
@@ -84,7 +99,7 @@ export default class SocialSystem extends System {
                 targetSocial.partnerId = id;
                 targetSocial.isMarried = true;
 
-                GlobalLogger.success(`💍 Marriage! ${animal.gender === 'male' ? '🤵' : '👰'} Entity ${id} and ${targetId} in Village ${civ.villageId}`);
+                GlobalLogger.success(`💍 Marriage! ${animal.gender === 'male' ? '🤵' : '👰'} Entity ${id} and ${targetId} between Villages ${civ.villageId} and ${targetCiv?.villageId}`);
                 this.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: transform.x, y: transform.y, count: 15, type: 'EFFECT', color: '#ff4081', speed: 3
                 });

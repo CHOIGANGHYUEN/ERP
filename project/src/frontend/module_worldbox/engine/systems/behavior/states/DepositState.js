@@ -122,7 +122,8 @@ export default class DepositState extends State {
             const speed = baseStats ? baseStats.speed * 50 : 60;
 
             // Pathfinder를 통해 이동 로직 처리
-            const pathFound = Pathfinder.followPath(transform, state, targetPos, speed, this.system.engine);
+            const velocity = entity.components.get('Velocity');
+            const pathFound = Pathfinder.followPath(transform, state, targetPos, speed, this.system.engine, 12, null, null, velocity);
 
             if (pathFound === -1) {
                 // 🚧 도달할 수 없는 창고라면 이번 목표만 포기 (자원 증발 방지)

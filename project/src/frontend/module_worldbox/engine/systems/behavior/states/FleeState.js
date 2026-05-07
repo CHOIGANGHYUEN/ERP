@@ -47,9 +47,10 @@ export default class FleeState extends State {
         // 3. A* 경로 탐색을 이용한 도망 (건물 등에 끼지 않도록)
         const stats = entity.components.get('BaseStats');
         const slowMult = stats?.injurySlowMultiplier || 1.0;
+        const velocity = entity.components.get('Velocity');
         const speed = (stats?.speed || 45) * 1.8 * slowMult; 
         // 🚀 [Expert Optimization] 도망 중에는 경로를 400ms마다 재계산하여 포식자 위치 변화에 기민하게 대응
-        const result = Pathfinder.followPath(transform, state, state.fleePos, speed, this.system.engine, 8, 400);
+        const result = Pathfinder.followPath(transform, state, state.fleePos, speed, this.system.engine, 8, 400, null, velocity);
 
         if (result === -1) {
             state.failedPathCount = (state.failedPathCount || 0) + 1;

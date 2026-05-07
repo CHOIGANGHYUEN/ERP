@@ -80,7 +80,11 @@ export default class StatsMonitor {
                                 return b?.components.get('Structure')?.type === 'house';
                             }).length,
                             taskStats: taskStats,
-                            tasks: tasks.slice(0, 5) // 최근/우선순위 높은 과업 일부 전달
+                            tasks: tasks.slice(0, 5),
+                            territoryList: Array.from(village.territory),
+                            centerX: village.centerX,
+                            centerY: village.centerY,
+                            buildings: Array.from(village.buildings)
                         });
                     }
                 }
@@ -89,7 +93,18 @@ export default class StatsMonitor {
                 const nationSystem = this.engine.systemManager.nationSystem;
                 if (nationSystem && nationSystem.nations) {
                     for (const nation of nationSystem.nations.values()) {
-                        nationStats.push({ id: nation.id, name: nation.name });
+                        nationStats.push({ 
+                            id: nation.id, 
+                            name: nation.name,
+                            color: nation.color,
+                            population: nation.totalPopulation || 0,
+                            villageCount: nation.villages.size || 0,
+                            resources: { ...nation.resources },
+                            taxRate: nation.taxRate || 0,
+                            prestige: Math.floor(nation.prestige || 0),
+                            tech: Math.floor(nation.tech || 0),
+                            culture: Math.floor(nation.culture || 0)
+                        });
                     }
                 }
 
@@ -97,6 +112,18 @@ export default class StatsMonitor {
                 const viewport = this.engine.camera.getViewportBounds();
                 const visibleChunks = cm.getVisibleChunks(viewport);
                 const currentLOD = this.engine.camera.zoom > 0.4 ? 1 : 0;
+
+                const em = this.engine.entityManager;
+                const bufferMemory = (
+                    em.transformBuffer.byteLength +
+                    em.velocityBuffer.byteLength +
+                    em.statsBuffer.byteLength +
+                    em.statsFloatBuffer.byteLength +
+                    em.stateBuffer.byteLength +
+                    em.renderBuffer.byteLength +
+                    em.tagBuffer.byteLength +
+                    em.aliveBuffer.byteLength
+                ) / (1024 * 1024); // MB
 
                 this.onUpdate({ 
                     fps: this.fps,
@@ -108,12 +135,17 @@ export default class StatsMonitor {
                     chunkStats: {
                         visible: visibleChunks.length,
                         total: cm.chunks.length,
-                        activeCanvases: cm.activeCanvasCount, // 🚀 [Optimization] O(1) 조회
+                        activeCanvases: cm.activeCanvasCount,
                         maxActive: cm.maxActiveCanvases,
                         lod: currentLOD,
-                        drawCalls: visibleChunks.length // 🎨 이번 프레임 드로우 콜 횟수
+                        drawCalls: visibleChunks.length
                     },
-                    systemTimings: this.systemTimings // 🚀 병목 진단용 데이터 추가
+                    systemTimings: this.systemTimings,
+                    dodStats: {
+                        bufferMemoryMB: bufferMemory.toFixed(2),
+                        maxEntities: em.maxEntities,
+                        pooledIds: em.freeIds.length
+                    }
                 });
             }
         }

@@ -13,66 +13,72 @@ export default class CombatSystem extends System {
     handleAttack({ attacker, defender }) {
         if (!attacker || !defender) return;
 
-        const attackerStats = attacker.components.get('BaseStats');
-        const defenderStats = defender.components.get('BaseStats');
+        const em = this.entityManager;
+        const sBuffer = em.statsBuffer;
+        const tBuffer = em.transformBuffer;
+
+        const aIdx = attacker.id * 8;
+        const dIdx = defender.id * 8;
+        const dtIdx = defender.id * 2;
+
+        // 1. ⚔️ 데미지 산출 (DOD Buffer Read)
+        const strength = sBuffer[aIdx + 6] || 10;
+        const defense = sBuffer[dIdx + 7] || 0;
+        
+        const mitigation = Math.min(0.8, defense / 100);
+        const damage = Math.max(1, strength * (1 - mitigation));
+
+        // 2. 🤕 데미지 적용 (DOD Buffer Write)
+        sBuffer[dIdx] = Math.max(0, sBuffer[dIdx] - Math.round(damage));
+
+        // 🏥 [Visual Feedback] 피격 컴포넌트 타이머 트리거
+        const healthComp = defender.components.get('Health');
+        if (healthComp) {
+            healthComp.isHit = true;
+            healthComp.hitTimer = 0.2;
+        }
+
+        // 🚀 [Expert Feedback] 플로팅 데미지 텍스트 생성 (Buffer Coordinate 사용)
+        this.eventBus.emit('SPAWN_FLOATING_TEXT', {
+            x: tBuffer[dtIdx],
+            y: tBuffer[dtIdx + 1] - 10,
+            text: `-${Math.round(damage)}`,
+            color: '#ff5252',
+            options: { size: 16, vy: -2 }
+        });
+
+        // 🎨 시각적 피드백 트리거 (공격/피격 모션 - 타임스탬프 방식)
+        const totalTime = this.engine.time || Date.now();
+        const attackerVisual = attacker.components.get('Visual');
+        const defenderVisual = defender.components.get('Visual');
+        
+        if (attackerVisual) {
+            attackerVisual.lastAttackTime = totalTime;
+        }
+        if (defenderVisual) {
+            defenderVisual.lastHitTime = totalTime;
+        }
+
         const defenderState = defender.components.get('AIState');
-
-        if (attackerStats && defenderStats) {
-            const damage = defenderStats.takeDamage(attackerStats.strength || 10);
-
-            // 🏥 [Health Sync] Health 컴포넌트가 따로 있다면 동기화 및 피격 애니메이션 트리거
-            const healthComp = defender.components.get('Health');
-            if (healthComp) {
-                healthComp.takeDamage(damage);
-            }
-
-            // 🚀 [Expert Feedback] 플로팅 데미지 텍스트 생성
-            const transform = defender.components.get('Transform');
-            if (transform) {
-                this.eventBus.emit('SPAWN_FLOATING_TEXT', {
-                    x: transform.x,
-                    y: transform.y - 10,
-                    text: `-${Math.round(damage)}`,
-                    color: '#ff5252',
-                    options: { size: 16, vy: -2 }
-                });
-            }
-
-            // 🎨 시각적 피드백 트리거 (공격/피격 모션 - 타임스탬프 방식)
-            const totalTime = this.engine.time || Date.now();
-            const attackerVisual = attacker.components.get('Visual');
-            const defenderVisual = defender.components.get('Visual');
-            
-            if (attackerVisual) {
-                attackerVisual.lastAttackTime = totalTime;
-            }
-            if (defenderVisual) {
-                defenderVisual.lastHitTime = totalTime;
-            }
-
-            if (defenderStats.health <= 0 && defenderState) {
-                defenderState.mode = AnimalStates.DIE;
-                defenderState.killerId = attacker.id; // 🍖 [Expert Tracking] 사냥꾼 ID를 기록하여 고기 스폰 시 연동
-
-                // 💰 [Looting] 사망 시 재화 약탈 (인간 간의 전투 등)
-                const attackerWealth = attacker.components.get('Wealth');
-                const defenderWealth = defender.components.get('Wealth');
-                if (attackerWealth && defenderWealth) {
-                    const loot = Math.floor(defenderWealth.gold * 0.5);
-                    attackerWealth.addGold(loot);
-                    defenderWealth.gold -= loot;
-                }
-
-                // 😰 [Trauma] 주변 인간들에게 스트레스 부여
-                this.eventBus.emit('BATTLE_WITNESSED', { 
-                    x: defender.components.get('Transform')?.x, 
-                    y: defender.components.get('Transform')?.y,
-                    intensity: 20 
-                });
-            }
-        } else if (defenderState) {
-            // 스탯이 없는 일반 객체는 즉사 처리 (기존 로직 유지)
+        if (sBuffer[dIdx] <= 0 && defenderState) {
             defenderState.mode = AnimalStates.DIE;
+            defenderState.killerId = attacker.id; // 🍖 [Expert Tracking] 사냥꾼 ID를 기록하여 고기 스폰 시 연동
+
+            // 💰 [Looting] 사망 시 재화 약탈 (인간 간의 전투 등)
+            const attackerWealth = attacker.components.get('Wealth');
+            const defenderWealth = defender.components.get('Wealth');
+            if (attackerWealth && defenderWealth) {
+                const loot = Math.floor(defenderWealth.gold * 0.5);
+                attackerWealth.addGold(loot);
+                defenderWealth.gold -= loot;
+            }
+
+            // 😰 [Trauma] 주변 인간들에게 스트레스 부여
+            this.eventBus.emit('BATTLE_WITNESSED', { 
+                x: tBuffer[dtIdx], 
+                y: tBuffer[dtIdx + 1],
+                intensity: 20 
+            });
         }
     }
 

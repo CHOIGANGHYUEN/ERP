@@ -125,11 +125,14 @@ export default class HumanBehaviorSystem extends System {
             }
         }
 
-        // 4. 속도 제한 적용 (이하 생략)
-        const mag = Math.sqrt(transform.vx * transform.vx + transform.vy * transform.vy);
-        if (mag > maxSpeed && mag > 0) {
-            transform.vx = (transform.vx / mag) * maxSpeed;
-            transform.vy = (transform.vy / mag) * maxSpeed;
+        // 4. 속도 제한 적용
+        const velocity = entity.components.get('Velocity');
+        if (velocity) {
+            const mag = Math.sqrt(velocity.vx * velocity.vx + velocity.vy * velocity.vy);
+            if (mag > maxSpeed && mag > 0) {
+                velocity.vx = (velocity.vx / mag) * maxSpeed;
+                velocity.vy = (velocity.vy / mag) * maxSpeed;
+            }
         }
     }
 
@@ -147,10 +150,10 @@ export default class HumanBehaviorSystem extends System {
         state.interruptible = true; // 🛡️ 상태 전이 시 기본적으로 중단 가능으로 초기화
 
         // 🚀 [Expert Fix] 상태 전이 시 속도 초기화 (관성 제거 및 정밀한 다음 행동 준비)
-        const transform = entity.components.get('Transform');
-        if (transform) {
-            transform.vx = 0;
-            transform.vy = 0;
+        const velocity = entity.components.get('Velocity');
+        if (velocity) {
+            velocity.vx = 0;
+            velocity.vy = 0;
         }
 
         // 타겟 유지 조건 (건설, 채집, 식사 등은 타겟 보존)
