@@ -142,6 +142,8 @@ export default class HumanBehaviorSystem extends System {
         state.targetRequestFailed = false;
         state.path = null;
         state.pathIndex = 0;
+        state.abstractPath = null;
+        state.abstractIndex = 0;
         state.interruptible = true; // 🛡️ 상태 전이 시 기본적으로 중단 가능으로 초기화
 
         // 🚀 [Expert Fix] 상태 전이 시 속도 초기화 (관성 제거 및 정밀한 다음 행동 준비)

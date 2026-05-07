@@ -6,7 +6,10 @@ export class BaseLayer {
     constructor(width, height, ArrayType) {
         this.width = width;
         this.height = height;
-        this.buffer = new ArrayType(width * height);
+        // 🚀 [Optimization] SharedArrayBuffer를 사용하여 워커와 통신 비용 제로화
+        const size = width * height * ArrayType.BYTES_PER_ELEMENT;
+        this.sharedBuffer = new SharedArrayBuffer(size);
+        this.buffer = new ArrayType(this.sharedBuffer);
     }
 
     isValid(idx) {

@@ -10,6 +10,11 @@ export default class StatsMonitor {
         this.maxPotentialFertility = 0;
 
         this.onUpdate = null;
+        this.systemTimings = {}; // 🚀 [Step 30] 시스템별 실행 시간 저장
+    }
+
+    setSystemTiming(name, ms) {
+        this.systemTimings[name] = ms;
     }
 
     updateFertilityStat(oldVal, newVal) { 
@@ -107,7 +112,8 @@ export default class StatsMonitor {
                         maxActive: cm.maxActiveCanvases,
                         lod: currentLOD,
                         drawCalls: visibleChunks.length // 🎨 이번 프레임 드로우 콜 횟수
-                    }
+                    },
+                    systemTimings: this.systemTimings // 🚀 병목 진단용 데이터 추가
                 });
             }
         }

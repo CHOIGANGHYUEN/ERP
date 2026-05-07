@@ -34,7 +34,7 @@ export default class TerrainGen {
     mineralDensityBuffer = null;
     occupancyBuffer = null;
     territoryBuffer = null; 
-
+    altitudeBuffer = null; // 🏔️ 고도 데이터 버퍼 추가
     // 🏘️ [Performance Optimization] 마을/국가 색상 고속 조회를 위한 버퍼
     villageColorBuffer = new Uint32Array(2048); 
     nationColorBuffer = new Uint32Array(2048);
@@ -42,8 +42,29 @@ export default class TerrainGen {
     constructor(entityManager) {
         this.entityManager = entityManager;
         // 기본값(흰색/투명 등)으로 초기화
+        this.villageColorBuffer = new Uint32Array(new SharedArrayBuffer(2048 * 4));
+        this.nationColorBuffer = new Uint32Array(new SharedArrayBuffer(2048 * 4));
         this.villageColorBuffer.fill(0xFFFFFFFF);
         this.nationColorBuffer.fill(0xFFFFFFFF);
+    }
+
+    /** 🚀 [Expert Optimization] 워커로 전송할 공유 버퍼 데이터 모음 */
+    getSharedBuffers() {
+        return {
+            terrain: this.terrain.sharedBuffer,
+            biomes: this.biomes.sharedBuffer,
+            fertility: this.fertilityBuffer.buffer,
+            waterQuality: this.waterQualityBuffer.buffer,
+            mineralDensity: this.mineralDensityBuffer.buffer,
+            occupancy: this.occupancyBuffer.buffer,
+            territory: this.territoryBuffer.buffer,
+            altitude: this.altitudeBuffer.buffer,
+            packed: this.packedBuffer.buffer,
+            villageColors: this.villageColorBuffer.buffer,
+            nationColors: this.nationColorBuffer.buffer,
+            mapWidth: this.mapWidth,
+            mapHeight: this.mapHeight
+        };
     }
 
     // --- Interface Redirection ---
@@ -108,7 +129,7 @@ export default class TerrainGen {
         const idx = this.getIndex(x, y);
         if (this.isValidIndex(idx)) {
             const v = Math.max(0, Math.min(255, value));
-            this.fertilityBuffer[idx] = v;
+            Atomics.store(this.fertilityBuffer, idx, v);
             this.syncPackedPixel(idx);
         }
     }
@@ -127,14 +148,16 @@ export default class TerrainGen {
     }
 
     /** 🚀 [Expert Optimization] 개별 버퍼 변경 시 팩킹 버퍼 동기화 */
+    /** 🚀 [Expert Optimization] 개별 버퍼 변경 시 팩킹 버퍼 동기화 */
     syncPackedPixel(idx) {
         if (!this.packedBuffer) return;
-        const t = this.terrain.getValue(idx);
-        const b = this.biomes.getValue(idx);
-        const f = this.fertilityBuffer[idx];
-        const w = Math.max(this.waterQualityBuffer[idx], this.mineralDensityBuffer[idx]);
+        const t = Atomics.load(this.terrain.buffer, idx);
+        const b = Atomics.load(this.biomes.buffer, idx);
+        const f = Atomics.load(this.fertilityBuffer, idx);
+        const w = Math.max(Atomics.load(this.waterQualityBuffer, idx), Atomics.load(this.mineralDensityBuffer, idx));
         
-        this.packedBuffer[idx] = t | (b << 8) | (f << 16) | (w << 24);
+        const packedVal = t | (b << 8) | (f << 16) | (w << 24);
+        Atomics.store(this.packedBuffer, idx, packedVal);
     }
 
     /** ⚡ [Ultra-Fast Optimization] Permutation Table for Perlin Noise */
@@ -212,15 +235,17 @@ export default class TerrainGen {
         this.mapWidth = mapWidth;
         this.mapHeight = mapHeight;
         
-        // 1. 버퍼 초기화
+        // 1. 버퍼 초기화 (SharedArrayBuffer 사용)
         this.terrain = new TerrainLayer(mapWidth, mapHeight);
         this.biomes = new BiomeLayer(mapWidth, mapHeight);
-        this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.territoryBuffer = new Uint16Array(mapWidth * mapHeight);
-        this.packedBuffer = new Uint32Array(mapWidth * mapHeight);
+        
+        this.fertilityBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.waterQualityBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.mineralDensityBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.occupancyBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.territoryBuffer = new Uint16Array(new SharedArrayBuffer(mapWidth * mapHeight * 2));
+        this.altitudeBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.packedBuffer = new Uint32Array(new SharedArrayBuffer(mapWidth * mapHeight * 4));
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -303,6 +328,7 @@ export default class TerrainGen {
                     fertBuf[idx] = fert;
                     wqBuf[idx] = wq;
                     mdBuf[idx] = md;
+                    this.altitudeBuffer[idx] = Math.floor(altitude * 255);
 
                     // 🚀 [Expert Packing] 지형|바이옴|비옥도|수질(또는 광물) 데이터를 하나로 압축
                     const envValue = wq > 0 ? wq : md;
@@ -365,11 +391,13 @@ export default class TerrainGen {
         
         this.terrain = new TerrainLayer(mapWidth, mapHeight);
         this.biomes = new BiomeLayer(mapWidth, mapHeight);
-        this.fertilityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.waterQualityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.mineralDensityBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.occupancyBuffer = new Uint8Array(mapWidth * mapHeight);
-        this.territoryBuffer = new Uint16Array(mapWidth * mapHeight);
+        this.fertilityBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.waterQualityBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.mineralDensityBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.occupancyBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.territoryBuffer = new Uint16Array(new SharedArrayBuffer(mapWidth * mapHeight * 2));
+        this.altitudeBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
+        this.packedBuffer = new Uint32Array(new SharedArrayBuffer(mapWidth * mapHeight * 4));
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -407,6 +435,7 @@ export default class TerrainGen {
         this.fertilityBuffer[idx] = soilFertility;
         this.waterQualityBuffer[idx] = waterQuality;
         this.mineralDensityBuffer[idx] = mineralDensity;
+        this.altitudeBuffer[idx] = Math.floor(altitude * 255);
 
         // 🚀 [Expert Optimization] 팩킹 버퍼 동기화
         this.syncPackedPixel(idx);

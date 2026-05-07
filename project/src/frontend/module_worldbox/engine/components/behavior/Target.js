@@ -12,6 +12,10 @@ export default class Target extends Component {
         this.pos = { x: 0, y: 0 }; // 목표 좌표 캐시
         this.isReached = false;
         this.lastUpdated = 0;
+        
+        // 🗺️ [HPA* Path] 계층적 경로 데이터
+        this.abstractPath = null; // List of transition node keys
+        this.currentAbstractIndex = 0;
     }
 
     setTarget(id, x, y, type) {

@@ -1,93 +1,19 @@
 import System from '../../core/System.js';
-import { BIOME_NAMES_TO_IDS, BIOME_PROPERTIES_MAP } from '../../world/TerrainGen.js';
 
+/**
+ * 🌍 EnvironmentSystem (환경 시스템)
+ * 지형 시뮬레이션 로직이 SimulationWorker로 이관됨에 따라,
+ * 메인 스레드에서는 시뮬레이션 상태 모니터링 및 시각적 피드백 위주로 동작합니다.
+ */
 export default class EnvironmentSystem extends System {
     constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
         this.engine = engine;
         this.tg = engine.terrainGen;
-        this.spreadCooldown = 0;
     }
 
     update(dt, time) {
-        if (!this.engine.simParams) return;
-
-        // 🚀 [Optimization] 환경 수치 업데이트는 5프레임에 한 번만 수행
-        if ((this.engine.frameCount || 0) % 5 !== 0) return;
-
-        // 1. 바이옴 확산 (Ecology Spreading)
-        // 비옥도는 이제 스스로 퍼지지 않으며, 소모/반환 이벤트 시에만 계산됩니다.
-        this.spreadCooldown -= dt * 5; 
-        if (this.spreadCooldown <= 0) {
-            const speed = Math.max(0.01, this.engine.simParams.spreadSpeed || 1.0);
-            this.spreadCooldown = 1.0 / speed; 
-            this.processBiomeSpreading();
-        }
-    }
-
-    processBiomeSpreading() {
-        const amount = this.engine.simParams.spreadAmount || 1000;
-        const width = this.tg.mapWidth;
-        const height = this.tg.mapHeight;
-        const biomeBuffer = this.tg.biomeBuffer;
-        const fertilityBuffer = this.tg.fertilityBuffer;
-
-        if (!BIOME_NAMES_TO_IDS) return;
-        const DIRT_ID = BIOME_NAMES_TO_IDS.get('DIRT');
-        const GRASS_ID = BIOME_NAMES_TO_IDS.get('GRASS');
-
-        if (DIRT_ID === undefined || GRASS_ID === undefined) return;
-
-        for (let i = 0; i < amount; i++) {
-            const x = Math.floor(Math.random() * width);
-            const y = Math.floor(Math.random() * height);
-            const idx = this.tg.getIndex(x, y);
-
-            if (biomeBuffer[idx] !== DIRT_ID) {
-                continue; // 흙(DIRT) 타일만 확산의 대상이 됨
-            }
-
-            const fertility = fertilityBuffer[idx];
-            if (fertility < 50) { // 최소 비옥도 20% 이상 필요 (Uint8 0-255 기준, 약 50)
-                continue;
-            }
-
-            // 인접 타일에 확산의 근원(GRASS)이 있는지 확인
-            const neighbors = [{ dx: -1, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: 0, dy: 1 }];
-            let hasGrassNeighbor = false;
-            for (const n of neighbors) {
-                const nx = x + n.dx;
-                const ny = y + n.dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    const nIdx = this.tg.getIndex(nx, ny);
-                    if (biomeBuffer[nIdx] === GRASS_ID) {
-                        hasGrassNeighbor = true;
-                        break;
-                    }
-                }
-            }
-
-            if (hasGrassNeighbor) {
-                // 비옥도에 비례하여 확산 확률 증가
-                const spreadChance = fertility * 0.05; // 100% 비옥도에서 5% 확률
-                if (Math.random() < spreadChance) {
-                    biomeBuffer[idx] = GRASS_ID; // 흙이 초원으로 변경
-                    this.tg.syncPackedPixel(idx);
-                    this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x, y, reason: 'biome_spread' });
-                }
-            }
-        }
-    }
-
-    /**
-     * 바이옴 ID에 해당하는 최대 비옥도를 반환합니다.
-     * @param {number} biomeId - 바이옴 ID
-     * @returns {number} 최대 비옥도 (0-100)
-     */
-    getMaxFertility(biomeId) {
-        if (BIOME_PROPERTIES_MAP && BIOME_PROPERTIES_MAP.has(biomeId)) {
-            return BIOME_PROPERTIES_MAP.get(biomeId).maxFertility || 0;
-        }
-        return 0;
+        // 기존 바이옴 확산 및 비옥도 계산 로직은 simulationWorker.js로 이전되었습니다.
+        // 메인 스레드 업데이트 부하를 줄이기 위해 로직을 제거합니다.
     }
 }

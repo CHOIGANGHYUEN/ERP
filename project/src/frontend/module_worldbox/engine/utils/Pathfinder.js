@@ -1,3 +1,5 @@
+import { HPACluster } from '../world/zones/ZoneData.js';
+
 /**
  * 🚀 MinHeap for A* Open List
  */
@@ -47,7 +49,15 @@ class MinHeap {
 export default class Pathfinder {
     static pathCountThisFrame = 0;
     static lastFrameTime = 0;
-    static MAX_PATHS_PER_FRAME = 10; // 🚀 프레임당 A* 연산 최대 10회로 상향
+    static MAX_PATHS_PER_FRAME = 10;
+
+    // 🗺️ [HPA*] 계층적 그래프 데이터
+    static clusters = new Map(); // key: "cx,cy"
+    static clusterSize = 100;    // 100x100 tiles per cluster
+    static abstractNodes = new Map(); // key: "x,y", value: { id, neighbors: Map }
+    static dirtyClusters = new Set(); // 🚀 [Step 23] 재계산이 필요한 구역들
+    static pathRequestQueue = [];     // 🚀 [Step 27] 길찾기 요청 대기열
+    static pathCache = new Map();     // 🚀 [Step 28] 경로 캐시 (Memoization)
 
     /**
      * 🧠 A* 기반 그리드 경로 탐색
@@ -308,48 +318,204 @@ export default class Pathfinder {
         return path;
     }
 
-    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcIntervalOverride = null, targetIdOverride = null) {
-        const now = Date.now();
-        const currentTargetId = targetIdOverride || state.targetId;
+    /**
+     * 🧠 [HPA* Step 24] 상위 계층 그래프(Abstract Graph) 상의 경로 탐색
+     */
+    static findAbstractPath(sx, sy, ex, ey, engine) {
+        const startCluster = this.clusters.get(`${Math.floor(sx / this.clusterSize)},${Math.floor(sy / this.clusterSize)}`);
+        const endCluster = this.clusters.get(`${Math.floor(ex / this.clusterSize)},${Math.floor(ey / this.clusterSize)}`);
         
-        // 🚀 [Expert Optimization] 상태별 경로 재계산 주기 차등화
-        // 도망(Flee), 허기(Eat/Forage), 피로(Sleep) 등 긴급 상황만 수시로 재계산
-        const isEmergency = ['flee', 'eat', 'forage', 'sleep', 'hunt', 'attack'].includes(state.mode);
-        const defaultInterval = isEmergency ? 500 : 30000; // 긴급 시 0.5초, 평시 30초(사실상 목표 도달까지 유지)
-        const recalcInterval = recalcIntervalOverride || defaultInterval;
+        if (!startCluster || !endCluster) return null;
+        if (startCluster === endCluster) return null;
 
-        let needsRecalc = !state.path || 
-                          state.pathTargetId !== currentTargetId || 
-                          (now - (state.lastPathCalcTime || 0) > recalcInterval);
+        // 🚀 [Step 28] 경로 캐시 확인
+        const cacheKey = `${startCluster.id}_${endCluster.id}`;
+        if (this.pathCache.has(cacheKey)) return this.pathCache.get(cacheKey);
 
-        if (!needsRecalc && state.path && state.pathIndex < state.path.length) {
-            const nextWp = state.path[state.pathIndex];
-            state.blockCheckTimer = (state.blockCheckTimer || 0) + 1;
-            if (state.blockCheckTimer % 30 === 0) { 
-                if (this.isLineBlocked(transform.x, transform.y, nextWp.x, nextWp.y, engine)) {
-                    needsRecalc = true;
+        const startNodeKeys = this._findNearbyAbstractNodes(sx, sy, startCluster, engine);
+        const endNodeKeys = this._findNearbyAbstractNodes(ex, ey, endCluster, engine);
+        
+        if (startNodeKeys.length === 0 || endNodeKeys.length === 0) return null;
+
+        // ... (A* 로직 동일)
+        const gScore = new Map();
+        const fScore = new Map();
+        const h = (k1, k2) => {
+            const [x1, y1] = k1.split(',').map(Number);
+            const [x2, y2] = k2.split(',').map(Number);
+            return Math.abs(x1 - x2) + Math.abs(y1 - y2);
+        };
+
+        const openSet = new MinHeap((a, b) => (fScore.get(a) || Infinity) - (fScore.get(b) || Infinity));
+        const cameFrom = new Map();
+
+        for (const sk of startNodeKeys) {
+            gScore.set(sk, 0);
+            fScore.set(sk, h(sk, endNodeKeys[0]));
+            openSet.push(sk);
+        }
+
+        const endNodeSet = new Set(endNodeKeys);
+        let foundEndKey = null;
+
+        while (openSet.size() > 0) {
+            const currentKey = openSet.pop();
+            if (endNodeSet.has(currentKey)) {
+                foundEndKey = currentKey;
+                break;
+            }
+
+            const node = this.abstractNodes.get(currentKey);
+            if (!node) continue;
+
+            for (const [neighborKey, weight] of node.neighbors) {
+                const tentativeG = (gScore.get(currentKey) || 0) + weight;
+                if (tentativeG < (gScore.get(neighborKey) || Infinity)) {
+                    cameFrom.set(neighborKey, currentKey);
+                    gScore.set(neighborKey, tentativeG);
+                    fScore.set(neighborKey, tentativeG + h(neighborKey, endNodeKeys[0]));
+                    openSet.push(neighborKey);
                 }
             }
         }
 
-        if (needsRecalc) {
-            const newPath = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
-            if (newPath !== null) {
-                state.path = newPath;
-                state.pathTargetId = currentTargetId;
-                state.pathIndex = 0;
-                state.lastPathCalcTime = now;
-            } else if (!state.path) {
-                transform.vx = 0;
-                transform.vy = 0;
+        if (!foundEndKey) return null;
+
+        const path = [];
+        let curr = foundEndKey;
+        while (curr) {
+            path.unshift(curr);
+            curr = cameFrom.get(curr);
+        }
+
+        // 🚀 [Step 28] 결과 캐싱
+        this.pathCache.set(cacheKey, path);
+        return path;
+    }
+
+    /**
+     * 🚀 [Step 27] 길찾기 요청 추가 (비동기 처리용)
+     */
+    static requestPath(entityId, state, sx, sy, ex, ey, engine, callback) {
+        this.pathRequestQueue.push({ entityId, state, sx, sy, ex, ey, engine, callback });
+    }
+
+    /**
+     * ⚙️ [Step 27] 대기열 처리 (매 프레임 호출)
+     */
+    static processQueue() {
+        if (this.pathRequestQueue.length === 0) return;
+
+        // 프레임당 최대 3개의 요청만 처리
+        const MAX_PER_FRAME = 3;
+        let processed = 0;
+
+        while (this.pathRequestQueue.length > 0 && processed < MAX_PER_FRAME) {
+            const request = this.pathRequestQueue.shift();
+            const { entityId, state, sx, sy, ex, ey, engine, callback } = request;
+            
+            // 엔티티가 이미 다른 행동을 하거나 삭제되었다면 무시
+            if (state.mode === 'die') continue;
+
+            const path = this.findHierarchicalPath(sx, sy, ex, ey, engine);
+            if (callback) callback(path);
+            processed++;
+        }
+    }
+
+    /**
+     * 🧹 [Step 28] 지형 변경 시 캐시 무효화
+     */
+    static invalidateCache() {
+        this.pathCache.clear();
+    }
+
+    static _findNearbyAbstractNodes(x, y, cluster, engine) {
+        const nodes = [];
+        for (const [key, node] of this.abstractNodes) {
+            const [nx, ny] = key.split(',').map(Number);
+            if (nx >= cluster.x && nx < cluster.x + cluster.width && 
+                ny >= cluster.y && ny < cluster.y + cluster.height) {
+                // 구역 내에서 A*로 도달 가능한지 확인
+                const path = this.findPath(x, y, nx, ny, engine, 10);
+                if (path && path.length > 0) nodes.push(key);
             }
+        }
+        return nodes;
+    }
+
+    /**
+     * 🧠 [HPA* Step 25] 계층적 길찾기 통합 인터페이스
+     */
+    static findHierarchicalPath(sx, sy, ex, ey, engine) {
+        const abstractPath = this.findAbstractPath(sx, sy, ex, ey, engine);
+        if (!abstractPath) {
+            // 계층적 경로가 없거나 같은 구역이면 일반 A* 수행
+            return this.findPath(sx, sy, ex, ey, engine);
+        }
+
+        // 추상 경로의 첫 번째 게이트로의 로컬 경로 반환
+        const [nextX, nextY] = abstractPath[0].split(',').map(Number);
+        const localPath = this.findPath(sx, sy, nextX, nextY, engine);
+        
+        return {
+            fullAbstractPath: abstractPath,
+            localPath: localPath,
+            targetPos: { x: ex, y: ey }
+        };
+    }
+
+    static followPath(transform, state, targetPos, speed, engine, targetRadius = 12, recalcIntervalOverride = null, targetIdOverride = null) {
+        const now = Date.now();
+        const currentTargetId = targetIdOverride || state.targetId;
+        
+        const isEmergency = ['flee', 'eat', 'forage', 'sleep', 'hunt', 'attack'].includes(state.mode);
+        const defaultInterval = isEmergency ? 500 : 30000;
+        const recalcInterval = recalcIntervalOverride || defaultInterval;
+
+        // 🗺️ [HPA* Step 26] 계층적 경로 처리 로직
+        let needsRecalc = !state.path || 
+                          state.pathTargetId !== currentTargetId || 
+                          (now - (state.lastPathCalcTime || 0) > recalcInterval);
+
+        if (needsRecalc) {
+            const distSq = Math.pow(targetPos.x - transform.x, 2) + Math.pow(targetPos.y - transform.y, 2);
+            
+            // 거리가 멀면 계층적 길찾기 시도 (예: 300px 이상)
+            if (distSq > 90000) {
+                const hPath = this.findHierarchicalPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                if (hPath && hPath.fullAbstractPath) {
+                    state.abstractPath = hPath.fullAbstractPath;
+                    state.abstractIndex = 0;
+                    state.path = hPath.localPath;
+                } else {
+                    state.path = hPath; // 일반 경로
+                    state.abstractPath = null;
+                }
+            } else {
+                state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                state.abstractPath = null;
+            }
+            
+            state.pathTargetId = currentTargetId;
+            state.pathIndex = 0;
+            state.lastPathCalcTime = now;
         }
 
         if (state.path) {
             if (state.path.length === 0) {
-                transform.vx = 0;
-                transform.vy = 0;
-                return -1;
+                // 🗺️ [HPA* Step 26] 다음 구역(Gate)으로 진행
+                if (state.abstractPath && state.abstractIndex < state.abstractPath.length - 1) {
+                    state.abstractIndex++;
+                    const [nextX, nextY] = state.abstractPath[state.abstractIndex].split(',').map(Number);
+                    state.path = this.findPath(transform.x, transform.y, nextX, nextY, engine);
+                    state.pathIndex = 0;
+                    if (!state.path) return -1;
+                } else {
+                    transform.vx = 0;
+                    transform.vy = 0;
+                    return -1;
+                }
             }
 
             const dxEnd = targetPos.x - transform.x;
@@ -358,6 +524,7 @@ export default class Pathfinder {
                 transform.vx = 0;
                 transform.vy = 0;
                 state.path = null;
+                state.abstractPath = null;
                 return true;
             }
 
@@ -368,9 +535,24 @@ export default class Pathfinder {
 
                 if (dx * dx + dy * dy < 144) {
                     state.pathIndex++;
+                    
+                    // 마지막 웨이포인트 도달 시 다음 게이트 확인
+                    if (state.pathIndex >= state.path.length && state.abstractPath) {
+                        if (state.abstractIndex < state.abstractPath.length - 1) {
+                            state.abstractIndex++;
+                            const [nextX, nextY] = state.abstractPath[state.abstractIndex].split(',').map(Number);
+                            state.path = this.findPath(transform.x, transform.y, nextX, nextY, engine);
+                            state.pathIndex = 0;
+                        } else {
+                            // 마지막 게이트 도달 시 실제 목적지로의 최종 로컬 경로
+                            state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                            state.pathIndex = 0;
+                            state.abstractPath = null;
+                        }
+                    }
                 }
 
-                if (state.pathIndex < state.path.length) {
+                if (state.path && state.pathIndex < state.path.length) {
                     const targetWp = state.path[state.pathIndex];
                     const nx = targetWp.x - transform.x;
                     const ny = targetWp.y - transform.y;
@@ -431,5 +613,198 @@ export default class Pathfinder {
             }
         }
         return false;
+    }
+
+    /**
+     * 🗺️ [HPA* Step 21] 상위 계층 구역(Zone/Cluster) 분할 및 초기화
+     */
+    static initHierarchy(engine) {
+        if (!engine || !engine.mapWidth) return;
+        
+        const w = engine.mapWidth;
+        const h = engine.mapHeight;
+        const size = this.clusterSize;
+        
+        const cols = Math.ceil(w / size);
+        const rows = Math.ceil(h / size);
+        
+        this.clusters.clear();
+        this.abstractNodes.clear();
+        
+        console.log(`🗺️ Initializing HPA* Hierarchy: ${cols}x${rows} clusters`);
+
+        // 1. 구역(Cluster) 생성
+        for (let cy = 0; cy < rows; cy++) {
+            for (let cx = 0; cx < cols; cx++) {
+                const id = `${cx},${cy}`;
+                const cluster = new HPACluster(
+                    id, 
+                    cx * size, 
+                    cy * size, 
+                    Math.min(size, w - cx * size), 
+                    Math.min(size, h - cy * size)
+                );
+                this.clusters.set(id, cluster);
+            }
+        }
+
+        // 2. 경계점(Transition Nodes) 탐색 (Step 22)
+        this.rebuildAllTransitions(engine);
+    }
+
+    /**
+     * 🚪 [HPA* Step 22] 모든 인접 구역 간의 경계점(Entrance) 탐색
+     */
+    static rebuildAllTransitions(engine) {
+        const w = engine.mapWidth;
+        const h = engine.mapHeight;
+        const size = this.clusterSize;
+        const cols = Math.ceil(w / size);
+        const rows = Math.ceil(h / size);
+
+        for (let cy = 0; cy < rows; cy++) {
+            for (let cx = 0; cx < cols; cx++) {
+                // 오른쪽 neighbor 확인
+                if (cx < cols - 1) {
+                    this._findTransitionsBetween(cx, cy, cx + 1, cy, 'vertical', engine);
+                }
+                // 아래쪽 neighbor 확인
+                if (cy < rows - 1) {
+                    this._findTransitionsBetween(cx, cy, cx, cy + 1, 'horizontal', engine);
+                }
+            }
+        }
+        
+        // 3. 구역 내 노드 간 가중치 계산 (Intra-edges)
+        for (const cluster of this.clusters.values()) {
+            this._computeIntraEdges(cluster, engine);
+        }
+    }
+
+    static _findTransitionsBetween(cx1, cy1, cx2, cy2, orientation, engine) {
+        const cluster1 = this.clusters.get(`${cx1},${cy1}`);
+        const cluster2 = this.clusters.get(`${cx2},${cy2}`);
+        if (!cluster1 || !cluster2) return;
+
+        const tg = engine.terrainGen;
+        
+        if (orientation === 'vertical') {
+            const x1 = cluster1.x + cluster1.width - 1;
+            const x2 = cluster2.x;
+            const yStart = Math.max(cluster1.y, cluster2.y);
+            const yEnd = Math.min(cluster1.y + cluster1.height, cluster2.y + cluster2.height);
+            this._scanBoundary(x1, x2, yStart, yEnd, true, cluster1, cluster2, tg);
+        } else {
+            const y1 = cluster1.y + cluster1.height - 1;
+            const y2 = cluster2.y;
+            const xStart = Math.max(cluster1.x, cluster2.x);
+            const xEnd = Math.min(cluster1.x + cluster1.width, cluster2.x + cluster2.width);
+            this._scanBoundary(y1, y2, xStart, xEnd, false, cluster1, cluster2, tg);
+        }
+    }
+
+    static _scanBoundary(fixed1, fixed2, rangeStart, rangeEnd, isVertical, c1, c2, tg) {
+        let gapStart = -1;
+        for (let i = rangeStart; i < rangeEnd; i++) {
+            const p1 = isVertical ? { x: fixed1, y: i } : { x: i, y: fixed1 };
+            const p2 = isVertical ? { x: fixed2, y: i } : { x: i, y: fixed2 };
+            const canPass = tg.isNavigable(p1.x, p1.y) && tg.isNavigable(p2.x, p2.y);
+            if (canPass) {
+                if (gapStart === -1) gapStart = i;
+            } else {
+                if (gapStart !== -1) {
+                    this._createGate(gapStart, i - 1, fixed1, fixed2, isVertical, c1, c2);
+                    gapStart = -1;
+                }
+            }
+        }
+        if (gapStart !== -1) {
+            this._createGate(gapStart, rangeEnd - 1, fixed1, fixed2, isVertical, c1, c2);
+        }
+    }
+
+    static _createGate(start, end, f1, f2, isVertical, c1, c2) {
+        const mid = Math.floor((start + end) / 2);
+        const p1 = isVertical ? { x: f1, y: mid } : { x: mid, y: f1 };
+        const p2 = isVertical ? { x: f2, y: mid } : { x: mid, y: f2 };
+        const key1 = `${p1.x},${p1.y}`;
+        const key2 = `${p2.x},${p2.y}`;
+        this._addAbstractEdge(key1, key2, 1.0, c1, c2);
+    }
+
+    static _addAbstractEdge(k1, k2, weight, c1, c2) {
+        if (!this.abstractNodes.has(k1)) this.abstractNodes.set(k1, { neighbors: new Map() });
+        if (!this.abstractNodes.has(k2)) this.abstractNodes.set(k2, { neighbors: new Map() });
+        this.abstractNodes.get(k1).neighbors.set(k2, weight);
+        this.abstractNodes.get(k2).neighbors.set(k1, weight);
+        if (c1 !== c2) {
+            if (!c1.transitions.has(c2.id)) c1.transitions.set(c2.id, []);
+            c1.transitions.get(c2.id).push({ from: k1, to: k2, weight });
+            if (!c2.transitions.has(c1.id)) c2.transitions.set(c1.id, []);
+            c2.transitions.get(c1.id).push({ from: k2, to: k1, weight });
+        }
+    }
+
+    static _computeIntraEdges(cluster, engine) {
+        const nodes = [];
+        for (const key of this.abstractNodes.keys()) {
+            const [x, y] = key.split(',').map(Number);
+            if (x >= cluster.x && x < cluster.x + cluster.width && y >= cluster.y && y < cluster.y + cluster.height) {
+                nodes.push(key);
+            }
+        }
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const k1 = nodes[i], k2 = nodes[j];
+                const [x1, y1] = k1.split(',').map(Number), [x2, y2] = k2.split(',').map(Number);
+                const path = this.findPath(x1, y1, x2, y2, engine, 10);
+                if (path && path.length > 0) this._addAbstractEdge(k1, k2, path.length, cluster, cluster);
+            }
+        }
+    }
+
+    /**
+     * 🔄 [HPA* Step 23] 지형 변화 시 해당 구역을 더티 마킹
+     */
+    static markClusterDirty(x, y) {
+        const cx = Math.floor(x / this.clusterSize);
+        const cy = Math.floor(y / this.clusterSize);
+        const id = `${cx},${cy}`;
+        this.dirtyClusters.add(id);
+        
+        // 🚀 [Step 28] 지형 변경 시 경로 캐시 전체 무효화 (안전성 우선)
+        this.invalidateCache();
+    }
+
+    /**
+     * ⚙️ [HPA* Step 23] 더티 마킹된 구역들의 이동망 재계산
+     */
+    static updateHierarchy(engine) {
+        if (this.dirtyClusters.size === 0) return;
+
+        // 프레임당 최대 1개의 구역만 재계산 (성능 저하 방지)
+        const iterator = this.dirtyClusters.values();
+        const clusterId = iterator.next().value;
+        this.dirtyClusters.delete(clusterId);
+
+        const cluster = this.clusters.get(clusterId);
+        if (!cluster) return;
+
+        console.log(`🔄 Rebuilding HPA* Cluster: ${clusterId}`);
+        
+        // 1. 해당 구역의 추상 노드와 엣지 초기화
+        const [cx, cy] = clusterId.split(',').map(Number);
+        
+        // 주변 구역과의 경계 재탐색
+        const cols = Math.ceil(engine.mapWidth / this.clusterSize);
+        const rows = Math.ceil(engine.mapHeight / this.clusterSize);
+
+        if (cx > 0) this._findTransitionsBetween(cx - 1, cy, cx, cy, 'vertical', engine);
+        if (cx < cols - 1) this._findTransitionsBetween(cx, cy, cx + 1, cy, 'vertical', engine);
+        if (cy > 0) this._findTransitionsBetween(cx, cy - 1, cx, cy, 'horizontal', engine);
+        if (cy < rows - 1) this._findTransitionsBetween(cx, cy, cx, cy + 1, 'horizontal', engine);
+
+        // 2. 구역 내 가중치 재계산
+        this._computeIntraEdges(cluster, engine);
     }
 }

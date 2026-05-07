@@ -62,6 +62,12 @@ export default class State extends Component {
         this.targetName = null;        // 현재 타겟의 명칭 (UI/디버그용)
         this.interruptible = options.interruptible !== undefined ? options.interruptible : true; // 🛡️ 상태 중단 가능 여부
         this.thinkTimer = 0;      // 🧠 판단 주기 타이머 (Throttling)
+        
+        // 🗺️ [HPA* Path] 계층적 경로 데이터
+        this.path = null;
+        this.pathIndex = 0;
+        this.abstractPath = null;
+        this.abstractIndex = 0;
     }
 
     /** 🚫 타겟을 일시적 블랙리스트에 추가 */

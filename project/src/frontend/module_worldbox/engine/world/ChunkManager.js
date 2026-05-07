@@ -25,8 +25,8 @@ export default class ChunkManager {
         this.activeCanvasCount = 0;
         this.dirtyChunks = new Set();
         
-        // 마스터 버퍼 (TerrainGen에서 직접 접근하는 용도 유지)
-        this.buffer = new Uint32Array(this.mapWidth * this.mapHeight);
+        // 마스터 버퍼 (SharedArrayBuffer 사용)
+        this.buffer = new Uint32Array(new SharedArrayBuffer(this.mapWidth * this.mapHeight * 4));
     }
 
     _initChunks() {
@@ -121,6 +121,14 @@ export default class ChunkManager {
         if (chunk) {
             chunk.markDirty();
             this.dirtyChunks.add(chunk);
+            
+            // 🗺️ [HPA* Step 23] 지형 변경 시 해당 구역의 경로망 재계산 트리거
+            import('../utils/Pathfinder.js').then(module => {
+                const Pathfinder = module.default;
+                if (typeof Pathfinder.markClusterDirty === 'function') {
+                    Pathfinder.markClusterDirty(x, y);
+                }
+            });
         }
     }
 

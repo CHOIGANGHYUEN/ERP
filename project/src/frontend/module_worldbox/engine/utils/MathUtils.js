@@ -68,4 +68,29 @@ export default class MathUtils {
         }
         return { pushX: 0, pushY: 0 };
     }
+
+    // 🔒 [Expert Synchronization] Atomics 기반 동시성 제어 유틸리티
+    static atomicAdd(typedArray, index, value) {
+        return Atomics.add(typedArray, index, value);
+    }
+
+    static atomicSub(typedArray, index, value) {
+        return Atomics.sub(typedArray, index, value);
+    }
+
+    static atomicStore(typedArray, index, value) {
+        return Atomics.store(typedArray, index, value);
+    }
+
+    static atomicLoad(typedArray, index) {
+        return Atomics.load(typedArray, index);
+    }
+
+    static atomicExchange(typedArray, index, value) {
+        return Atomics.exchange(typedArray, index, value);
+    }
+
+    static atomicCompareExchange(typedArray, index, expected, replacement) {
+        return Atomics.compareExchange(typedArray, index, expected, replacement);
+    }
 }

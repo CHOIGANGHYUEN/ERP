@@ -91,23 +91,37 @@ export default class Engine {
         // 🌡️ [사용자 피드백 반영] 시뮬레이션 파라미터 실시간 업데이트 핸들러
         this.eventBus.on('UPDATE_SIM_PARAMS', (params) => {
             this.simParams = { ...this.simParams, ...params };
+            // ⚙️ 워커로 파라미터 동기화
+            if (this.worker) {
+                this.worker.postMessage({ type: 'UPDATE_PARAMS', payload: params });
+            }
+        });
+
+        // ⏳ [배속 조절] UI 등에서 발생하는 배속 변경 처리
+        this.eventBus.on('SET_GAME_SPEED', (speed) => {
+            this.timeSystem.setSpeed(speed);
+            if (this.worker) {
+                this.worker.postMessage({ type: 'UPDATE_PARAMS', payload: { gameSpeed: speed } });
+            }
+            GlobalLogger.info(`⏳ Game Speed: ${speed}x`);
         });
 
         // 🎨 [사용자 피드백 반영] 전체 배경 칠하기(Fill) 핸들러
         this.eventBus.on('APPLY_FILL_TOOL', (payload) => {
+            if (this.worker) {
+                this.worker.postMessage({ type: 'DISPATCH_COMMAND', payload: { action: 'CHANGE_BIOME_ALL', ...payload } });
+                return;
+            }
+            
             const biomeId = payload.biome;
-            const width = this.mapWidth;
-            const height = this.mapHeight;
             const buffer = this.terrainGen.biomeBuffer;
 
             for (let i = 0; i < buffer.length; i++) {
-                // 바다가 아닌 육지(DIRT, GRASS 등)만 채우기 대상으로 설정
                 if (this.terrainGen.isLand(buffer[i])) {
-                    buffer[i] = biomeId;
+                    Atomics.store(buffer, i, biomeId);
                     this.terrainGen.syncPackedPixel(i);
                 }
             }
-            // 전체 렌더링 갱신 통보 (메모리 효율을 위해 전체 업데이트 플래그 사용 가능)
             this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { all: true, reason: 'fill_biome' });
         });
 
@@ -202,6 +216,16 @@ export default class Engine {
         // 📡 시뮬레이션 준비 완료 알림
         this.eventBus.emit('WORLD_READY');
 
+        // 🗺️ [HPA* Step 21/22] 계층적 길찾기 그래프 구축
+        import('../utils/Pathfinder.js').then(module => {
+            const Pathfinder = module.default;
+            Pathfinder.initHierarchy(this);
+            this.eventBus.emit('HPA_GRAPH_READY');
+        });
+
+        // ⚙️ [Simulation Worker] 백그라운드 워커 초기화
+        this.initSimulationWorker();
+
         // 🏗️ PoC: 테스트용 글로벌 구역 생성
         setTimeout(() => {
             const zm = this.systemManager?.zoneManager;
@@ -211,6 +235,36 @@ export default class Engine {
                 // Test zones initialized
             }
         }, 1000);
+    }
+
+    /** ⚙️ [Expert Design] 시뮬레이션 워커 초기화 및 공유 데이터 동기화 */
+    initSimulationWorker() {
+        try {
+            // Vite는 URL을 통한 워커 생성을 지원함
+            this.worker = new Worker(
+                new URL('../workers/simulationWorker.js', import.meta.url),
+                { type: 'module' }
+            );
+
+            // TerrainGen에서 공유 버퍼 목록을 가져와 워커로 전송
+            const sharedData = this.terrainGen.getSharedBuffers();
+            this.worker.postMessage({
+                type: 'INIT',
+                payload: { ...sharedData, simParams: this.simParams }
+            });
+
+            this.worker.onmessage = (e) => {
+                const { type, payload } = e.data;
+                if (type === 'PIXEL_UPDATE') {
+                    // 워커에서 발생한 지형 변화(바이옴 확산 등)를 메인 스레드 렌더링 시스템에 통보
+                    this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', payload);
+                }
+            };
+
+            GlobalLogger.info("⚙️ [Engine] Simulation Worker initialized with SharedArrayBuffer.");
+        } catch (error) {
+            GlobalLogger.error("❌ [Engine] Failed to initialize Simulation Worker:", error);
+        }
     }
 
 
@@ -361,7 +415,18 @@ export default class Engine {
                 if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
                 break;
             case 'CHANGE_BIOME':
-                this.eventBus.emit('APPLY_TOOL_EFFECT', { ...command.payload, action: 'CHANGE_BIOME' });
+                if (this.worker) {
+                    this.worker.postMessage({ type: 'APPLY_TOOL', payload: { ...command.payload, action: 'CHANGE_BIOME' } });
+                } else {
+                    this.eventBus.emit('APPLY_TOOL_EFFECT', { ...command.payload, action: 'CHANGE_BIOME' });
+                }
+                break;
+            case 'APPLY_GOD_POWER':
+                if (this.worker) {
+                    this.worker.postMessage({ type: 'APPLY_GOD_POWER', payload: command.payload });
+                }
+                // 기존 GodPowerSystem에서도 처리가 필요할 수 있으므로 emit도 유지 (엔티티 제거 등)
+                this.eventBus.emit('APPLY_GOD_POWER', command.payload);
                 break;
             case 'SPAWN_RESOURCE':
                 const resType = command.payload.type || command.payload.resourceId;
@@ -443,6 +508,13 @@ export default class Engine {
 
         // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
         this.systemManager.update(dt, time);
+
+        // 🗺️ [HPA* Step 23/27] 계층적 길찾기 그래프 업데이트 및 요청 대기열 처리
+        import('../utils/Pathfinder.js').then(module => {
+            const PF = module.default;
+            PF.updateHierarchy(this);
+            PF.processQueue();
+        });
 
         // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달, 엔진 인스턴스 공유)
         this.timeSystem.update(dt * 1000, this);

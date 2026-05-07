@@ -90,25 +90,25 @@ export default class SystemManager {
 
     update(dt, time) {
         const frameCount = this.engine.frameCount || 0;
+        const monitor = this.engine.monitor;
+
+        const startTotal = performance.now();
 
         // [Phase 1] 환경 및 입력 업데이트 (Critical - 60Hz)
+        const t1 = performance.now();
         this.wind.update(time);
         this.environment.update(dt, time);
+        if (monitor) monitor.setSystemTiming('Environment', performance.now() - t1);
 
         // [Phase 2] AI & Logic (Throttled)
-        
-        // ⚔️ Combat & Death (Critical - 60Hz to prevent missed events)
+        const t2 = performance.now();
         this.combat.update(dt, time);
         this.deathProcessor.update(dt, time);
-
-        // 🧠 AI Behavior (60Hz - Synchronized with Kinematics to remove inertia)
         this.humanBehavior.update(dt, time);
         this.behavior.update(dt, time);
 
         // 🐕 Herding & Motion Logic (20Hz)
-        if (frameCount % 3 === 0) {
-            this.herding.update(dt * 3);
-        }
+        if (frameCount % 3 === 0) this.herding.update(dt * 3);
 
         // 🏘️ Civilization & Economy (12Hz) - Staggered
         if (frameCount % 5 === 0) {
@@ -145,16 +145,22 @@ export default class SystemManager {
             this.economyManager.update(dt * 15);
         }
 
-        // [Phase 3] 이동 및 물리 연산 반영 (Critical - 60Hz)
-        this.kinematics.update(dt);
+        if (monitor) monitor.setSystemTiming('AI_Combat_Civ', performance.now() - t2);
 
-        // [Phase 4] 시각적 표현 (Critical - 60Hz)
+        // [Phase 3] 이동 및 물리 연산 반영 (Critical - 60Hz)
+        const t3 = performance.now();
+        this.kinematics.update(dt);
+        if (monitor) monitor.setSystemTiming('Kinematics', performance.now() - t3);
+
+        // [Phase 4] 시각적 표현 & UI
+        const t4 = performance.now();
         this.spriteManager.update(dt, time);
         this.particleSystem.update(dt, time);
         this.godPower.update(dt);
-
-        // [Phase 5] UI (Critical - 60Hz)
         this.uiSystem.update(dt, time);
+        if (monitor) monitor.setSystemTiming('Visual_UI', performance.now() - t4);
+
+        if (monitor) monitor.setSystemTiming('Total_Update', performance.now() - startTotal);
     }
 
     destroy() {

@@ -41,6 +41,13 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
 
+// 🛡️ [Security & Performance] SharedArrayBuffer 지원을 위한 보안 헤더 설정
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+  next()
+})
+
 // Global API Logging Middleware (Phase 2)
 // 모든 /api/* 요청의 이력(메서드, URL, 상태코드, 사용자ID)을 sysLogUser 테이블에 기록합니다.
 app.use(apiLogger)

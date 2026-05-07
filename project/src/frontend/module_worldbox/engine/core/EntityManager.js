@@ -15,8 +15,9 @@ export default class EntityManager {
 
         // 🚀 [Expert Optimization] TypedArray 기반 컴포넌트 데이터 캐싱 (DOD)
         this.maxEntities = 10000;
-        this.transformBuffer = new Float32Array(this.maxEntities * 4); // [x, y, vx, vy, ...]
-        this.statsBuffer = new Float32Array(this.maxEntities * 4);     // [hp, hunger, fatigue, speed, ...]
+        this.transformBuffer = new Float32Array(this.maxEntities * 2); // [x, y]
+        this.velocityBuffer = new Float32Array(this.maxEntities * 4);  // [vx, vy, ax, ay]
+        this.statsBuffer = new Float32Array(this.maxEntities * 4);     // [hp, hunger, fatigue, speed]
     }
 
     createEntity() {
@@ -37,13 +38,16 @@ export default class EntityManager {
         if (id < this.maxEntities) return;
         
         const newMax = Math.max(id + 1, this.maxEntities * 2);
-        const newTransform = new Float32Array(newMax * 4);
+        const newTransform = new Float32Array(newMax * 2);
+        const newVelocity = new Float32Array(newMax * 4);
         const newStats = new Float32Array(newMax * 4);
         
         newTransform.set(this.transformBuffer);
+        newVelocity.set(this.velocityBuffer);
         newStats.set(this.statsBuffer);
         
         this.transformBuffer = newTransform;
+        this.velocityBuffer = newVelocity;
         this.statsBuffer = newStats;
         this.maxEntities = newMax;
         console.log(`📏 EntityManager: Buffer resized to ${newMax} slots.`);
@@ -109,7 +113,9 @@ export default class EntityManager {
             
             // 🚀 [Expert Optimization] TypedArray 버퍼 연결 (DOD)
             if (name === 'Transform') {
-                if (component.linkBuffer) component.linkBuffer(this.transformBuffer, entityId * 4);
+                if (component.linkBuffer) component.linkBuffer(this.transformBuffer, entityId * 2);
+            } else if (name === 'Velocity') {
+                if (component.linkBuffer) component.linkBuffer(this.velocityBuffer, entityId * 4);
             } else if (name === 'BaseStats') {
                 if (component.linkBuffer) component.linkBuffer(this.statsBuffer, entityId * 4);
             }

@@ -15,6 +15,8 @@
 - `engine/core > SystemManager.js`
   - 시스템들의 실행 우선순위(Phase)를 관리합니다. `PRE_UPDATE`, `UPDATE`, `POST_UPDATE`, `RENDER` 등의 단계별로 시스템을 실행하며, `Blackboard`를 통해 시스템 간 공유 데이터를 중계합니다.
   - **연관 파일**: `System.js`, `Blackboard.js`
+- `engine/core > Camera.js`
+  - **[최신]** 카메라의 시야 영역(Viewport AABB)을 계산하고 줌 레벨에 따른 LOD(Level of Detail) 임계값을 제공하여 화면 밖 청크를 렌더링에서 제외(Culling)하는 핵심 역할을 수행합니다.
 - `engine/core > EntityManager.js`
   - 엔티티의 생성, 삭제 및 컴포넌트 조립을 담당합니다. 엔티티 타입별 고속 순회 인덱스(`humanIds`, `animalIds`, `resourceIds` 등)를 유지하여 시스템 연산 효율을 극대화합니다.
   - **연관 파일**: `Component.js`, `EntityBuilder.js`
@@ -123,7 +125,7 @@
 
 ### 🎨 Rendering & Visuals
 - `engine/systems/render > RenderCoordinator.js`
-  - 모든 시각 요소(지형, 엔티티, UI, 파티클)의 렌더링 순서와 카메라를 동기화합니다.
+  - **[최신]** 메인 렌더 루프를 제어합니다. 전체 맵 대신 `ChunkManager`에서 가시 영역으로 판별된 청크만 선택적으로 렌더링하며, 카메라 줌에 따라 LOD 0(원거리 미니맵)과 LOD 1(근거리 고해상도) 렌더링 파이프라인을 분기하여 드로우 콜을 최적화합니다.
 - `engine/systems/render > EntityRenderer.js`
   - 엔티티의 8방향 애니메이션 및 장착 상태를 고속 렌더링하며, 캔버스 캐싱을 활용합니다.
 - `engine/systems/render > ParticleSystem.js / CullingSystem.js`
@@ -174,6 +176,8 @@
 
 ## 7. World & Utilities (공간 및 지형)
 
+- `engine/world > ChunkManager.js / Chunk.js`
+  - **[최신]** 타일 기반 청크 렌더링 시스템입니다. 거대한 맵을 512x512 단위의 청크로 분할하고, 개별 `OffscreenCanvas`를 할당합니다. `isDirty` 플래그 캐싱과 메모리 풀링을 통해 지형 렌더링 비용을 획기적으로 낮춥니다.
 - `engine/world > TerrainGen.js / WorldLayers.js`
   - 다층 레이어 기반의 절차적 지형 생성 및 환경 데이터(비옥도 등) 관리.
 - `engine/utils > SpatialHash.js`

@@ -13,8 +13,13 @@ export default class TimeSystem {
         this.timeScale = 0.16667; 
         
         this.isPaused = false;
+        this.gameSpeed = 1; // 🚀 배속 (1x, 2x, 5x 등)
         this.years = 1; // 🗓️ 시작 년도
         this.yearTimer = 0; // 나이 증가를 위한 타이머
+    }
+
+    setSpeed(speed) {
+        this.gameSpeed = speed;
     }
 
     /**
@@ -25,7 +30,7 @@ export default class TimeSystem {
     update(deltaTime, engine) {
         if (this.isPaused) return;
 
-        const minutesPerTick = (deltaTime / 1000) * this.timeScale * 60;
+        const minutesPerTick = (deltaTime / 1000) * this.timeScale * 60 * this.gameSpeed;
         this.minutes += minutesPerTick;
         this.yearTimer += minutesPerTick;
 

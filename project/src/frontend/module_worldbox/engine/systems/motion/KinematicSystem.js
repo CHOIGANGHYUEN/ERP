@@ -1,3 +1,5 @@
+import CollisionSystem from './CollisionSystem.js';
+
 export default class KinematicSystem {
     constructor(engine) {
         this.engine = engine;
@@ -29,15 +31,20 @@ export default class KinematicSystem {
     }
 
     _updateEntityList(ids, em, viewX, viewY, viewW, viewH, mw, mh, dt, frameCount, spatialHash) {
-        const buffer = em.transformBuffer;
+        const tBuffer = em.transformBuffer;
+        const vBuffer = em.velocityBuffer;
         const tg = this.engine.terrainGen;
 
         for (const id of ids) {
-            const idx = id * 4;
-            const x = buffer[idx];
-            const y = buffer[idx + 1];
-            const vx = buffer[idx + 2];
-            const vy = buffer[idx + 3];
+            const tIdx = id * 2;
+            const vIdx = id * 4;
+
+            const x = tBuffer[tIdx];
+            const y = tBuffer[tIdx + 1];
+            let vx = vBuffer[vIdx];
+            let vy = vBuffer[vIdx + 1];
+            const ax = vBuffer[vIdx + 2];
+            const ay = vBuffer[vIdx + 3];
 
             // 1. [Physics LOD] 화면 밖 개체는 물리 연산 빈도 낮춤 (20fps 수준)
             const isVisible = (x > viewX && x < viewX + viewW && 
@@ -46,28 +53,42 @@ export default class KinematicSystem {
             if (!isVisible) {
                 // 화면 밖 개체는 3프레임에 한 번만 물리 연산 수행 (분산 처리)
                 if ((id + frameCount) % 3 !== 0) {
-                    buffer[idx] += vx * dt;
-                    buffer[idx + 1] += vy * dt;
-                    if (spatialHash) spatialHash.insert(id, buffer[idx], buffer[idx + 1], false);
+                    tBuffer[tIdx] += vx * dt;
+                    tBuffer[tIdx + 1] += vy * dt;
+                    if (spatialHash) spatialHash.insert(id, tBuffer[tIdx], tBuffer[tIdx + 1], false);
                     continue; 
                 }
             }
 
-            // 🛑 [Grabbed Check] (이 부분은 여전히 엔티티 조회가 필요함)
+            // 🛑 [Grabbed Check]
             const entity = em.entities.get(id);
             if (!entity) continue;
             
             const aiState = entity.components.get('AIState');
             if (aiState && aiState.mode === 'grabbed') continue;
 
+            // 🚀 가속도 반영
+            vx += ax * dt;
+            vy += ay * dt;
+            vBuffer[vIdx] = vx;
+            vBuffer[vIdx + 1] = vy;
+
             // 2. 이동 연산
             let nextX = x + vx * dt;
             let nextY = y + vy * dt;
 
+            // 🛡️ [Step 29] Separation Steering (충돌 회피)
+            if (isVisible) {
+                const separation = CollisionSystem.resolveSeparation(id, x, y, spatialHash, em, 12);
+                const pushWeight = 0.5; // 밀어내는 강도
+                nextX += separation.pushX * pushWeight;
+                nextY += separation.pushY * pushWeight;
+            }
+
             // 3. 지형 검사 (Navigable - 최종 안전 장치)
             if (tg && !tg.isNavigable(nextX, nextY)) {
-                buffer[idx + 2] = 0; // vx = 0
-                buffer[idx + 3] = 0; // vy = 0
+                vBuffer[vIdx] = 0; // vx = 0
+                vBuffer[vIdx + 1] = 0; // vy = 0
                 nextX = x;
                 nextY = y;
             }
@@ -76,11 +97,11 @@ export default class KinematicSystem {
             const finalX = Math.max(0, Math.min(mw, nextX));
             const finalY = Math.max(0, Math.min(mh, nextY));
 
-            buffer[idx] = finalX;
-            buffer[idx + 1] = finalY;
+            tBuffer[tIdx] = finalX;
+            tBuffer[tIdx + 1] = finalY;
 
-            if (finalX <= 0 || finalX >= mw) buffer[idx + 2] = 0;
-            if (finalY <= 0 || finalY >= mh) buffer[idx + 3] = 0;
+            if (finalX <= 0 || finalX >= mw) vBuffer[vIdx] = 0;
+            if (finalY <= 0 || finalY >= mh) vBuffer[vIdx + 1] = 0;
 
             // 6. 🧭 방향 및 애니메이션 데이터 갱신 (보이는 개체만 정밀하게)
             if (isVisible) {
