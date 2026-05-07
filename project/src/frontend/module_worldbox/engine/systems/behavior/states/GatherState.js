@@ -105,8 +105,9 @@ export default class GatherState extends State {
 
             const targetHealth = target.components.get('Health');
             
-            // 🛑 [Termination] 체력이 0이 되었거나 타겟이 삭제되었다면 루프 종료
-            if ((targetHealth && targetHealth.currentHp <= 0) || res.value <= 0) {
+            // 🛑 [Termination] 체력이 0이 되었거나 타겟이 고갈되었다면 루프 종료
+            // 단, 나무가 쓰러지는 중(isFalling)이라면 연출을 위해 즉시 종료하지 않음
+            if ((targetHealth && targetHealth.currentHp <= 0) || (res.value <= 0 && !res.isFalling)) {
                 state.targetId = null;
                 state.isChopping = false;
                 return 'idle';

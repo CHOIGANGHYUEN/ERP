@@ -4,6 +4,7 @@ import ArchitectRole from './ArchitectRole.js';
 import LoggerRole    from './LoggerRole.js';
 import GathererRole  from './GathererRole.js';
 import HunterRole    from './HunterRole.js';
+import MinerRole     from './MinerRole.js';
 import { FarmerRole, RancherRole, WarriorRole, MerchantRole, BlacksmithRole, CarpenterRole } from './OtherRoles.js';
 
 /**
@@ -27,6 +28,7 @@ export default class RoleFactory {
             case JobTypes.LOGGER:     return new LoggerRole(this.system);
             case JobTypes.GATHERER:   return new GathererRole(this.system);
             case JobTypes.HUNTER:     return new HunterRole(this.system);
+            case JobTypes.MINER:      return new MinerRole(this.system);
             case JobTypes.FARMER:     return new FarmerRole(this.system);
             case JobTypes.RANCHER:    return new RancherRole(this.system);
             case JobTypes.WARRIOR:    return new WarriorRole(this.system);

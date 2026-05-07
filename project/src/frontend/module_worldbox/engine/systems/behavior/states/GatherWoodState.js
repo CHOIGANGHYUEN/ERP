@@ -43,6 +43,14 @@ export default class GatherWoodState extends GatherState {
 
                         state.fallingTargetId = null;
                         state.fallTimer = 0;
+
+                        // 🚀 [Smooth Transition] 방금 벤 나무에서 나온 목재를 즉시 줍도록 유도
+                        if (state.lastHarvestedItemId && em.entities.has(state.lastHarvestedItemId)) {
+                            state.targetId = state.lastHarvestedItemId;
+                            state.lastHarvestedItemId = null;
+                            return 'pickup';
+                        }
+
                         return 'idle'; // 벌목 완료 후 대기
                     }
 
@@ -126,15 +134,18 @@ export default class GatherWoodState extends GatherState {
             if (itemFactory && tPos) {
                 const config = this.system.engine.resourceConfig[resourceNode.id] || 
                                this.system.engine.resourceConfig[resourceNode.type] || {};
-                const hasConfig = !!config.drops;
                 const drops = config.drops || [{ type: 'wood', amount: 5 }]; // 설정 없으면 기본값
 
                 drops.forEach(drop => {
                     if (Math.random() <= (drop.chance || 1.0)) {
                         const amount = drop.amount || 1;
-                        itemFactory.spawnDrop(tPos.x, tPos.y, drop.type, amount);
-                        const logSuffix = hasConfig ? 'From Config' : 'Fallback';
-                        GlobalLogger.info(`Citizen ${entity.id} chopped a tree. Dropped ${amount} ${drop.type.toUpperCase()} (${logSuffix}).`);
+                        const vId = (entity.components.get('Civilization')?.villageId || -1);
+                        const dropId = itemFactory.spawnDrop(tPos.x, tPos.y, drop.type, amount, vId);
+                        
+                        // 🚀 마지막 드랍 아이템 ID 저장 (추후 자동 줍기용)
+                        if (dropId) state.lastHarvestedItemId = dropId;
+
+                        GlobalLogger.info(`Citizen ${entity.id} chopped a tree. Dropped ${amount} ${drop.type.toUpperCase()}.`);
                     }
                 });
             }
@@ -147,9 +158,10 @@ export default class GatherWoodState extends GatherState {
             }
 
             // 🌲 자원 고갈 시: 나무가 쓰러지는 모션 적용 및 완전히 삭제
-            if (resourceNode.value <= 0 && !resourceNode.isFalling) {
-                resourceNode.isFalling = true;
-                resourceNode.fallProgress = 0;
+            // ResourceNode.extract()에서 이미 isFalling을 세팅했으므로, 이를 감지하여 연출 상태로 진입합니다.
+            if (resourceNode.isFalling && !state.fallingTargetId) {
+                state.fallingTargetId = targetId;
+                state.fallTimer = 0;
 
                 // 개체가 나무를 때리는 위치에 따라 자연스럽게 반대 방향으로 넘어지도록 설정
                 const entityTransform = entity.components.get('Transform');
@@ -164,9 +176,6 @@ export default class GatherWoodState extends GatherState {
                     }
                 }
 
-                // 비동기 타이머 대신 상태 기계로 위임하여 게임 루프가 쓰러짐 연출과 삭제를 완벽히 통제하도록 함
-                state.fallingTargetId = targetId;
-                state.fallTimer = 0;
                 GlobalLogger.warn(`Timber! Tree at (${Math.floor(tPos.x)}, ${Math.floor(tPos.y)}) is falling.`);
             }
         }

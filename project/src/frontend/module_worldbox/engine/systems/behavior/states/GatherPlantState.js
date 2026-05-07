@@ -100,39 +100,41 @@ export default class GatherPlantState extends State {
             if (state.timer >= 0.8) {
                 // 🔍 [Config-Driven Drops] 설정 파일의 'drops' 배열을 기반으로 아이템 생성
                 const itemFactory = this.system.engine.factoryProvider.getFactory('item');
+                let lastDroppedId = null;
                 if (itemFactory && tPos) {
                     const config = this.system.engine.resourceConfig[res.id] || 
                                    this.system.engine.resourceConfig[res.type] || {};
-                    const hasConfig = !!config.drops;
                     const drops = config.drops || [{ type: 'food', amount: 5 }];
 
                     drops.forEach(drop => {
                         if (Math.random() <= (drop.chance || 1.0)) {
                             const amount = drop.amount || 1;
-                            itemFactory.spawnDrop(tPos.x, tPos.y, drop.type, amount);
-                            const logSuffix = hasConfig ? 'From Config' : 'Fallback';
-                            GlobalLogger.info(`Citizen ${entityId} harvested ${drop.type.toUpperCase()} from ${res.id} (${logSuffix}).`);
+                            const dropId = itemFactory.spawnDrop(tPos.x, tPos.y, drop.type, amount, (entity.components.get('Civilization')?.villageId || -1));
+                            if (dropId) lastDroppedId = dropId;
+                            GlobalLogger.info(`Citizen ${entityId} harvested ${drop.type.toUpperCase()} from ${res.id}.`);
                         }
                     });
                 }
 
                 // 파티클 효과 (잎사귀 비산)
                 this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
-                    x: tPos.x, y: tPos.y,
-                    count: 5,
-                    type: 'EFFECT',
-                    color: '#4caf50',
-                    speed: 2
+                    x: tPos.x, y: tPos.y, count: 5, type: 'EFFECT', color: '#4caf50', speed: 2
                 });
 
                 // 🗑️ 식물 제거
                 em.removeEntity(state.targetId);
-                state.targetId = null;
                 state.timer = 0;
 
+                // 🚀 [Smooth Transition] 채집 성공 후 바닥에 떨어진 아이템을 즉시 줍도록 타겟 설정
+                if (lastDroppedId) {
+                    state.targetId = lastDroppedId;
+                    return 'pickup';
+                }
+
+                state.targetId = null;
                 // 인벤토리 확인 후 계속할지 결정
                 if (inventory.getTotal() >= inventory.capacity) return 'deposit';
-                return 'gather_plant'; // 🌿 [Success] 다음 타겟 탐색을 위해 상태 유지
+                return 'gather_plant'; // 🌿 다음 타겟 탐색을 위해 상태 유지
             }
         } else {
             // 이동

@@ -63,7 +63,7 @@
             </div>
           </Transition>
 
-          <div class="tool-tabs">
+          <div class="tool-tabs" ref="toolTabsContainer" @wheel="handleWheelScroll">
             <button 
               v-for="cat in toolCategories" 
               :key="cat.name"
@@ -152,6 +152,7 @@ import MapSettings from '../components/MapSettings.vue';
 
 const worldboxContainer = ref(null);
 const gameCanvas = ref(null);
+const toolTabsContainer = ref(null); // 📜 Mouse wheel scroll reference
 const isMenuOpen = ref(false);
 const activeTool = ref('move_hand');
 const showMapSettings = ref(false);
@@ -172,6 +173,22 @@ const showDebugCollapse = ref(false);
 let resizeObserver = null;
 
 const store = useWorldboxStore();
+
+// 🖱️ Mouse wheel to Horizontal Scroll
+const handleWheelScroll = (e) => {
+  if (toolTabsContainer.value) {
+    e.preventDefault();
+    // Scroll faster for better UX
+    toolTabsContainer.value.scrollLeft += e.deltaY * 1.5;
+  }
+};
+
+const scrollToActiveTab = () => {
+  const activeBtn = toolTabsContainer.value?.querySelector('button.active');
+  if (activeBtn) {
+    activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+};
 
 const handleMouseMove = (e) => {
   if (engine.value) {
@@ -197,6 +214,11 @@ const activeCategory = ref('Landscape');
 
 const filteredTools = computed(() => {
   return allTools.value.filter(t => t.category === activeCategory.value);
+});
+
+// 📱 탭 변경 시 자동 스크롤
+watch(activeCategory, () => {
+  setTimeout(scrollToActiveTab, 50);
 });
 
 // 🔄 도구 변경 시 UI 브러쉬 크기 동기화
@@ -660,14 +682,15 @@ input[type="range"] {
 
 .tool-tabs {
   display: flex;
-  justify-content: center;
-  gap: 5px;
-  padding: 12px 0;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 12px 20px;
   background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   pointer-events: auto;
-  overflow-X: auto;
+  overflow-x: auto;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tool-tabs::-webkit-scrollbar { display: none; }
@@ -683,6 +706,8 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tool-tabs button .cat-icon {

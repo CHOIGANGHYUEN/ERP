@@ -59,7 +59,7 @@ export default class AnimalBehaviorSystem extends System {
                     const effectiveDt = dt * updateModulo;
 
                     // 🧠 [Target Caching] 타겟 유효성 검사 및 재탐색 억제
-                    if (state.targetId) {
+                    if (state.targetId && state.targetId !== 'wander_pos') {
                         const target = em.entities.get(state.targetId);
                         if (!target) {
                             state.targetId = null;
@@ -120,7 +120,11 @@ export default class AnimalBehaviorSystem extends System {
             
             // 💡 [Persistence Logic] 작업 완료(IDLE), 중단 가능(interruptible), 또는 긴급 상황(Emergency) 시에만 전이 허용
             const isFinished = nextMode === AnimalStates.IDLE;
-            const isEmergency = suggestion && (suggestion.mode === AnimalStates.FLEE || suggestion.mode === AnimalStates.DIE);
+            const isEmergency = suggestion && (
+                suggestion.mode === AnimalStates.FLEE || 
+                suggestion.mode === AnimalStates.DIE || 
+                suggestion.mode === AnimalStates.GRABBED
+            );
             const canInterrupt = state.interruptible !== false;
             
             if (isFinished || isEmergency || canInterrupt) {

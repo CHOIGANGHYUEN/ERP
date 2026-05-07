@@ -160,8 +160,8 @@ export default class GodPowerSystem {
                     transform.y += (dy / dist) * moveAmount;
 
                     // 공간 해시 업데이트 (이전 위치 제거 후 새 위치 삽입)
-                    this.spatialHash.remove(id, oldX, oldY, false);
-                    this.spatialHash.insert(id, transform.x, transform.y, false);
+                    this.spatialHash.remove(id, oldX, oldY, true);
+                    this.spatialHash.insert(id, transform.x, transform.y, true);
                 }
             }
         }

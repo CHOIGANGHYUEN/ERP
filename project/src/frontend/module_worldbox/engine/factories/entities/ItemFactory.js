@@ -75,9 +75,9 @@ export default class ItemFactory extends IEntityFactory {
             return null;
         }
 
-        // 🚀 [Optimization] 공간 해시에 즉시 등록 (God Power 등으로 이동할 수 있으므로 dynamic으로 설정)
+        // 🚀 [Optimization] 공간 해시에 즉시 등록 (God Power 등으로 이동할 수 있으므로 Static으로 등록하여 매 프레임 초기화 방지)
         if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, false);
+            this.engine.spatialHash.insert(id, x, y, true);
         }
 
         return Number(id);

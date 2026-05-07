@@ -35,12 +35,15 @@ export default class TerrainGen {
     occupancyBuffer = null;
     territoryBuffer = null; 
 
-    // 🚀 [Expert Optimization] 단일 메모리 접근을 위한 비트 팩킹 버퍼
-    // 지형(8) | 바이옴(8) | 비옥도(8) | 수질/광물(8)
-    packedBuffer = null; 
+    // 🏘️ [Performance Optimization] 마을/국가 색상 고속 조회를 위한 버퍼
+    villageColorBuffer = new Uint32Array(2048); 
+    nationColorBuffer = new Uint32Array(2048);
 
     constructor(entityManager) {
         this.entityManager = entityManager;
+        // 기본값(흰색/투명 등)으로 초기화
+        this.villageColorBuffer.fill(0xFFFFFFFF);
+        this.nationColorBuffer.fill(0xFFFFFFFF);
     }
 
     // --- Interface Redirection ---
@@ -107,6 +110,19 @@ export default class TerrainGen {
             const v = Math.max(0, Math.min(255, value));
             this.fertilityBuffer[idx] = v;
             this.syncPackedPixel(idx);
+        }
+    }
+
+    /** 🎨 [Sync] 외부 시스템에서 마을/국가 색상 동기화 */
+    syncVillageColor(id, rgb) {
+        if (id >= 0 && id < this.villageColorBuffer.length) {
+            this.villageColorBuffer[id] = rgb;
+        }
+    }
+
+    syncNationColor(id, rgb) {
+        if (id >= 0 && id < this.nationColorBuffer.length) {
+            this.nationColorBuffer[id] = rgb;
         }
     }
 
@@ -310,17 +326,14 @@ export default class TerrainGen {
                     // Fill ChunkManager buffer directly
                     if (step === 1) {
                         cmBuffer[idx] = color;
-                        cm.markDirty(x, y); // 🚀 [Tiled Fix] Notify ChunkManager
                     } else {
                         for (let dy = 0; dy < step && y + dy < mapHeight; dy++) {
                             const rOff = (y + dy) * mapWidth;
                             for (let dx = 0; dx < step && x + dx < mapWidth; dx++) {
                                 const nIdx = rOff + (x + dx);
                                 cmBuffer[nIdx] = color;
-                                if (dx === 0 && dy === 0) {
-                                    cm.markDirty(x, y); // 🚀 [Tiled Fix] Notify ChunkManager
-                                    continue;
-                                }
+                                if (dx === 0 && dy === 0) continue;
+                                
                                 terrainBuf[nIdx] = terrainId;
                                 biomeBuf[nIdx] = biomeId;
                                 fertBuf[nIdx] = fert;
@@ -334,10 +347,13 @@ export default class TerrainGen {
 
                 if (y % batchSize === 0) {
                     if (onProgress) onProgress();
+                    // 🚀 [Tiled Optimization] 한 배치가 끝날 때만 한꺼번에 Dirty 마킹하여 렌더링 성능 확보
+                    cm.markAllDirty(); 
                     await new Promise(resolve => requestAnimationFrame(resolve));
                 }
             }
             if (onProgress) onProgress();
+            cm.markAllDirty();
             await new Promise(resolve => setTimeout(resolve, 20)); 
         }
     }
@@ -463,22 +479,15 @@ export default class TerrainGen {
         
         let r = 0, g = 0, b = 0;
         
-        // 🏘️ [Village/Nation View] 지형 위에 영토 색상 입히기
+        // 🏘️ [Village/Nation View] 고속 버퍼 조회를 통한 영토 렌더링 (Map.get 제거)
         const villageId = this.territoryBuffer[idx];
-        if (viewFlags.VILLAGETILE && villageId > 0) {
-            const village = systems.villageSystem?.getVillage(villageId);
-            if (village && village.rgbColor !== undefined) {
-                return village.rgbColor;
-            }
-        }
-
-        if (viewFlags.NATIONTILE && villageId > 0) {
-            const village = systems.villageSystem?.getVillage(villageId);
-            if (village && village.nationId !== -1) {
-                const nation = systems.nationSystem?.getNation(village.nationId);
-                if (nation && nation.rgbColor !== undefined) {
-                    return nation.rgbColor;
-                }
+        if (villageId > 0) {
+            if (viewFlags.VILLAGETILE) {
+                const vColor = this.villageColorBuffer[villageId];
+                if (vColor !== 0xFFFFFFFF) return vColor;
+            } else if (viewFlags.NATIONTILE) {
+                const nColor = this.nationColorBuffer[villageId];
+                if (nColor !== 0xFFFFFFFF) return nColor;
             }
         }
 

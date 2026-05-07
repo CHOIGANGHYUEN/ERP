@@ -100,11 +100,6 @@ export default class ResourceNode {
                     });
                 }
             }
-
-            // 고갈 시점에 스스로 EntityManager에 자폭 요청
-            if (entityManager && entityId !== null) {
-                entityManager.removeEntity(entityId);
-            }
         } else {
             // 채집 중 파티클
             if (eventBus && transform && this.isTree) {

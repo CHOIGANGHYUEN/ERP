@@ -210,9 +210,21 @@ export default class TargetManager {
                     const res = ent.components.get('Resource');
                     const drop = ent.components.get('DroppedItem');
                     
-                    // 타입 검사
+                    // 타입 및 카테고리 교차 검사
                     if (res) {
-                        if (res.type.toLowerCase() !== type) return false;
+                        const resType = res.type.toLowerCase();
+                        const resCat = res.category.toLowerCase();
+                        const searchType = type;
+
+                        // 🔍 [Intelligence] 'wood'를 찾으면 'tree' 카테고리도 인정, 'food'를 찾으면 'plant'/'food' 카테고리 인정
+                        let isMatch = (resType === searchType || resCat === searchType);
+                        if (!isMatch) {
+                            if (searchType === 'wood' && (resCat === 'tree' || resType.includes('tree'))) isMatch = true;
+                            if (searchType === 'food' && (resCat === 'plant' || resCat === 'berry' || resCat === 'fruit')) isMatch = true;
+                            if (searchType === 'stone' && (resCat === 'mineral' || resCat === 'ore')) isMatch = true;
+                        }
+
+                        if (!isMatch) return false;
                         if (res.value <= 0 || res.isFalling) return false;
                         if (res.claimedBy && res.claimedBy !== entity.id) return false;
                     } else if (drop) {

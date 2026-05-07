@@ -105,8 +105,8 @@ export default class EntityRenderer {
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
                 
-                // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 매우 근접한 경우에만 렌더링
-                const shouldShowAIDebug = this.engine.viewFlags.debugAI && (id === this.engine.selectedId || (camera.zoom > 2.0 && renderList.indexOf(item) < 10));
+                // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 줌이 충분할 때 렌더링
+                const shouldShowAIDebug = this.engine.viewFlags.debugAI && (id === this.engine.selectedId || camera.zoom > 1.2);
                 if (shouldShowAIDebug && state) {
                     this.renderAIDebug(ctx, t, state, id);
                 }

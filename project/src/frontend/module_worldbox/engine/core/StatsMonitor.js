@@ -91,7 +91,6 @@ export default class StatsMonitor {
                 const cm = this.engine.chunkManager;
                 const viewport = this.engine.camera.getViewportBounds();
                 const visibleChunks = cm.getVisibleChunks(viewport);
-                const activeCanvases = cm.chunks.filter(c => c.offscreenCanvas).length;
                 const currentLOD = this.engine.camera.zoom > 0.4 ? 1 : 0;
 
                 this.onUpdate({ 
@@ -104,9 +103,10 @@ export default class StatsMonitor {
                     chunkStats: {
                         visible: visibleChunks.length,
                         total: cm.chunks.length,
-                        activeCanvases: activeCanvases,
+                        activeCanvases: cm.activeCanvasCount, // 🚀 [Optimization] O(1) 조회
                         maxActive: cm.maxActiveCanvases,
-                        lod: currentLOD
+                        lod: currentLOD,
+                        drawCalls: visibleChunks.length // 🎨 이번 프레임 드로우 콜 횟수
                     }
                 });
             }

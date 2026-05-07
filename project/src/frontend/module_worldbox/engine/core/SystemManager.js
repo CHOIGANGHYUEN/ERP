@@ -160,11 +160,14 @@ export default class SystemManager {
     destroy() {
         // 모든 시스템의 destroy() 호출 및 참조 제거
         Object.keys(this).forEach(key => {
+            if (key === 'engine' || key === 'spatialHash') return; // 순환 호출 방지
+            
             const system = this[key];
             if (system && typeof system.destroy === 'function') {
                 system.destroy();
             }
             this[key] = null;
         });
+        this.engine = null;
     }
 }

@@ -15,6 +15,10 @@ export default class DeathProcessor extends System {
         for (const [id, entity] of em.entities) {
             const health = entity.components.get('Health');
             if (health && health.currentHp <= 0) {
+                // 🛑 [Safety] 나무가 쓰러지는 중(isFalling)이면 DeathProcessor가 가로채서 삭제하지 않도록 보호
+                const res = entity.components.get('Resource');
+                if (res && res.isFalling) continue;
+
                 this.processDeath(entity, dt);
             }
         }

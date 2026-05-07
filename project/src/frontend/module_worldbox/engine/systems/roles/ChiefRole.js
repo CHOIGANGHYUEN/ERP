@@ -171,7 +171,7 @@ export default class ChiefRole extends BaseRole {
                     id: `gather_wood_${Date.now()}_${Math.random()}`,
                     type: 'gather_wood',
                     zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: village.resources.wood < 10 ? 80 : 40,
+                    priority: village.resources.wood < 15 ? 90 : 40, // 🪵 부족할 때 우선순위 대폭 상향
                     status: 'AVAILABLE',
                     claimedBy: null
                 });
@@ -208,7 +208,7 @@ export default class ChiefRole extends BaseRole {
                     id: `pickup_food_${Date.now()}`,
                     type: 'pickup_food',
                     zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: 75,
+                    priority: 85,
                     status: 'AVAILABLE',
                     claimedBy: null
                 });
@@ -221,7 +221,22 @@ export default class ChiefRole extends BaseRole {
                     id: `${type}_${Date.now()}`,
                     type: type,
                     zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: village.resources.food < 10 ? 90 : 45,
+                    priority: village.resources.food < 15 ? 95 : 45, // 🍎 아사 위기 시 최우선순위
+                    status: 'AVAILABLE',
+                    claimedBy: null
+                });
+            }
+        }
+
+        // 🪨 4. 석재 수급 과업 추가 (주택/건물 건설에 필요할 때)
+        const stoneNeed = village.resourceNeeds?.stone || 0;
+        if (village.resources.stone < stoneNeed + 30) {
+            const existingGather = village.taskBoard.filter(t => t.type === 'gather_stone').length;
+            if (existingGather < 2) {
+                village.taskBoard.push({
+                    id: `gather_stone_${Date.now()}`,
+                    type: 'gather_stone',
+                    priority: village.resources.stone < 5 ? 85 : 40,
                     status: 'AVAILABLE',
                     claimedBy: null
                 });
@@ -244,12 +259,14 @@ export default class ChiefRole extends BaseRole {
     _analyzeVillageNeeds(village, vs) {
         let dynamicWoodNeed = village.resourceNeeds?.wood || 10;
         let dynamicFoodNeed = village.resourceNeeds?.food || 15;
+        let dynamicStoneNeed = village.resourceNeeds?.stone || 0;
 
         const blackboard = this.system.engine?.systemManager?.blackboard;
         const hasAnyBlueprint = blackboard && blackboard.blueprints && blackboard.blueprints.length > 0;
 
         if (village.plan.length > 0 || (village.currentTask && village.currentTask.type === 'build') || hasAnyBlueprint) {
             dynamicWoodNeed += 80;
+            dynamicStoneNeed += 40;
         }
 
         const pop = village.members.size;
@@ -259,49 +276,61 @@ export default class ChiefRole extends BaseRole {
             canBuild: (village.currentTask && village.currentTask.type === 'build') || hasAnyBlueprint,
             needFood: (village.resources?.food || 0) < dynamicFoodNeed,
             needWood: (village.resources?.wood || 0) < dynamicWoodNeed,
+            needStone: (village.resources?.stone || 0) < dynamicStoneNeed,
             isFoodFull: (village.resources?.food || 0) >= (village.resourceMax?.food || 100),
-            isWoodFull: (village.resources?.wood || 0) >= (village.resourceMax?.wood || 100)
+            isWoodFull: (village.resources?.wood || 0) >= (village.resourceMax?.wood || 100),
+            isStoneFull: (village.resources?.stone || 0) >= (village.resourceMax?.stone || 100)
         };
         return needs;
     }
 
     _checkReassignmentNeeded(mCiv, needs, distribution) {
         const job = mCiv.jobType;
-        if (job === JobTypes.UNEMPLOYED) return true;
-        if (job === JobTypes.ARCHITECT && (!needs.canBuild || distribution[JobTypes.ARCHITECT] > 2)) return true;
+        if (!job || job === JobTypes.UNEMPLOYED) return true;
+        
+        if (job === JobTypes.ARCHITECT && (!needs.canBuild || distribution[JobTypes.ARCHITECT] > 5)) return true;
         if (job === JobTypes.LOGGER && needs.isWoodFull) return true;
+        if (job === JobTypes.MINER && needs.isStoneFull) return true;
         if ((job === JobTypes.GATHERER || job === JobTypes.HUNTER) && needs.isFoodFull) return true;
-        if (job === JobTypes.LOGGER && needs.needFood && distribution[JobTypes.LOGGER] > 1) return true;
-        if (job === JobTypes.GATHERER && needs.needWood && distribution[JobTypes.GATHERER] > 1) return true;
+        
+        // 위급 상황 시 재배치
+        if (needs.needFood && (job === JobTypes.LOGGER || job === JobTypes.MINER) && distribution[job] > 1) return true;
+        
         return false;
     }
 
     _assignJob(member, needs, distribution, village) {
         let job = JobTypes.LOGGER;
         const board = village.taskBoard || [];
+        const pop = village.members.size;
+        
+        // 🏗️ [Scale Fix] 인구에 따라 건축가 최대 수 조정 (최대 5명)
+        const maxArchitects = Math.min(5, Math.ceil(pop / 5));
+        
         const hasBuildTask = board.some(t => t.type === 'build' && t.status === 'AVAILABLE');
         const hasWoodTask = board.some(t => t.type === 'gather_wood' && t.status === 'AVAILABLE');
         const hasFoodTask = board.some(t => (t.type === 'gather_food' || t.type === 'hunt') && t.status === 'AVAILABLE');
+        const hasStoneTask = board.some(t => t.type === 'gather_stone' && t.status === 'AVAILABLE');
 
-        if (hasBuildTask && (distribution[JobTypes.ARCHITECT] || 0) < 2) {
+        if (hasBuildTask && (distribution[JobTypes.ARCHITECT] || 0) < maxArchitects) {
             job = JobTypes.ARCHITECT;
-        } else if (hasFoodTask && (distribution[JobTypes.GATHERER] || 0) < 3) {
+        } else if (hasFoodTask && (distribution[JobTypes.GATHERER] || 0) < Math.ceil(pop / 3)) {
             job = Math.random() < 0.7 ? JobTypes.GATHERER : JobTypes.HUNTER;
+        } else if (hasStoneTask && (distribution[JobTypes.MINER] || 0) < 2) {
+            job = JobTypes.MINER;
         } else if (hasWoodTask) {
             job = JobTypes.LOGGER;
-        } else if (needs.needFood && !needs.isFoodFull && needs.needWood && !needs.isWoodFull) {
-            const foodWorkers = (distribution[JobTypes.GATHERER] || 0) + (distribution[JobTypes.HUNTER] || 0);
-            const woodWorkers = distribution[JobTypes.LOGGER] || 0;
-            if (foodWorkers > woodWorkers) job = JobTypes.LOGGER;
-            else job = Math.random() < 0.5 ? JobTypes.GATHERER : JobTypes.HUNTER;
         } else if (needs.needFood && !needs.isFoodFull) {
             job = Math.random() < 0.5 ? JobTypes.GATHERER : JobTypes.HUNTER;
         } else if (needs.needWood && !needs.isWoodFull) {
             job = JobTypes.LOGGER;
+        } else if (needs.needStone && !needs.isStoneFull) {
+            job = JobTypes.MINER;
         } else {
             const rand = Math.random();
-            if (rand < 0.4) job = JobTypes.LOGGER;
-            else if (rand < 0.8) job = JobTypes.GATHERER;
+            if (rand < 0.3) job = JobTypes.LOGGER;
+            else if (rand < 0.6) job = JobTypes.GATHERER;
+            else if (rand < 0.8) job = JobTypes.MINER;
             else job = JobTypes.HUNTER;
         }
 
@@ -311,6 +340,12 @@ export default class ChiefRole extends BaseRole {
             const roleFactory = this.system.roleFactory || this.engine.systemManager?.humanBehavior?.roleFactory;
             if (roleFactory) {
                 mCiv.role = roleFactory.createRole(job);
+            }
+
+            // 🧠 [AI Sync] JobController가 있다면 즉시 직업 변경 통보
+            const jobCtrl = member.components.get('JobController');
+            if (jobCtrl) {
+                jobCtrl.assignJob(job);
             }
         }
         return job;

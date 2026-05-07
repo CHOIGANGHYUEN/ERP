@@ -306,11 +306,11 @@ export default class UISystem extends System {
 
     handleSelect(worldPos) {
         let nearest = null;
-        let minDistSq = 900; // 30^2
+        let bestScore = 2500; // 50^2 (최대 탐색 반경)
 
-        // 🚀 [Expert Optimization] 모든 엔티티를 순회(O(N))하는 대신 SpatialHash 기반 Spiral Search 사용
+        // 🚀 [Expert Optimization] 가중치 기반 우선순위 선택 (인간/건물 > 동물 > 식물)
         if (this.engine.spatialHash) {
-            this.engine.spatialHash.eachInSpiral(worldPos.x, worldPos.y, 30, (id) => {
+            this.engine.spatialHash.eachInSpiral(worldPos.x, worldPos.y, 50, (id) => {
                 const entity = this.entityManager.entities.get(id);
                 if (!entity) return false;
                 
@@ -318,25 +318,36 @@ export default class UISystem extends System {
                 if (t) {
                     const dx = t.x - worldPos.x;
                     const dy = t.y - worldPos.y;
-                    const dSq = dx * dx + dy * dy;
-                    if (dSq < minDistSq) {
-                        minDistSq = dSq;
+                    let distSq = dx * dx + dy * dy;
+
+                    // 🎯 우선순위 가중치 적용 (중요한 개체는 더 멀리 있어도 클릭된 것으로 간주)
+                    const isHuman = entity.components.has('Civilization');
+                    const isBuilding = entity.components.has('Building');
+                    const isAnimal = entity.components.has('Animal');
+
+                    if (isHuman || isBuilding) distSq -= 400; // 약 20px 만큼의 거리 보너스
+                    else if (isAnimal) distSq -= 100;         // 약 10px 만큼의 거리 보너스
+
+                    if (distSq < bestScore) {
+                        bestScore = distSq;
                         nearest = id;
-                        return true; // 클릭 판정은 가장 가까운 하나만 찾으면 되므로 즉시 중단
                     }
                 }
-                return false;
+                return false; 
             });
         } else {
-            // Fallback: SpatialHash가 없을 경우에만 전수 조사
+            // Fallback: SpatialHash가 없을 경우
             for (const [id, entity] of this.entityManager.entities) {
                 const t = entity.components.get('Transform');
                 if (t) {
                     const dx = t.x - worldPos.x;
                     const dy = t.y - worldPos.y;
-                    const dSq = dx * dx + dy * dy;
-                    if (dSq < minDistSq) {
-                        minDistSq = dSq;
+                    let distSq = dx * dx + dy * dy;
+                    
+                    if (entity.components.has('Civilization') || entity.components.has('Building')) distSq -= 400;
+                    
+                    if (distSq < bestScore) {
+                        bestScore = distSq;
                         nearest = id;
                     }
                 }
@@ -453,6 +464,8 @@ export default class UISystem extends System {
         if (targetId) {
             if (stateComp?.targetName) {
                 targetName = stateComp.targetName;
+            } else if (targetId === 'wander_pos') {
+                targetName = "WANDERING...";
             } else {
                 const tEnt = this.entityManager.entities.get(targetId);
                 if (tEnt) {

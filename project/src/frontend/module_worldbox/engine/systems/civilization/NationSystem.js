@@ -202,6 +202,13 @@ export default class NationSystem extends System {
         nation.intColor = (255 << 24) | (b << 16) | (g << 8) | r;
         // Big Endian (RRGGBB) for TerrainGen
         nation.rgbColor = (r << 16) | (g << 8) | b;
+
+        // 🎨 [Sync] 고성능 렌더링을 위한 버퍼 동기화
+        if (this.engine.terrainGen) {
+            for (const vid of nation.villages) {
+                this.engine.terrainGen.syncNationColor(vid, nation.rgbColor);
+            }
+        }
     }
 
     addVillageToNation(nationId, villageId) {
@@ -215,6 +222,11 @@ export default class NationSystem extends System {
                 village.color = nation.color;
                 village.intColor = nation.intColor;
                 village.rgbColor = nation.rgbColor;
+
+                // 🚀 [TerrainGen Sync]
+                if (this.engine.terrainGen) {
+                    this.engine.terrainGen.syncNationColor(villageId, nation.rgbColor);
+                }
             }
         }
     }

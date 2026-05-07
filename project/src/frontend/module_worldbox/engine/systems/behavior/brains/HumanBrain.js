@@ -43,13 +43,13 @@ export default class HumanBrain {
         // ========================================================================
         // 🚨 LEVEL 1: PERSONAL SURVIVAL (생존 및 위급 상황 - 개인 할일)
         // ========================================================================
-        
+
         // 1. 위협 회피 (최우선)
         const nearbyPredator = this.predatorSensor.findNearestPredator(entity, state, 150);
         if (nearbyPredator) {
             state.targetId = nearbyPredator; // 긴급 상황은 예외적으로 타겟 즉시 변경
             const job = civ?.jobType ? ` (${civ.jobType})` : '';
-            GlobalLogger.warn(`🚨 EMERGENCY: Citizen ${entity.id}${job} is FLEEING from a predator!`);
+            //GlobalLogger.warn(`🚨 EMERGENCY: Citizen ${entity.id}${job} is FLEEING from a predator!`);
             return AnimalStates.FLEE;
         }
 
@@ -135,7 +135,7 @@ export default class HumanBrain {
             const dx = transform.x - tPos.x;
             const dy = transform.y - tPos.y;
             const distSq = dx * dx + dy * dy;
-            
+
             // 거리 기반 점수 (제곱근 연산 회피)
             score -= (distSq / (searchRadius * searchRadius)) * 50;
 

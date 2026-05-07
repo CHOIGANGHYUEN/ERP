@@ -152,7 +152,7 @@ export default class ConstructionSystem extends System {
                 // 이 부분은 지형 에러와 상관없이 실행되어야 함
                 const buildingRadius = (visual?.size || 40) * 0.5 + 10; // 건물 크기에 따른 안전 거리
 
-                for (const id of this.entityManager.animalIds) {
+                for (const id of this.entityManager.humanIds) {
                     const entity = this.entityManager.entities.get(id);
                     if (!entity) continue;
 

@@ -46,12 +46,6 @@ export default class Engine {
         this.mapWidth = options.width || 2400;
         this.mapHeight = options.height || 2400;
 
-
-        this.terrainCanvas = document.createElement('canvas');
-        this.terrainCanvas.width = this.mapWidth;
-        this.terrainCanvas.height = this.mapHeight;
-        this.terrainCtx = this.terrainCanvas.getContext('2d', { alpha: false });
-
         // 👁️ RESTORED: Intelligent Camera with Boundary & Mouse-Center Zoom
         this.camera = new Camera(this.width, this.height, this.mapWidth, this.mapHeight);
 
@@ -65,7 +59,7 @@ export default class Engine {
         this.eventBus = new EventBus(); // 📡 Global Event Network 생성
         this.renderer = new EntityRenderer(this);
 
-        this.factoryProvider = new FactoryProvider(this); 
+        this.factoryProvider = new FactoryProvider(this);
         // 🚀 주입: 팩토리들이 설정을 참조할 수 있도록 엔진 참조 확인
 
         // 단일 책임 원칙(SRP) 준수를 위한 시스템 매니저 도입
@@ -105,7 +99,7 @@ export default class Engine {
             const width = this.mapWidth;
             const height = this.mapHeight;
             const buffer = this.terrainGen.biomeBuffer;
-            
+
             for (let i = 0; i < buffer.length; i++) {
                 // 바다가 아닌 육지(DIRT, GRASS 등)만 채우기 대상으로 설정
                 if (this.terrainGen.isLand(buffer[i])) {
@@ -122,7 +116,8 @@ export default class Engine {
 
         this.onEntitySelect = null;
         this.selectedId = null;
-        this.chunkManager = new ChunkManager(this, 50);
+        // 🚀 [Culling Optimization] 청크 사이즈를 512로 변경 (과도한 청크 생성으로 인한 캔버스 고갈 방지)
+        this.chunkManager = new ChunkManager(this, 512);
         this.isFollowing = false;
 
         this.monitor = new StatsMonitor(this);
@@ -182,10 +177,10 @@ export default class Engine {
 
     async init() {
         this.isGenerating = true;
-        
+
         // 📊 통계 및 물 데이터 수집용 객체
         const stats = { totalFertility: 0, potentialFertility: 0 };
-        
+
         // 🚀 [Expert Optimization] Water Pixel 버퍼 초기화 (2400x2400 대응)
         if (!this.waterPixels) this.waterPixels = new Uint32Array(this.mapWidth * this.mapHeight);
         this.waterCount = 0;
@@ -197,10 +192,10 @@ export default class Engine {
 
         // 결과 적용
         this.monitor.setInitialFertility(stats.totalFertility, stats.potentialFertility);
-        
+
         this.refreshWaterPixels();
         this.preRenderTerrain();
-        
+
         this.isGenerating = false;
         console.log("🌍 World Initialization Complete. Ready for life.");
 
@@ -227,12 +222,7 @@ export default class Engine {
             // 🚀 [Optimization] 생성 중에는 색상 재계산을 생략하여 메인 스레드 점유 방지
             const shouldRecalculate = recalculateColors && !this.isGenerating;
             await this.chunkManager.markAllDirty(shouldRecalculate);
-            this.chunkManager.render(this.terrainCtx);
         }
-    }
-
-    renderDirtyTiles() {
-        this.chunkManager.render(this.terrainCtx);
     }
 
     updateCachePixel(x, y) {
@@ -245,7 +235,7 @@ export default class Engine {
             this.waterPixels = new Uint32Array(this.mapWidth * this.mapHeight);
         }
         this.waterCount = 0;
-        
+
         const buffer = this.terrainGen.biomeBuffer;
         const OCEAN_ID = BIOME_NAMES_TO_IDS.get('OCEAN');
         const DEEP_ID = BIOME_NAMES_TO_IDS.get('DEEP_OCEAN');
@@ -296,7 +286,6 @@ export default class Engine {
             this.viewFlags.water = false;
             this.viewFlags.mineral = false;
             this.preRenderTerrain();
-            this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_fertility_value') {
             this.viewFlags.fertilityValue = !this.viewFlags.fertilityValue;
@@ -307,31 +296,27 @@ export default class Engine {
             this.viewFlags.fertility = false;
             this.viewFlags.mineral = false;
             this.preRenderTerrain();
-            this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_mineral') {
             this.viewFlags.mineral = !this.viewFlags.mineral;
             this.viewFlags.fertility = false;
             this.viewFlags.water = false;
             this.preRenderTerrain();
-            this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_xray') this.viewFlags.xray = !this.viewFlags.xray;
-        if (id === 'view_debug_ai') this.viewFlags.debugAI = !this.viewFlags.debugAI;
+        if (id === 'view_debug_ai' || id === 'view_debugAI') this.viewFlags.debugAI = !this.viewFlags.debugAI;
         if (id === 'view_showNames') this.viewFlags.showNames = !this.viewFlags.showNames;
         if (id === 'view_village') {
             this.viewFlags.village = !this.viewFlags.village;
             this.viewFlags.VILLAGETILE = this.viewFlags.village;
             this.viewFlags.NATIONTILE = false;
             this.preRenderTerrain();
-            this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_nation') {
             this.viewFlags.nation = !this.viewFlags.nation;
             this.viewFlags.NATIONTILE = this.viewFlags.nation;
             this.viewFlags.VILLAGETILE = false;
             this.preRenderTerrain();
-            this.chunkManager.dirtyChunks.clear();
         }
         if (id === 'view_zone') this.viewFlags.zone = !this.viewFlags.zone;
     }
@@ -354,12 +339,12 @@ export default class Engine {
                 this.eventBus.emitDeferred('SPAWN_PARTICLES', command.payload);
                 break;
             case 'SPAWN_ENTITY':
-                const methodToType = { 
-                    spawnSheep: 'sheep', 
-                    spawnHuman: 'human', 
-                    spawnCow: 'cow', 
-                    spawnWolf: 'wolf', 
-                    spawnHyena: 'hyena', 
+                const methodToType = {
+                    spawnSheep: 'sheep',
+                    spawnHuman: 'human',
+                    spawnCow: 'cow',
+                    spawnWolf: 'wolf',
+                    spawnHyena: 'hyena',
                     spawnWildDog: 'wild_dog',
                     spawnTiger: 'tiger',
                     spawnLion: 'lion',
@@ -381,11 +366,11 @@ export default class Engine {
             case 'SPAWN_RESOURCE':
                 const resType = command.payload.type || command.payload.resourceId;
                 const resAmount = command.payload.amount || 1;
-                
+
                 // 🌳 [Data-Driven Fix] 하드코딩된 목록 대신 resource_balance.json의 type을 기반으로 자동 판별
                 const config = this.resourceConfig[resType];
-                const resCategory = config?.type; 
-                
+                const resCategory = config?.type;
+
                 // food, wood 카테고리는 NatureFactory에서, mineral, fertilizer 등은 ResourceFactory에서 처리
                 const isNature = resCategory === 'food' || resCategory === 'wood' || resType.includes('tree');
                 const cat = isNature ? 'nature' : 'resource';
@@ -413,9 +398,9 @@ export default class Engine {
                 break;
             case 'APPLY_GOD_POWER':
                 this.systemManager.godPower?.applyPower(
-                    command.payload.powerType, 
-                    command.payload.x, 
-                    command.payload.y, 
+                    command.payload.powerType,
+                    command.payload.x,
+                    command.payload.y,
                     command.payload.radius
                 );
                 break;
@@ -444,11 +429,10 @@ export default class Engine {
 
         this.frameCount++; // 🚀 Increment frame counter
         this.update(dt);
-        
+
         // 🚀 [Expert Optimization] 프레임 끝에서 지연된 이벤트들 일괄 처리
         this.eventBus.flush();
 
-        if (this.chunkManager.dirtyChunks.size > 0) this.renderDirtyTiles();
         this.render();
         requestAnimationFrame((t) => this.loop(t));
     }
@@ -459,7 +443,7 @@ export default class Engine {
 
         // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
         this.systemManager.update(dt, time);
-        
+
         // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달, 엔진 인스턴스 공유)
         this.timeSystem.update(dt * 1000, this);
 
@@ -495,6 +479,8 @@ export default class Engine {
      * 🧹 [Memory Management] 엔진 종료 및 자원 일괄 해제
      */
     destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
         this.isRunning = false;
         if (this.animationId) cancelAnimationFrame(this.animationId);
 
@@ -510,7 +496,7 @@ export default class Engine {
         // 4. 큰 버퍼 메모리 해제 지원
         this.terrainGen = null;
         this.chunkManager = null;
-        
+
         GlobalLogger.warn("🛑 [Engine] Destroyed. Memory cleared.");
     }
 }

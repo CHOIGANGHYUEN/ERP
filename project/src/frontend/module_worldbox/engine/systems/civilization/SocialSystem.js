@@ -46,8 +46,8 @@ export default class SocialSystem extends System {
             }
 
             // 2. 👶 번식 로직
-            if (social.isMarried && stats.hunger > 80) {
-                this._processReproduction(id, entity, social, civ, time);
+            if (social.isMarried && stats.hunger > 60) {
+                this._processReproduction(id, entity, social, civ, time, dt);
             }
         }
     }
@@ -92,10 +92,11 @@ export default class SocialSystem extends System {
         });
     }
 
-    _processReproduction(id, entity, social, civ, time) {
+    _processReproduction(id, entity, social, civ, time, dt) {
         // 번식 중인 경우 타이머 업데이트
         if (social.isBreeding) {
-            social.breedingTimer -= 100; // updateAccumulator가 0.1초(100ms) 기준이므로
+            // 🚀 [Bug Fix] dt를 기반으로 밀리초 단위 타이머 감소 (프레임 독립적)
+            social.breedingTimer -= (dt * 1000); 
             
             const transform = entity.components.get('Transform');
             if (transform && Math.random() < 0.2) {
@@ -118,7 +119,8 @@ export default class SocialSystem extends System {
         const animal = entity.components.get('Animal');
         if (animal?.gender !== 'male') return;
 
-        if (Math.random() < 0.01) { 
+        // 📈 [Balance] 번식 확률 소폭 상향 및 인구 밀도 고려
+        if (Math.random() < 0.03) { 
             const partner = this.entityManager.entities.get(social.partnerId);
             const partnerSocial = partner?.components.get('Social');
             if (!partnerSocial || partnerSocial.isBreeding) return;
@@ -132,9 +134,12 @@ export default class SocialSystem extends System {
             for (const bId of village.buildings) {
                 const b = this.entityManager.entities.get(bId);
                 const housing = b?.components.get('Housing');
-                if (housing) totalCapacity += housing.capacity;
+                const structure = b?.components.get('Structure');
+                // 🏘️ 완공된 집만 용량으로 인정
+                if (housing && structure?.isComplete) totalCapacity += housing.capacity;
             }
 
+            // 🏠 여유 공간이 있을 때만 번식 시도
             if (currentPop < totalCapacity) {
                 // 💋 번식 시작! (3초간 모션)
                 social.isBreeding = true;

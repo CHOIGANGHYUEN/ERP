@@ -35,7 +35,10 @@ export default class CarnivoreBrain {
         }
 
         // 2. 사냥 및 섭취 본능 (허기 기반)
-        if (stats.hunger < 80) { 
+        // 💡 [Stability] 배회 중에는 허기가 절반 이하(40)로 떨어졌을 때만 사냥을 시작하도록 문턱 상향
+        const huntThreshold = (state.mode === AnimalStates.WANDER) ? 40 : 60;
+        
+        if (stats.hunger < huntThreshold) { 
             // 🥩 [Scavenging] 
             const isEatingMeat = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE) && state.targetId;
             

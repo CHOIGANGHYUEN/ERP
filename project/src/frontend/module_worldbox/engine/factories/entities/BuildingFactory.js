@@ -45,6 +45,7 @@ export default class BuildingFactory extends IEntityFactory {
                 isComplete: !options.isBlueprint,
                 isBlueprint: options.isBlueprint || false
             })
+            .addComponent('Civilization', { villageId: options.villageId || -1 })
             .addComponent('Health', new Health(config.maxHp || 500));
 
         // 🚪 울타리 문(fence_gate)인 경우 Door 컴포넌트 추가
@@ -87,6 +88,7 @@ export default class BuildingFactory extends IEntityFactory {
             // 🏹 망루: 방어 및 시야 확보
             builder.addComponent('Sensor', { range: 300, targetTypes: ['predator', 'enemy'] });
         } else if (type === 'bonfire' || type === 'camp') {
+            builder.addComponent('Storage', new Storage({ capacity: 200 }));
             builder.withVisual({ 
                 type: 'building', 
                 subtype: type, 

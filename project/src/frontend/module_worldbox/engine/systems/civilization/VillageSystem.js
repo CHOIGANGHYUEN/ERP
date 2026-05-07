@@ -319,8 +319,13 @@ export default class VillageSystem extends System {
         const b = parseInt(c.slice(5, 7), 16);
         // Little Endian (AABBGGRR) for ChunkManager/ImageData
         village.intColor = (255 << 24) | (b << 16) | (g << 8) | r;
-        // Big Endian (RRGGBB) for TerrainGen (optional, but keep it consistent)
+        // Big Endian (RRGGBB) for TerrainGen
         village.rgbColor = (r << 16) | (g << 8) | b;
+
+        // 🎨 [Sync] 고성능 렌더링을 위한 버퍼 동기화
+        if (this.engine.terrainGen) {
+            this.engine.terrainGen.syncVillageColor(village.id, village.rgbColor);
+        }
     }
 
     _checkFirstFounder() {
@@ -348,27 +353,59 @@ export default class VillageSystem extends System {
             const transform = entity.components.get('Transform');
             if (!transform) continue;
 
-            // 1. 현재 위치가 기존 마을 영토 내부인지 확인
-            const tx = Math.floor(transform.x / 16);
-            const ty = Math.floor(transform.y / 16);
-            const key = (ty << 16) | tx;
-            
+            // 1. [Intelligence] 영토 버퍼 및 거리 기반 지능적 영입 로직
             let hostVillage = null;
-            for (const village of this.villages.values()) {
-                if (village.territory && village.territory.has(key)) {
-                    hostVillage = village;
-                    break;
+            let minCenterDist = Infinity;
+            let nearestVillage = null;
+
+            // A. 영토 버퍼(TerrainGen) 우선 확인 (시각적 일치성 보장)
+            const tg = this.engine.terrainGen;
+            if (tg && tg.territoryBuffer) {
+                const idx = tg.getIndex(transform.x, transform.y);
+                const villageId = tg.territoryBuffer[idx];
+                if (villageId > 0) {
+                    hostVillage = this.villages.get(villageId);
+                }
+            }
+
+            // B. 영토 버퍼에서 못 찾았다면 근처 마을 센터와의 거리 확인
+            if (!hostVillage) {
+                for (const village of this.villages.values()) {
+                    const dx = village.centerX - transform.x;
+                    const dy = village.centerY - transform.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist < minCenterDist) {
+                        minCenterDist = dist;
+                        nearestVillage = village;
+                    }
+                }
+
+                // 🏘️ [Proximity Rule] 반경 200px 이내에 마을이 있다면 해당 마을 시민으로 합류
+                if (nearestVillage && minCenterDist < 200) {
+                    hostVillage = nearestVillage;
                 }
             }
 
             if (hostVillage) {
-                // 영토 내부라면 해당 마을 시민으로 영입
+                // 영토 내부이거나 충분히 가까우면 해당 마을 시민으로 영입
                 civ.villageId = hostVillage.id;
                 hostVillage.members.add(id);
-                GlobalLogger.info(`👨‍🌾 Entity ${id} joined Village ${hostVillage.id} (Territory birth).`);
-            } else {
-                // 🚀 [New Faction] 영토 밖이라면 새로운 촌장이 되어 새로운 세력 창설
+                
+                // 🛠️ [Job Init] 영입 시 즉시 무직으로 설정하여 촌장이 직업을 주도록 유도
+                civ.jobType = JobTypes.UNEMPLOYED; 
+                
+                GlobalLogger.info(`👨‍🌾 Entity ${id} joined ${hostVillage.name} (Proximity/Territory).`);
+                if (this.eventBus) this.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: id, text: '🏘️', duration: 1500 });
+            } else if (minCenterDist > 400) {
+                // 🚀 [New Faction] 주변에 마을이 전혀 없는 오지(400px 밖)에서만 새로운 세력 창설
                 this.createVillage({ founderId: id, x: transform.x, y: transform.y, nationIdOverride: -1 });
+                GlobalLogger.warn(`🚩 Entity ${id} founded a new village at (${Math.floor(transform.x)}, ${Math.floor(transform.y)})`);
+            } else {
+                // 어중간한 거리(200~400px)에 있으면 무소속 상태를 유지하며 배회 (다음 주기에 재시도)
+                if (Math.random() < 0.05) {
+                    this.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: id, text: '❓', duration: 1000 });
+                }
             }
         }
     }

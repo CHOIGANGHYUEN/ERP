@@ -10,15 +10,8 @@ export const useWorldboxStore = defineStore('worldbox', {
   }),
   actions: {
     updateVillageStats(villages) {
-      // 브릿지를 거쳐 넘어온 데이터에 territorySize를 확실히 보장하여 UI에 표시합니다.
-      this.villages = villages.map(v => {
-        const tList = v.territory ? (Array.isArray(v.territory) ? v.territory : Array.from(v.territory)) : [];
-        return {
-          ...v,
-          territoryList: tList,
-          territorySize: v.territorySize || tList.length || 1
-        };
-      });
+      // 🏘️ 브릿지 데이터를 스토어에 반영 (영토 리스트 등 무거운 변환 제거)
+      this.villages = villages;
     },
     updateNationStats(nations) {
       this.nations = nations;

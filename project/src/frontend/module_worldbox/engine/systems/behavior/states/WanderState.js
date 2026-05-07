@@ -50,6 +50,9 @@ export default class WanderState extends State {
                 state.wanderTarget = bestTarget;
                 state.targetId = 'wander_pos';
                 state.path = null; // 새로운 목적지이므로 즉시 재탐색 유도
+                
+                // 🛡️ [Stability] 배회 목적지가 정해지면 이동이 완료될 때까지 사소한 인터럽트 방지
+                state.interruptible = false;
             } else {
                 return 'idle'; // 주변에 갈 곳이 없으면 잠시 대기
             }

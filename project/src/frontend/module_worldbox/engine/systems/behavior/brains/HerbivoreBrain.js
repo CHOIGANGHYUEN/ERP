@@ -38,7 +38,10 @@ export default class HerbivoreBrain {
 
         // 3. 허기 관리 (도망 중이 아닐 때만)
         if (state.mode !== AnimalStates.FLEE) {
-            if (stats.hunger < 75) { 
+            // 💡 [Stability] 배회 중에는 허기가 매우 낮을 때(30 미만)만 행동을 중단하도록 변경
+            const hungerThreshold = (state.mode === AnimalStates.WANDER) ? 30 : 50;
+            
+            if (stats.hunger < hungerThreshold) { 
                 const isEatingPlant = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE) && state.targetId;
                 
                 if (!isEatingPlant) {
