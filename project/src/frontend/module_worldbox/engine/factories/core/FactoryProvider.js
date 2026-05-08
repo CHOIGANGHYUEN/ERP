@@ -36,11 +36,11 @@ class FactoryProvider {
         // 도메인 팩토리 등록
         this.factories.set('animal', new AnimalFactory(engine));
         this.factories.set('human', new HumanFactory(engine));
-        this.factories.set('resource', new ItemFactory(engine)); // legacy item factory
-        this.factories.set('item', new ItemFactory(engine));
+        this.factories.set('resource', new ResourceFactory(engine)); // 🪨 광물/천연 자원 노드
+        this.factories.set('item', new ItemFactory(engine));         // 📦 바닥에 떨어진 수집용 아이템
         this.factories.set('nature', new NatureFactory(engine));
         this.factories.set('building', new BuildingFactory(engine));
-        this.factories.set('material', new ResourceFactory(engine));
+        this.factories.set('material', new ResourceFactory(engine)); // Alias
     }
 
     _initPools() {

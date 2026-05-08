@@ -6,10 +6,34 @@ export default class ConstructionSystem extends System {
     constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
         this.engine = engine;
+        this._proposeTimer = 0;
+        this._PROPOSE_INTERVAL = 30; // 30초마다 건물 제안 평가
+
+        // 마을 발전 단계별 건물 로드맵
+        this._buildingRoadmap = [
+            // 인구 1+ 시작: 모닥불 + 창고 우선
+            { minPop: 1, buildingType: 'bonfire',   requires: { wood: 5 },  checkFn: (v, em) => !this._hasBuilding(v, em, 'bonfire') },
+            { minPop: 2, buildingType: 'storage',   requires: { wood: 10 }, checkFn: (v, em) => !this._hasBuilding(v, em, 'storage') },
+            // 인구 3+ 초기 정착: 집 건설
+            { minPop: 3, buildingType: 'house',     requires: { wood: 15, stone: 5 }, checkFn: (v, em) => this._countBuilding(v, em, 'house') < Math.floor(v.members.size / 3) },
+            // 인구 5+ 중기: 우물 + 대장간
+            { minPop: 5, buildingType: 'well',      requires: { stone: 20 }, checkFn: (v, em) => !this._hasBuilding(v, em, 'well') },
+            { minPop: 6, buildingType: 'farm',      requires: { wood: 20 }, checkFn: (v, em) => this._countBuilding(v, em, 'farm') < Math.ceil(v.members.size / 5) },
+            // 인구 8+ 후기: 망루 + 대장간
+            { minPop: 8, buildingType: 'watchtower',requires: { stone: 30 }, checkFn: (v, em) => !this._hasBuilding(v, em, 'watchtower') },
+            { minPop: 10, buildingType: 'blacksmith',requires: { stone: 25, wood: 10 }, checkFn: (v, em) => !this._hasBuilding(v, em, 'blacksmith') },
+        ];
     }
 
     update(dt, time) {
         const em = this.entityManager;
+
+        // ⏱️ 마을 발전 단계 평가 (주기적)
+        this._proposeTimer += dt;
+        if (this._proposeTimer >= this._PROPOSE_INTERVAL) {
+            this._proposeTimer = 0;
+            this._evaluateVillageNeeds();
+        }
 
         // 🏗️ 건설 로직 최적화: 전체 엔티티가 아닌 '인류' 개체들만 타겟팅
         for (const id of em.humanIds) {
@@ -204,5 +228,86 @@ export default class ConstructionSystem extends System {
                 if (s) { s.mode = 'idle'; s.targetId = null; }
             });
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🏙️ 마을 발전 단계별 건물 자동 제안
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** 모든 마을의 발전 상황을 평가하고 건물 청사진을 배치합니다. */
+    _evaluateVillageNeeds() {
+        const vs = this.engine.systemManager?.villageSystem;
+        if (!vs) return;
+
+        for (const [villageId, village] of vs.villages) {
+            if (!village || village.members.size === 0) continue;
+
+            // 이미 진행 중인 미완성 건물이 3개 이상이면 더 추가하지 않음
+            const pendingCount = Array.from(village.buildings)
+                .map(id => this.entityManager.entities.get(id)?.components.get('Structure'))
+                .filter(s => s && !s.isComplete).length;
+            if (pendingCount >= 3) continue;
+
+            for (const proposal of this._buildingRoadmap) {
+                if (village.members.size < proposal.minPop) continue;
+                if (!proposal.checkFn(village, this.entityManager)) continue;
+
+                // 자원 여유가 있는지 확인 (최소 자원의 절반)
+                let canAfford = true;
+                for (const [res, amount] of Object.entries(proposal.requires)) {
+                    if ((village.resources[res] || 0) < Math.ceil(amount * 0.5)) {
+                        canAfford = false;
+                        break;
+                    }
+                }
+                if (!canAfford) continue;
+
+                // ✅ 건물 청사진 배치 (마을 중심 근처 빈 공간)
+                const spawnPos = this._findBuildingSpot(village);
+                if (!spawnPos) continue;
+
+                this.engine.factoryProvider.spawn('building', proposal.buildingType, spawnPos.x, spawnPos.y, { isBlueprint: true, villageId });
+                GlobalLogger.info(`🏙️ [Construction] Proposing ${proposal.buildingType} for village ${villageId} (pop: ${village.members.size})`);
+                break; // 한 번에 하나씩만 제안
+            }
+        }
+    }
+
+    /** 마을 건물 목록에 특정 타입의 건물이 있는지 확인합니다. */
+    _hasBuilding(village, em, type) {
+        for (const bId of village.buildings) {
+            const b = em.entities.get(bId);
+            const s = b?.components.get('Structure');
+            if (s && s.type === type) return true;
+        }
+        return false;
+    }
+
+    /** 마을 건물 목록에서 특정 타입의 건물 개수를 반환합니다. */
+    _countBuilding(village, em, type) {
+        let count = 0;
+        for (const bId of village.buildings) {
+            const b = em.entities.get(bId);
+            const s = b?.components.get('Structure');
+            if (s && s.type === type) count++;
+        }
+        return count;
+    }
+
+    /** 마을 중심 근처에서 건물 배치 가능한 위치를 찾습니다. */
+    _findBuildingSpot(village) {
+        const tg = this.engine.terrainGen;
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 50 + Math.random() * 80;
+            const x = Math.floor(village.x + Math.cos(angle) * dist);
+            const y = Math.floor(village.y + Math.sin(angle) * dist);
+            if (!tg) return { x, y };
+            const idx = tg.getIndex(x, y);
+            if (!tg.isWater(idx) && tg.getOccupancy(x, y) === 0) {
+                return { x, y };
+            }
+        }
+        return null;
     }
 }

@@ -7,6 +7,8 @@ export const useWorldboxStore = defineStore('worldbox', {
     nations: [],  // 🚩 국가 정보 목록
     showVillageInfo: false, // 📋 마을 상세 정보창 표시 여부
     showNationInfo: false,  // 👑 국가 상세 정보창 표시 여부
+    showJobMonitor: false,  // 🔍 직업 행동 모니터링 표시 여부
+    jobMonitor: null,       // 📊 직업별 통계 데이터
   }),
   actions: {
     updateVillageStats(villages) {
@@ -15,6 +17,9 @@ export const useWorldboxStore = defineStore('worldbox', {
     },
     updateNationStats(nations) {
       this.nations = nations;
+    },
+    updateJobMonitor(stats) {
+      this.jobMonitor = stats;
     },
     closeNationInfo() {
       this.showNationInfo = false;
@@ -54,3 +59,4 @@ export const useWorldboxStore = defineStore('worldbox', {
     }
   }
 });
+

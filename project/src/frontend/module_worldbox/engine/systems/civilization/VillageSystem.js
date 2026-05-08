@@ -14,6 +14,9 @@ export default class VillageSystem extends System {
         this.villages = new Map();
         this.nextVillageId = 1;
         this._recruitTimer = 0; // 채용 타이머 (틱 최적화)
+        this._scheduleTimer = 0; // [Task 58] 동적 직업 스케줄링 타이머
+        this._SCHEDULE_INTERVAL = 15.0; // 15초마다 긴급 재배치 평가
+        this._jobTypes = JobTypes; // 동기 캐시 (이미 import됨)
 
         // 📡 Listen for events
         this.eventBus.on('CREATE_VILLAGE', (payload) => this.createVillage(payload));
@@ -119,6 +122,15 @@ export default class VillageSystem extends System {
 
             // 🏛️ [Nation Dependency] 국가의 정책 및 상태에 따른 마을 영향력 업데이트
             this._updateNationalInfluence(village, dt);
+        }
+
+        // ⚡ [Task 58] 동적 직업 스케줄링 (15초마다 긴급 재배치)
+        this._scheduleTimer -= dt;
+        if (this._scheduleTimer <= 0) {
+            this._scheduleTimer = this._SCHEDULE_INTERVAL;
+            for (const village of this.villages.values()) {
+                this._dynamicJobSchedule(village);
+            }
         }
 
         // 🚩 국가 관리: 마을이 생겼는데 국가가 없다면 창설
@@ -1010,5 +1022,84 @@ export default class VillageSystem extends System {
             ctx.shadowBlur = 0; // 그림자 초기화
         }
         ctx.restore();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ⚡ Task 58: 동적 직업 스케줄링 — 긴급 인력 재배치
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 마을 내 자원/위협 상황에 따라 잉여 인력을 긴급 직업으로 재배치합니다.
+     * ChiefRole의 1초 주기 로직과 달리, 15초 주기로 더 강도 높은 재배치를 수행합니다.
+     */
+    _dynamicJobSchedule(village) {
+        if (!village || village.members.size < 3) return;
+
+        const rf = this.engine.systemManager?.humanBehavior?.roleFactory;
+        // JobTypes는 생성자 이후 lazy-cache로 로드
+        if (!this._jobTypes) return; // 아직 로드 안됨
+
+        const JT = this._jobTypes;
+        const res = village.resources || {};
+        const pop = village.members.size;
+
+        // 위기 레벨 결정
+        const foodCritical  = (res.food  || 0) < pop * 2;   // 1인당 2일분 미만
+        const woodCritical  = (res.wood  || 0) < pop * 1.5; // 1인당 1.5단 미만
+        const stoneCritical = (res.stone || 0) < 10;
+
+        // 현재 직업 분포 집계
+        const distribution = {};
+        for (const memberId of village.members) {
+            const member = this.entityManager.entities.get(memberId);
+            const civ = member?.components.get('Civilization');
+            if (!civ) continue;
+            const jt = civ.jobType || 'unemployed';
+            distribution[jt] = (distribution[jt] || 0) + 1;
+        }
+
+        // 재배치 후보: IDLE/unemployed 우선, 그 다음 WANDER 중인 비생산 직업
+        const reassignableJobs = [JT.UNEMPLOYED, JT.RANCHER, JT.MERCHANT];
+        const candidates = [];
+
+        for (const memberId of village.members) {
+            const member = this.entityManager.entities.get(memberId);
+            const civ = member?.components.get('Civilization');
+            const state = member?.components.get('AIState');
+            if (!civ || !state) continue;
+            if (civ.jobType === JT.CHIEF) continue; // 촌장 제외
+
+            const isIdle = state.mode === 'idle' || state.mode === 'wander';
+            const isReassignable = reassignableJobs.includes(civ.jobType);
+            if (isIdle || isReassignable) candidates.push({ memberId, member, civ });
+        }
+
+        if (candidates.length === 0) return;
+
+        let reassigned = 0;
+        const MAX_REASSIGN = Math.ceil(candidates.length * 0.5); // 최대 절반까지만 재배치
+
+        const _reassign = (targetJob) => {
+            if (reassigned >= MAX_REASSIGN || candidates.length === 0) return;
+            const { memberId, member, civ } = candidates.shift();
+            const prevJob = civ.jobType;
+            civ.jobType = targetJob;
+            if (rf) civ.role = rf.createRole(targetJob);
+            const jobCtrl = member.components.get('JobController');
+            if (jobCtrl && typeof jobCtrl.assignJob === 'function') {
+                jobCtrl.assignJob(targetJob);
+            }
+            GlobalLogger.info(`⚡ [Schedule] Village ${village.id}: ${prevJob} → ${targetJob} (emergency)`);
+            reassigned++;
+        };
+
+        if (foodCritical)  { _reassign(JT.GATHERER); _reassign(JT.FARMER); }
+        if (woodCritical)  { _reassign(JT.LOGGER); }
+        if (stoneCritical) { _reassign(JT.MINER); }
+
+        // 남은 무직자는 기본 생산직 배치
+        while (candidates.length > 0 && reassigned < MAX_REASSIGN) {
+            _reassign(JT.GATHERER);
+        }
     }
 }

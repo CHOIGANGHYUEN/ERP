@@ -42,6 +42,17 @@ export default class Inventory extends Component {
         return false;
     }
 
+    /** 자원을 제거합니다. consume가 불가시에도 동작 (음수 방지). */
+    remove(type, amount) {
+        const current = this.items[type] || 0;
+        const removed = Math.min(current, amount);
+        if (removed > 0) {
+            this.items[type] = current - removed;
+            if (this.items[type] <= 0) delete this.items[type];
+        }
+        return removed;
+    }
+
     getTotal() {
         return Object.values(this.items).reduce((a, b) => a + b, 0);
     }

@@ -14,6 +14,7 @@ import WaitForTargetState from './WaitForTargetState.js';
 import TransporterState from './jobs/TransporterState.js';
 import FarmerState from './jobs/FarmerState.js';
 import MinerState from './jobs/MinerState.js';
+import SoldierState from './jobs/SoldierState.js';
 import GrazeState from './GrazeState.js';
 import GrabbedState from './GrabbedState.js';
 import PickupState from './PickupState.js';
@@ -51,6 +52,8 @@ export default class StateFactory {
         this.states.set('job_gatherer', new GatherPlantState(system));
         this.states.set('job_farmer', new FarmerState(system));
         this.states.set('job_miner', new MinerState(system));
+        this.states.set('job_soldier', new SoldierState(system));
+        this.states.set('job_warrior', this.states.get('job_soldier')); // Alias
         
         this.states.set('job_transporter', new TransporterState(system));
         this.states.set('wait_target', new WaitForTargetState(system));

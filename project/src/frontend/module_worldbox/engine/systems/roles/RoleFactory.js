@@ -5,6 +5,7 @@ import LoggerRole    from './LoggerRole.js';
 import GathererRole  from './GathererRole.js';
 import HunterRole    from './HunterRole.js';
 import MinerRole     from './MinerRole.js';
+import SoldierRole   from './SoldierRole.js';
 import { FarmerRole, RancherRole, WarriorRole, MerchantRole, BlacksmithRole, CarpenterRole } from './OtherRoles.js';
 
 /**
@@ -29,7 +30,7 @@ export default class RoleFactory {
         this.registerRole(JobTypes.MINER, MinerRole);
         this.registerRole(JobTypes.FARMER, FarmerRole);
         this.registerRole(JobTypes.RANCHER, RancherRole);
-        this.registerRole(JobTypes.WARRIOR, WarriorRole);
+        this.registerRole(JobTypes.WARRIOR, SoldierRole); // ⚔️ 전사 직업은 SoldierRole이 담당
         this.registerRole(JobTypes.MERCHANT, MerchantRole);
         this.registerRole(JobTypes.BLACKSMITH, BlacksmithRole);
         this.registerRole(JobTypes.CARPENTER, CarpenterRole);

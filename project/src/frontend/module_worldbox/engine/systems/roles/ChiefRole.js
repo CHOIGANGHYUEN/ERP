@@ -14,11 +14,14 @@ export default class ChiefRole extends BaseRole {
         this._assignInterval = 1.0; // 1초마다 상황 체크 및 직업 조정
         this._expandTimer = 0;
         this._expandInterval = 5.0; // 5초마다 영토 확장 검토
+        this._leadershipTimer = 0;
+        this._LEADERSHIP_INTERVAL = 10.0; // 10초마다 지도자 버프 적용
     }
 
     decide(entity, dt) {
         this._assignTimer -= dt;
         this._expandTimer -= dt;
+        this._leadershipTimer -= dt;
 
         const civ = entity.components.get('Civilization');
         if (!civ || civ.villageId === -1) return null;
@@ -26,6 +29,12 @@ export default class ChiefRole extends BaseRole {
         const vs = this.engine.systemManager?.villageSystem;
         const village = vs?.getVillage(civ.villageId);
         if (!village) return null;
+
+        // 🌟 [Task 57] 지도자 아우라: 주민 충성도 및 작업 효율 버프 (10초 주기)
+        if (this._leadershipTimer <= 0) {
+            this._leadershipTimer = this._LEADERSHIP_INTERVAL;
+            this._applyLeadershipAura(entity, village, civ);
+        }
 
         // 🗺️ 0. 마을 영토 지능적 확장 (5초 주기)
         if (this._expandTimer <= 0) {
@@ -514,5 +523,131 @@ export default class ChiefRole extends BaseRole {
             }
         }
         return score;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 👑 Task 57: 지도자 아우라 — 충성도 버프 & 외교 기반 직업 조정
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 지도자가 마을 주민들에게 충성도와 작업 효율 버프를 부여합니다.
+     * 충성도가 높을수록 더 강한 버프를 발동합니다.
+     */
+    _applyLeadershipAura(chiefEntity, village, civ) {
+        const chiefStats = chiefEntity.components.get('BaseStats');
+        const chiefSocial = chiefEntity.components.get('Social');
+
+        // 🎖️ 지도자 자신의 능력치 기반 버프 강도 결정
+        const charisma = chiefStats ? Math.min(1.0, (chiefStats.charisma || 50) / 100) : 0.5;
+        const currentLoyalty = village.loyalty ?? 70;
+
+        // 1. 마을 충성도 소폭 상승 (지도자가 살아있는 한)
+        const loyaltyGain = 0.5 + charisma * 1.5; // 0.5 ~ 2.0 포인트
+        village.loyalty = Math.min(100, currentLoyalty + loyaltyGain);
+
+        // 2. 외교 상황에 따른 직업 긴급 재조정
+        this._adjustJobsForDiplomacy(village, civ);
+
+        // 3. 주변 주민들에게 작업 효율 버프 (workSpeedBuff 플래그)
+        const buffRadius = 150;
+        const transform = chiefEntity.components.get('Transform');
+        if (!transform || !this.engine.spatialHash) return;
+
+        let buffedCount = 0;
+        this.engine.spatialHash.eachInRange(transform.x, transform.y, buffRadius, (id) => {
+            if (id === chiefEntity.id) return;
+            const ent = this.em.entities.get(id);
+            const memberCiv = ent?.components.get('Civilization');
+            if (!memberCiv || memberCiv.villageId !== civ.villageId) return;
+
+            const social = ent.components.get('Social');
+            if (social) {
+                // 충성도 소폭 개인 부여
+                social.loyalty = Math.min(100, (social.loyalty || 70) + 0.3);
+                // 작업 속도 버프 플래그 (ConstructionSystem, FarmerState 등에서 사용)
+                social.workSpeedBuff = 1.0 + charisma * 0.3; // 최대 130%
+                social.workSpeedBuffExpiry = Date.now() + (this._LEADERSHIP_INTERVAL * 1200); // 12초간 유효
+            }
+            buffedCount++;
+        });
+
+        if (buffedCount > 0) {
+            GlobalLogger.info(`👑 [Chief] Leadership aura buffed ${buffedCount} villagers. Loyalty: ${village.loyalty.toFixed(1)}`);
+        }
+
+        // 🎉 시각적 효과 (카리스마 높을 때만)
+        if (charisma > 0.6) {
+            this.engine.eventBus?.emit('SPAWN_EFFECT_PARTICLES', {
+                x: transform.x, y: transform.y - 15,
+                count: 5, type: 'EFFECT', color: '#ffd700', speed: 1.5
+            });
+        }
+    }
+
+    /**
+     * 마을의 외교 상황(전쟁/평화)에 따라 병사/일반 직업 비율을 긴급 조정합니다.
+     */
+    _adjustJobsForDiplomacy(village, civ) {
+        const ns = this.engine.systemManager?.nationSystem;
+        const vs = this.engine.systemManager?.villageSystem;
+        if (!ns || !vs) return;
+
+        const nationId = civ.nationId ?? village.nationId ?? -1;
+        if (nationId === -1) return;
+
+        const nation = ns.nations?.get(nationId);
+        const isAtWar = nation && nation.atWarWith && nation.atWarWith.size > 0;
+
+        // 현재 병사 비율 확인
+        const distribution = this._getJobDistribution(village);
+        const totalWorkers = village.members.size - 1; // 촌장 제외
+        if (totalWorkers <= 0) return;
+
+        const warriorCount = (distribution[JobTypes.WARRIOR] || 0);
+        const targetWarriorRatio = isAtWar ? 0.35 : 0.10; // 전쟁 중 35%, 평화 10%
+        const targetWarriorCount = Math.floor(totalWorkers * targetWarriorRatio);
+
+        if (isAtWar && warriorCount < targetWarriorCount) {
+            // ⚔️ 전쟁 상황: 잉여 인력을 병사로 긴급 전환
+            let converted = 0;
+            for (const memberId of village.members) {
+                if (converted >= targetWarriorCount - warriorCount) break;
+                const member = this.em.entities.get(memberId);
+                const memberCiv = member?.components.get('Civilization');
+                if (!memberCiv || memberCiv.jobType === JobTypes.CHIEF || memberCiv.jobType === JobTypes.WARRIOR) continue;
+
+                // 채집가/벌목꾼 등 대체 가능한 직업만 전환
+                if ([JobTypes.GATHERER, JobTypes.LOGGER, JobTypes.UNEMPLOYED].includes(memberCiv.jobType)) {
+                    memberCiv.jobType = JobTypes.WARRIOR;
+                    const roleFactory = this.system.roleFactory || this.engine.systemManager?.humanBehavior?.roleFactory;
+                    if (roleFactory) memberCiv.role = roleFactory.createRole(JobTypes.WARRIOR);
+                    const jobCtrl = member.components.get('JobController');
+                    if (jobCtrl) jobCtrl.assignJob(JobTypes.WARRIOR);
+                    converted++;
+                }
+            }
+            if (converted > 0) {
+                GlobalLogger.info(`⚔️ [Chief] WAR FOOTING: Converted ${converted} citizens to Warriors!`);
+            }
+        } else if (!isAtWar && warriorCount > targetWarriorCount) {
+            // 🕊️ 평화 상황: 잉여 병사를 생산직으로 복귀
+            let demobilized = 0;
+            for (const memberId of village.members) {
+                if (demobilized >= warriorCount - targetWarriorCount) break;
+                const member = this.em.entities.get(memberId);
+                const memberCiv = member?.components.get('Civilization');
+                if (!memberCiv || memberCiv.jobType !== JobTypes.WARRIOR) continue;
+
+                memberCiv.jobType = JobTypes.LOGGER; // 기본 생산직으로 복귀
+                const roleFactory = this.system.roleFactory || this.engine.systemManager?.humanBehavior?.roleFactory;
+                if (roleFactory) memberCiv.role = roleFactory.createRole(JobTypes.LOGGER);
+                const jobCtrl = member.components.get('JobController');
+                if (jobCtrl) jobCtrl.assignJob(JobTypes.LOGGER);
+                demobilized++;
+            }
+            if (demobilized > 0) {
+                GlobalLogger.info(`🕊️ [Chief] PEACETIME: Demobilized ${demobilized} warriors back to production.`);
+            }
+        }
     }
 }

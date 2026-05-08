@@ -299,6 +299,7 @@ export const DefaultTools = (engine) => [
     new ToggleTool({ id: 'view_village', name: 'Village Info', icon: '🏘️', category: 'View', flagName: 'village', description: '마을의 경계와 통계를 표시합니다.' }),
     new ToggleTool({ id: 'view_nation', name: 'Nation View', icon: '🚩', category: 'View', flagName: 'nation', description: '국가별 영토를 색상으로 구분하여 표시합니다.' }),
     new ToggleTool({ id: 'view_zone', name: 'Zone View', icon: '🗺️', category: 'View', flagName: 'zone', description: '마을 내 구역 설정(주거/벌목 등)을 표시합니다.' }),
+    new ToggleTool({ id: 'view_job_monitor', name: 'Job Monitor', icon: '📊', category: 'View', flagName: 'jobMonitor', description: '모든 주민의 직업 상태와 도구 장착 현황을 실시간으로 모니터링합니다.' }),
     new InspectTool(),
 
 

@@ -4,6 +4,7 @@ import EntityBuilder from '../core/EntityBuilder.js';
 import Builder from '../../components/civilization/Builder.js';
 import Inventory from '../../components/resource/Inventory.js';
 import GathererComponent from '../../components/resource/GathererComponent.js';
+import EquipmentSlots from '../../components/resource/EquipmentSlots.js';
 
 /**
  * 👨‍👩‍👧‍👦 HumanFactory
@@ -89,7 +90,8 @@ export default class HumanFactory extends IEntityFactory {
             .withHealth(config.baseHealth || 100)
             .addComponent('Builder', new Builder())
             .addComponent('Inventory', new Inventory(20))
-            .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }));
+            .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }))
+            .addComponent('EquipmentSlots', new EquipmentSlots()); // ⚔️ [Task 59] 도구 슬롯
 
         // 문명 소속 설정 (기본값 -1)
         builder.addComponent('Civilization', { villageId: options.villageId || -1 });

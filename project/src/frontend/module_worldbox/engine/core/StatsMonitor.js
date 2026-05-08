@@ -148,6 +148,11 @@ export default class StatsMonitor {
                     em.aliveBuffer.byteLength
                 ) / (1024 * 1024); // MB
 
+                // ─────────────────────────────────────────────────────────
+                // 🔍 [Task 60] 직업 행동 모니터링
+                // ─────────────────────────────────────────────────────────
+                const jobMonitor = this._collectJobMonitorStats(civSystem);
+
                 this.onUpdate({ 
                     fps: this.fps,
                     entityCount: this.entityCount,
@@ -155,6 +160,7 @@ export default class StatsMonitor {
                     totalMaxFertility: this.maxPotentialFertility,
                     villages: villageStats,
                     nations: nationStats,
+                    jobMonitor,
                     chunkStats: {
                         visible: visibleChunks.length,
                         total: cm.chunks.length,
@@ -172,5 +178,91 @@ export default class StatsMonitor {
                 });
             }
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔍 Task 60: 직업 행동 모니터링
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 모든 인간 개체의 직업 상태를 수집하여 요약 통계를 반환합니다.
+     * @returns {{ byVillage: Map, global: object }}
+     */
+    _collectJobMonitorStats(civSystem) {
+        const em = this.engine.entityManager;
+        const globalCounts = {};       // { jobType: count }
+        const globalStates = {};       // { aiMode: count }
+        const globalEquipRatio = { equipped: 0, total: 0 };
+        const globalBuffRatio  = { buffed: 0, total: 0 };
+        const byVillage = {};
+
+        for (const id of em.humanIds) {
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+
+            const civ  = entity.components.get('Civilization');
+            const state = entity.components.get('AIState');
+            const equip = entity.components.get('EquipmentSlots');
+            const social = entity.components.get('Social');
+            const jobCtrl = entity.components.get('JobController');
+
+            const jobType = civ?.jobType || 'unemployed';
+            const aiMode  = state?.mode || 'idle';
+            const villageId = civ?.villageId ?? -1;
+
+            // 전역 집계
+            globalCounts[jobType] = (globalCounts[jobType] || 0) + 1;
+            globalStates[aiMode]  = (globalStates[aiMode] || 0) + 1;
+
+            globalEquipRatio.total++;
+            if (equip?.isEquipped) globalEquipRatio.equipped++;
+
+            globalBuffRatio.total++;
+            if (social && social.workSpeedBuff > 1.0 && Date.now() < social.workSpeedBuffExpiry) {
+                globalBuffRatio.buffed++;
+            }
+
+            // 마을별 집계
+            if (villageId !== -1) {
+                if (!byVillage[villageId]) {
+                    byVillage[villageId] = {
+                        name: civSystem?.villages?.get(villageId)?.name || `Village ${villageId}`,
+                        jobs: {},
+                        states: {},
+                        members: []
+                    };
+                }
+                const vStats = byVillage[villageId];
+                vStats.jobs[jobType] = (vStats.jobs[jobType] || 0) + 1;
+                vStats.states[aiMode] = (vStats.states[aiMode] || 0) + 1;
+
+                // 개별 개체 요약 (최대 20명까지)
+                if (vStats.members.length < 20) {
+                    vStats.members.push({
+                        id,
+                        job:     jobType,
+                        mode:    aiMode,
+                        jobState: jobCtrl?.jobState || '-',
+                        tool:    equip?.label || '없음',
+                        buffed:  social?.workSpeedBuff > 1.0 && Date.now() < (social?.workSpeedBuffExpiry || 0),
+                        loyalty: Math.round(social?.loyalty ?? 70),
+                    });
+                }
+            }
+        }
+
+        return {
+            global: {
+                jobs: globalCounts,
+                states: globalStates,
+                equipRate: globalEquipRatio.total > 0
+                    ? Math.round(globalEquipRatio.equipped / globalEquipRatio.total * 100)
+                    : 0,
+                buffRate: globalBuffRatio.total > 0
+                    ? Math.round(globalBuffRatio.buffed / globalBuffRatio.total * 100)
+                    : 0,
+            },
+            byVillage,
+        };
     }
 }

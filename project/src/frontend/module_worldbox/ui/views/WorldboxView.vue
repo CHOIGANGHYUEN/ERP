@@ -10,6 +10,7 @@
     <div class="ui-overlay" :class="{ 'menu-active': isMenuOpen }">
       <!-- Detailed Inspection Panel -->
       <EntityStatusPanel />
+      <JobMonitorPanel />
 
       <!-- TOP LEFT DEBUG PANEL -->
       <div class="debug-panel" :class="{ 'collapsed': isMobile && !showDebugCollapse }">
@@ -152,6 +153,7 @@ import EntityStatusPanel from '../components/EntityStatusPanel.vue';
 import VillageDetailPanel from '../components/VillageDetailPanel.vue';
 import NationDetailPanel from '../components/NationDetailPanel.vue';
 import MapSettings from '../components/MapSettings.vue';
+import JobMonitorPanel from '../components/JobMonitorPanel.vue';
 
 const worldboxContainer = ref(null);
 const gameCanvas = ref(null);
@@ -265,12 +267,15 @@ const updateSimParams = () => {
 const selectTool = (tool) => {
   console.log(`🎯 Tool Selected: ${tool.name} (${tool.id}), isBrush: ${tool.isBrush}`);
   if (tool.isInstant && tool.id.startsWith('view_')) {
-    const panelView = tool.id === 'view_village' || tool.id === 'view_nation';
+    const panelView = tool.id === 'view_village' || tool.id === 'view_nation' || tool.id === 'view_job_monitor';
     if (tool.id === 'view_village') {
       store.showVillageInfo = !store.showVillageInfo;
     }
     if (tool.id === 'view_nation') {
       store.showNationInfo = !store.showNationInfo;
+    }
+    if (tool.id === 'view_job_monitor') {
+      store.showJobMonitor = !store.showJobMonitor;
     }
     if (engine.value && !panelView) engine.value.toggleView(tool.id);
     return;
@@ -390,6 +395,10 @@ const initEngine = (mapSettings = {}) => {
     }
     if (stats.nations) {
       store.updateNationStats(stats.nations);
+    }
+    if (stats.jobMonitor) {
+      // 📊 Direct assignment is more robust against HMR lag
+      store.jobMonitor = stats.jobMonitor;
     }
   };
 

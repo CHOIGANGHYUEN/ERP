@@ -271,13 +271,13 @@ export default class SpawnerSystem extends System {
     }
 
     _determineCategory(type) {
-        const resourceTypes = ['meat', 'poop', 'wood', 'stone', 'food', 'gold', 'leather', 'bone', 'iron', 'silver', 'copper'];
-        if (resourceTypes.includes(type)) return 'resource';
+        const itemTypes = ['meat', 'poop', 'wood', 'stone', 'food', 'gold', 'leather', 'bone', 'iron', 'silver', 'copper'];
+        if (itemTypes.includes(type)) return 'item'; // 📦 수집 가능한 '아이템' 카테고리
         if (type === 'human') return 'human';
         return 'animal';
     }
 
     spawnPoop(x, y, fertilityAmount = 1.0) {
-        this.engine.factoryProvider.spawn('resource', 'poop', x, y, { quality: fertilityAmount });
+        this.engine.factoryProvider.spawn('item', 'poop', x, y, { quality: fertilityAmount });
     }
 }

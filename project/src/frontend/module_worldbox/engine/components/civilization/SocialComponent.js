@@ -18,5 +18,16 @@ export default class SocialComponent {
         this.villageId = -1;
         this.diplomacy = [];
         this.lastDiplomacySync = 0;
+        // 👑 [Task 57] 지도자 아우라 버프
+        this.workSpeedBuff = 1.0;    // 작업 속도 배율 (1.0 = 보통)
+        this.workSpeedBuffExpiry = 0; // 버프 만료 시간 (ms)
+    }
+
+    /** 현재 작업 속도 배율을 반환합니다. 버프 만료 시 자동으로 1.0으로 원식됩니다. */
+    getWorkSpeedBuff() {
+        if (Date.now() > this.workSpeedBuffExpiry) {
+            this.workSpeedBuff = 1.0; // 만료 시 자동 일반화
+        }
+        return this.workSpeedBuff;
     }
 }
