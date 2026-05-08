@@ -10,12 +10,17 @@ export default class ResourceNode {
 
         // 🌳 [Intelligence] 카테고리가 명시되지 않았거나 기본값일 경우 이름으로 자동 유추 (하위 호환성 및 통일성 보장)
         if (category === 'resource') {
+            const mineralTerms = [
+                'stone', 'ore', 'mineral', 'iron', 'gold', 'coal', 'copper',
+                'silver', 'gem', 'clay', 'sand', 'flint', 'salt', 'obsidian',
+                'mud', 'gravel', 'nodule'
+            ];
             if (lowerType.includes('tree')) category = 'tree';
             else if (lowerType.includes('wood') || lowerType.includes('log') || lowerType.includes('stick')) category = 'wood';
             else if (lowerType.includes('grass') || lowerType.includes('pasture') || lowerType.includes('hay')) category = 'grass';
             else if (lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('shrub') || lowerType.includes('leaf')) category = 'plant';
             else if (lowerType.includes('food') || lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('meat')) category = 'food';
-            else if (lowerType.includes('stone') || lowerType.includes('ore') || lowerType.includes('mineral')) category = 'mineral';
+            else if (mineralTerms.some(term => lowerType.includes(term))) category = 'mineral';
         }
 
         this.category = category; // 🌳 [AI Identification] tree, food, mineral 등 기능적 분류
@@ -36,7 +41,13 @@ export default class ResourceNode {
                       lowerType.includes('shrub') ||
                       lowerType.includes('meat'); // 🍖 [Expert Fix] 고기도 이제 먹을 수 있는 자원임
                       
-        this.isMineral = lowerType.includes('stone') || lowerType.includes('iron') || lowerType.includes('gold');
+        this.isMineral = category === 'mineral' ||
+                         lowerType.includes('stone') ||
+                         lowerType.includes('ore') ||
+                         lowerType.includes('mineral') ||
+                         lowerType.includes('iron') ||
+                         lowerType.includes('gold') ||
+                         lowerType.includes('coal');
         
         // 식물의 비옥도 등 제로섬 로직을 위한 속성
         this.storedFertility = this.edible ? amount / 100 : undefined; 

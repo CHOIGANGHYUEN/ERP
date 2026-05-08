@@ -49,7 +49,7 @@ class FactoryProvider {
         this.pools.set('BaseStats', new ObjectPool(() => new BaseStats(), (c) => c.reset(), 100));
         this.pools.set('Health', new ObjectPool(() => new Health(), (c) => {}, 100));
         this.pools.set('Visual', new ObjectPool(() => new Visual(), (c) => {}, 100));
-        this.pools.set('AIState', new ObjectPool(() => new State(), (c) => {}, 100));
+        this.pools.set('AIState', new ObjectPool(() => new State(), (c) => c.reset(), 100));
         this.pools.set('Age', new ObjectPool(() => new Age(), (c) => {}, 100));
     }
 

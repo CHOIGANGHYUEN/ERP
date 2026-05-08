@@ -1,15 +1,23 @@
 <template>
   <Transition name="panel-slide">
-    <div class="village-detail-panel" v-if="isOpen && villages.length > 0">
-      <div class="panel-header">
+    <div 
+      class="village-detail-panel" 
+      v-if="isOpen && villages.length > 0"
+      :style="panelStyle"
+      :class="{ 'minimized': isMinimized }"
+    >
+      <div class="panel-header" @mousedown="startDrag">
         <div class="title">
           <span class="icon">🏘️</span>
           <h2>VILLAGE COMMAND CENTER</h2>
         </div>
-        <button class="close-btn" @click="close">✕</button>
+        <div class="header-actions">
+          <button class="action-btn minimize-btn" @click.stop="isMinimized = !isMinimized">{{ isMinimized ? '□' : '−' }}</button>
+          <button class="action-btn close-btn" @click.stop="close">✕</button>
+        </div>
       </div>
-
-      <div class="panel-content">
+ 
+      <div class="panel-content" v-show="!isMinimized">
         <div v-for="v in villages" :key="v.id" class="village-entry">
           <!-- 🏷️ Village Basic Info -->
           <div class="entry-header">
@@ -131,12 +139,48 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, watch, ref } from 'vue';
 import { useWorldboxStore } from '../store/worldboxStore';
-
+ 
 const store = useWorldboxStore();
 const villages = computed(() => store.villages);
 const isOpen = computed(() => store.showVillageInfo);
+
+// --- Window Management ---
+const isMinimized = ref(false);
+const position = ref({ x: 300, y: 20 }); // Initial offset
+const isDragging = ref(false);
+let dragOffset = { x: 0, y: 0 };
+
+const panelStyle = computed(() => ({
+  top: `${position.value.y}px`,
+  right: `${position.value.x}px`,
+}));
+
+const startDrag = (e) => {
+  isDragging.value = true;
+  dragOffset = {
+    x: e.clientX + position.value.x,
+    y: e.clientY - position.value.y
+  };
+  window.addEventListener('mousemove', onDrag);
+  window.addEventListener('mouseup', stopDrag);
+};
+
+const onDrag = (e) => {
+  if (!isDragging.value) return;
+  position.value = {
+    x: dragOffset.x - e.clientX,
+    y: e.clientY - dragOffset.y
+  };
+};
+
+const stopDrag = () => {
+  isDragging.value = false;
+  window.removeEventListener('mousemove', onDrag);
+  window.removeEventListener('mouseup', stopDrag);
+};
+// -------------------------
 
 // 💡 사용자의 정확한 지적대로, 패널 내부에서 직접 엔진 렌더링 플래그를 통제합니다!
 watch(isOpen, (val) => {
@@ -207,9 +251,7 @@ const getPriorityClass = (p) => {
 <style scoped>
 .village-detail-panel {
   position: absolute;
-  top: 20px;
-  right: 280px; /* Offset from Inspector */
-  width: 340px;
+  width: 360px;
   max-height: 90vh;
   background: rgba(15, 15, 25, 0.85);
   backdrop-filter: blur(25px) saturate(180%);
@@ -219,9 +261,8 @@ const getPriorityClass = (p) => {
   flex-direction: column;
   color: #fff;
   z-index: 1080;
-  pointer-events: auto; /* 🚀 UI 상호작용 활성화 */
-  box-shadow: 0 20px 50px rgba(0,0,0,0.8), 
-              inset 0 0 20px rgba(255,255,255,0.02);
+  pointer-events: auto;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,255,255,0.02);
   overflow: hidden;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -245,7 +286,9 @@ const getPriorityClass = (p) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: grab;
 }
+.panel-header:active { cursor: grabbing; }
 
 .title { display: flex; align-items: center; gap: 12px; }
 .title h2 { 
@@ -258,7 +301,12 @@ const getPriorityClass = (p) => {
 }
 .icon { font-size: 1.3rem; filter: drop-shadow(0 0 5px rgba(129, 199, 132, 0.4)); }
 
-.close-btn {
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -271,11 +319,17 @@ const getPriorityClass = (p) => {
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.action-btn:hover { 
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  transform: scale(1.1);
+}
+
 .close-btn:hover { 
   background: rgba(255, 82, 82, 0.2);
   color: #ff5252;
   border-color: rgba(255, 82, 82, 0.3);
-  transform: rotate(90deg);
 }
 
 .panel-content {

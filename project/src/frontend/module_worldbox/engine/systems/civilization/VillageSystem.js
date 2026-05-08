@@ -179,6 +179,9 @@ export default class VillageSystem extends System {
             plan: ['bonfire', 'storage', 'house', 'farm', 'well', 'house', 'blacksmith', 'pasture', 'temple'],
             currentTask: null,
             taskBoard: [],
+            loyalty: 70,
+            unrest: 0,
+            lastRebellionCheck: 0,
             _planningCooldown: 0,
             _expansionCooldown: 60.0,
             territorySize: 1,
@@ -393,6 +396,7 @@ export default class VillageSystem extends System {
             if (hostVillage) {
                 // 영토 내부이거나 충분히 가까우면 해당 마을 시민으로 영입
                 civ.villageId = hostVillage.id;
+                civ.nationId = hostVillage.nationId;
                 hostVillage.members.add(id);
                 
                 // 🛠️ [Job Init] 영입 시 즉시 무직으로 설정하여 촌장이 직업을 주도록 유도

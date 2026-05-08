@@ -12,6 +12,8 @@ import DepositState from './DepositState.js';
 import LumberjackState from './jobs/LumberjackState.js';
 import WaitForTargetState from './WaitForTargetState.js';
 import TransporterState from './jobs/TransporterState.js';
+import FarmerState from './jobs/FarmerState.js';
+import MinerState from './jobs/MinerState.js';
 import GrazeState from './GrazeState.js';
 import GrabbedState from './GrabbedState.js';
 import PickupState from './PickupState.js';
@@ -36,6 +38,7 @@ export default class StateFactory {
         this.states.set(AnimalStates.EVADE, this.states.get(AnimalStates.FLEE));
         this.states.set(AnimalStates.PICKUP, new PickupState(system));
         this.states.set('gather_wood', new GatherWoodState(system));
+        this.states.set('gather_stone', new GatherWoodState(system));
         this.states.set('gather_plant', new GatherPlantState(system));
         this.states.set('build', new BuildState(system));
         this.states.set('deposit', new DepositState(system));
@@ -46,7 +49,8 @@ export default class StateFactory {
         this.states.set('job_architect', this.states.get('build'));
         this.states.set('job_logger', new LumberjackState(system));
         this.states.set('job_gatherer', new GatherPlantState(system));
-        this.states.set('job_farmer', this.states.get('job_gatherer')); // 농부는 일단 채집가 로직 공유
+        this.states.set('job_farmer', new FarmerState(system));
+        this.states.set('job_miner', new MinerState(system));
         
         this.states.set('job_transporter', new TransporterState(system));
         this.states.set('wait_target', new WaitForTargetState(system));

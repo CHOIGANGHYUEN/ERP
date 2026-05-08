@@ -16,6 +16,15 @@ export const useWorldboxStore = defineStore('worldbox', {
     updateNationStats(nations) {
       this.nations = nations;
     },
+    closeNationInfo() {
+      this.showNationInfo = false;
+      if (window.gameEngine) {
+        window.gameEngine.viewFlags = window.gameEngine.viewFlags || {};
+        window.gameEngine.viewFlags.nation = false;
+        window.gameEngine.viewFlags.NATIONTILE = false;
+        window.gameEngine.viewFlags.influence = false;
+      }
+    },
     closeVillageInfo() {
       this.showVillageInfo = false;
       // ❌ 도구모음 상태와 엉켜서 창이비정상적으로 다시 열리는 현상을 방지합니다.

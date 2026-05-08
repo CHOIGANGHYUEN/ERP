@@ -11,18 +11,19 @@ export default class RenderCoordinator extends System {
     constructor(entityManager, eventBus, engine) {
         super(entityManager, eventBus);
         this.engine = engine;
+        this.villageLabelCache = new Map(); // 🏘️ Label Sprite Cache
 
         // 1. 🚀 가상의 도화지(Offscreen Canvas) 생성 및 해상도 캡핑 (4K 방지)
         this.maxResW = 1920;
         this.maxResH = 1080;
         this.updateResolution(engine.width, engine.height);
-        
+
         this.offCtx = this.offscreenCanvas.getContext('2d', { alpha: false });
 
         // 🚀 [Expert Optimization] Floating Text Pooling
         this.floatingTexts = [];
         this.textPool = new ObjectPool(
-            () => ({}), 
+            () => ({}),
             (t) => {
                 for (const key in t) delete t[key];
             },
@@ -32,14 +33,32 @@ export default class RenderCoordinator extends System {
         this.eventBus.on('SPAWN_FLOATING_TEXT', (data) => {
             this.spawnFloatingText(data.x, data.y, data.text, data.color, data.options);
         });
+
+        // 🗺️ [Expert Optimization] Offscreen Buffers for Territory/Influence
+        this.influenceCanvas = document.createElement('canvas');
+        this.influenceCtx = this.influenceCanvas.getContext('2d');
+        this.isInfluenceDirty = true;
+        this.lastTerritoryHash = '';
+        this.colorCache = new Map();
     }
 
     updateResolution(w, h) {
         if (!this.offscreenCanvas) this.offscreenCanvas = document.createElement('canvas');
-        
+
         // 🛡️ [Memory Guard] 해상도가 너무 높으면 성능/메모리 보호를 위해 캡핑
         this.offscreenCanvas.width = Math.min(w, this.maxResW);
         this.offscreenCanvas.height = Math.min(h, this.maxResH);
+
+        // Influence canvas size matches world size, not just screen size
+        if (this.engine) {
+            const worldW = this.engine.mapWidth || 2000;
+            const worldH = this.engine.mapHeight || 2000;
+            if (this.influenceCanvas) {
+                this.influenceCanvas.width = worldW;
+                this.influenceCanvas.height = worldH;
+                this.isInfluenceDirty = true;
+            }
+        }
     }
 
     /**
@@ -47,6 +66,18 @@ export default class RenderCoordinator extends System {
      */
     resize(width, height) {
         this.updateResolution(width, height);
+    }
+
+    /** 🧹 [Expert Cleanup] Memory Guard */
+    clearCaches() {
+        this.villageLabelCache.forEach(item => {
+            item.canvas.width = 1;
+            item.canvas.height = 1;
+        });
+        this.villageLabelCache.clear();
+        this.colorCache.clear();
+        this.isInfluenceDirty = true;
+        this.lastTerritoryHash = '';
     }
 
     /**
@@ -70,16 +101,21 @@ export default class RenderCoordinator extends System {
         offCtx.translate(-camera.x, -camera.y);
 
         // --- 레이어별 그리기 작업 ---
-        
+
         // [레이어 1] 지형 (Terrain) - 청크 기반 렌더링 및 Culling 적용
         engine.chunkManager.render(offCtx, camera);
 
+        // Nation influence belongs under entities so workers and buildings stay readable.
+        if (engine.viewFlags.influence || engine.viewFlags.NATIONTILE || engine.viewFlags.nation) {
+            this.renderInfluenceOverlay(offCtx);
+        }
+
         // [레이어 2] 엔티티 및 자원 (Entities)
         engine.renderer.render(
-            offCtx, 
-            this.entityManager, 
-            engine.particleSystem.particles, 
-            performance.now(), 
+            offCtx,
+            this.entityManager,
+            engine.particleSystem.particles,
+            performance.now(),
             engine.wind
         );
 
@@ -87,12 +123,6 @@ export default class RenderCoordinator extends System {
         if (engine.viewFlags.wind) {
             this.renderWindOverlay(offCtx);
         }
-
-        // [세력권 오버레이]
-        if (engine.viewFlags.influence) {
-            this.renderInfluenceOverlay(offCtx);
-        }
-
         offCtx.restore();
 
         // [레이어 3] 마을 및 구역 타일 오버레이 (World Space)
@@ -103,7 +133,7 @@ export default class RenderCoordinator extends System {
 
         // [레이어 4] UI 및 툴팁 (Screen Space)
         this.renderTimeHUD(offCtx); // ⏳ 시간 HUD 추가
-        
+
         if (engine.viewFlags.fertilityValue && engine.inputSystem && engine.inputSystem.mouseWorld) {
             this.renderFertilityTooltip(offCtx);
         }
@@ -115,9 +145,13 @@ export default class RenderCoordinator extends System {
         if (engine.viewFlags.village || engine.viewFlags.showVillageInfo) {
             this.renderVillageView(offCtx);
         }
-        
+
         if (engine.viewFlags.zone || engine.viewFlags.showZones) {
             this.renderZoneView(offCtx);
+        }
+
+        if (engine.viewFlags.debugAI) {
+            this.renderDebugAI(offCtx);
         }
 
         // [레이어 5] 플로팅 텍스트 (World Space or Screen Space)
@@ -146,7 +180,7 @@ export default class RenderCoordinator extends System {
         ctx.fillStyle = 'rgba(20, 20, 25, 0.7)'; // 어두운 반투명 배경
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.lineWidth = 1;
-        
+
         // 둥근 사각형 그리기
         this.drawRoundedRect(ctx, x, y, w, h, 8);
         ctx.fill();
@@ -156,13 +190,13 @@ export default class RenderCoordinator extends System {
         ctx.font = 'bold 22px "Courier New", monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        
+
         // 텍스트 광원 효과
         ctx.shadowBlur = 5;
         ctx.shadowColor = '#00e676';
         ctx.fillStyle = '#00e676'; // 사이버틱한 녹색
         ctx.fillText(timeStr, x + w / 2, y + h / 2 + 2);
-        
+
         ctx.restore();
     }
 
@@ -189,28 +223,28 @@ export default class RenderCoordinator extends System {
 
         const ix = Math.floor(worldPos.x);
         const iy = Math.floor(worldPos.y);
-        
+
         if (ix >= 0 && ix < engine.mapWidth && iy >= 0 && iy < engine.mapHeight) {
             const idx = iy * engine.mapWidth + ix;
             const fertRaw = engine.terrainGen.fertilityBuffer[idx];
             const fert = fertRaw / 100; // ⚡ 0~100 정수를 0.0~1.0 소수로 정규화
-            
+
             const text = `FERTILITY: ${(fert * 100).toFixed(1)}%`;
             ctx.font = 'bold 14px "Courier New", monospace';
             const metrics = ctx.measureText(text);
             const padding = 8;
             const w = metrics.width + padding * 2;
             const h = 24;
-            
+
             ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
             ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
             ctx.lineWidth = 1;
             ctx.fillRect(screenPos.x + 15, screenPos.y + 15, w, h);
             ctx.strokeRect(screenPos.x + 15, screenPos.y + 15, w, h);
-            
+
             ctx.fillStyle = '#00ff00';
             ctx.fillText(text, screenPos.x + 15 + padding, screenPos.y + 15 + 18);
-            
+
             ctx.fillStyle = 'rgba(255,255,255,0.1)';
             ctx.fillRect(screenPos.x + 15, screenPos.y + 15 + h, w, 4);
             const barColor = fert < 0.2 ? '#ff5252' : (fert < 0.6 ? '#ffeb3b' : '#00e676');
@@ -227,28 +261,32 @@ export default class RenderCoordinator extends System {
         if (!worldPos || !screenPos) return;
 
         let yOffset = 0;
-        ctx.font = 'bold 12px "Courier New", monospace';
-        
-        // 헬퍼 함수: 툴팁 박스 그리기
-        const drawBox = (text, icon) => {
+        ctx.font = 'bold 12px "Inter", sans-serif';
+
+        const drawBox = (text, icon, color = '#ffffff') => {
             const fullText = `${icon} ${text}`;
             const metrics = ctx.measureText(fullText);
-            const padding = 6;
+            const padding = 8;
             const w = metrics.width + padding * 2;
-            const h = 20;
-            
+            const h = 24;
+
             const boxX = screenPos.x + 15;
             const boxY = screenPos.y + 15 + yOffset;
-            
-            ctx.fillStyle = 'rgba(10, 15, 20, 0.85)';
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 1;
-            ctx.fillRect(boxX, boxY, w, h);
-            ctx.strokeRect(boxX, boxY, w, h);
-            
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(fullText, boxX + padding, boxY + 14);
-            yOffset += h + 4;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(10, 15, 20, 0.9)';
+            ctx.strokeStyle = color + '88';
+            ctx.lineWidth = 1.5;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            this.drawRoundedRect(ctx, boxX, boxY, w, h, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.fillText(fullText, boxX + padding, boxY + 16);
+            ctx.restore();
+            yOffset += h + 6;
         };
 
         // 1. 지형 (Terrain) 이름 표시
@@ -259,34 +297,28 @@ export default class RenderCoordinator extends System {
             const biomeId = engine.terrainGen.biomeBuffer[idx];
             const biomeProps = BIOME_PROPERTIES_MAP.get(biomeId);
             const biomeName = biomeProps ? biomeProps.name : 'Unknown';
-            drawBox(String(biomeName).toUpperCase(), '🌍');
+            drawBox(String(biomeName).toUpperCase(), '🌍', '#4fc3f7');
         }
 
-        // 2. 마우스 커서 주변 20px 반경 엔티티 탐색
+        // 2. 근처 엔티티 탐색
         const radius = 20;
         let nearbyIds = [];
         if (engine.spatialHash) {
             nearbyIds = engine.spatialHash.queryRect(worldPos.x - radius, worldPos.y - radius, radius * 2, radius * 2);
-        } else {
-            nearbyIds = Array.from(engine.entityManager.entities.keys());
         }
 
         for (const id of nearbyIds) {
             const entity = engine.entityManager.entities.get(id);
             if (!entity) continue;
-            
+
             const transform = entity.components.get('Transform');
             if (!transform) continue;
 
             const dx = transform.x - worldPos.x;
             const dy = transform.y - worldPos.y;
-            
-            // 반경 내에 들어왔는지 확인
+
             if (dx * dx + dy * dy <= radius * radius) {
-                let name = `Entity #${id}`;
-                if (entity.components.has('Animal')) name = entity.components.get('Animal').species;
-                else if (entity.components.has('Building')) name = entity.components.get('Building').type || 'Building';
-                else if (entity.components.has('Resource')) name = entity.components.get('Resource').type;
+                if (entity.components.has('Resource')) name = entity.components.get('Resource').type;
                 else if (entity.components.has('Tree')) name = 'Tree';
                 else if (entity.components.has('Plant')) name = 'Plant';
 
@@ -302,97 +334,268 @@ export default class RenderCoordinator extends System {
         const vs = engine.systemManager?.villageSystem;
         if (!vs || vs.villages.size === 0) return;
 
-        ctx.save();
-        
-        // 카메라 스페이스 -> 스크린 스페이스 매핑 (마을 중심 좌표가 스크린 내에 있을 때 렌더링)
-        for (const [id, village] of vs.villages) {
-            const screenX = (village.centerX - engine.camera.x) * engine.camera.zoom;
-            const screenY = (village.centerY - engine.camera.y) * engine.camera.zoom;
-            const screenRadius = 200 * engine.camera.zoom;
+        const camera = engine.camera;
+        const viewRect = {
+            x: camera.x,
+            y: camera.y,
+            w: camera.width / camera.zoom,
+            h: camera.height / camera.zoom
+        };
 
-            if (screenX + screenRadius < 0 || screenX - screenRadius > this.offscreenCanvas.width ||
-                screenY + screenRadius < 0 || screenY - screenRadius > this.offscreenCanvas.height) {
+        ctx.save();
+
+        // 🚀 [Expert Optimization] Cache Eviction (remove labels for destroyed villages)
+        if (vs.villages.size < this.villageLabelCache.size) {
+            for (const id of this.villageLabelCache.keys()) {
+                if (!vs.villages.has(id)) this.villageLabelCache.delete(id);
+            }
+        }
+
+        for (const [id, village] of vs.villages) {
+            // 🚀 [Optimization] Spatial Culling
+            const dist = 300; // Search radius for labels
+            if (village.centerX < viewRect.x - dist || village.centerX > viewRect.x + viewRect.w + dist ||
+                village.centerY < viewRect.y - dist || village.centerY > viewRect.y + viewRect.h + dist) {
                 continue;
             }
 
-            // 🚀 [Tile Fix] 원형 영역 대신 타일 시스템이 렌더링하도록 위임했으므로, 
-            // 여기서는 마을 정보 박스(Tooltip)만 렌더링합니다.
-            
             const pop = village.members.size;
-            
-            ctx.font = 'bold 12px "Courier New", monospace';
-            const lines = [
-                `🏘️ ${village.name} (Pop: ${pop})`,
-                `🪵 WOOD:  ${Math.floor(village.resources?.wood || 0)} / ${village.resourceNeeds?.wood || 0} / ${village.resourceMax?.wood || 0}`,
-                `🍖 FOOD:  ${Math.floor(village.resources?.food || 0)} / ${village.resourceNeeds?.food || 0} / ${village.resourceMax?.food || 0}`,
-                `🪨 STONE: ${Math.floor(village.resources?.stone || 0)} / ${village.resourceNeeds?.stone || 0} / ${village.resourceMax?.stone || 0}`
-            ];
+            const loyalty = Math.floor(village.loyalty || 100);
+            const wood = Math.floor(village.resources?.wood || 0);
+            const food = Math.floor(village.resources?.food || 0);
 
-            let maxWidth = 0;
-            for (const line of lines) {
-                const w = ctx.measureText(line).width;
-                if (w > maxWidth) maxWidth = w;
+            // 🚀 [Expert Optimization] Label Caching
+            const cacheKey = `${id}:${pop}:${loyalty}:${wood}:${food}:${camera.zoom > 0.8 ? 'high' : 'low'}`;
+            let cached = this.villageLabelCache.get(id);
+
+            if (!cached || cached.key !== cacheKey) {
+                cached = this.createVillageLabelSprite(village, pop, loyalty, wood, food);
+                cached.key = cacheKey;
+                this.villageLabelCache.set(id, cached);
             }
 
-            const padding = 10;
-            const boxWidth = maxWidth + padding * 2;
-            const lineHeight = 16;
-            const boxHeight = lines.length * lineHeight + padding * 2;
+            const screenX = (village.centerX - camera.x) * camera.zoom;
+            const screenY = (village.centerY - camera.y) * camera.zoom;
 
-            const boxX = screenX - boxWidth / 2;
-            const boxY = screenY - boxHeight - 20;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.drawImage(cached.canvas, screenX - cached.width / 2, screenY - cached.height - 25);
 
-            // 둥근 사각형 배경
-            ctx.fillStyle = 'rgba(20, 25, 30, 0.9)';
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.6)';
-            ctx.lineWidth = 2;
-            this.drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 8);
+            // Marker
+            const loyaltyColor = loyalty > 70 ? '#4caf50' : (loyalty > 30 ? '#ffeb3b' : '#ff5252');
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 5 * camera.zoom, 0, Math.PI * 2);
+            ctx.fillStyle = loyaltyColor;
             ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
             ctx.stroke();
-
-            // 텍스트 출력
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            for (let i = 0; i < lines.length; i++) {
-                ctx.fillText(lines[i], boxX + padding, boxY + padding + i * lineHeight);
-            }
         }
         ctx.restore();
     }
 
-    /** 🗺️ [Influence View] 국가 및 마을 세력권 시각화 */
+    createVillageLabelSprite(village, pop, loyalty, wood, food) {
+        const tempCanvas = document.createElement('canvas');
+        const tctx = tempCanvas.getContext('2d');
+
+        const loyaltyColor = loyalty > 70 ? '#4caf50' : (loyalty > 30 ? '#ffeb3b' : '#ff5252');
+        const lines = [
+            `🏘️ ${village.name}`,
+            `👥 Pop: ${pop} | 🚩 Loyalty: ${loyalty}%`,
+            `🪵 W: ${wood} | 🍖 F: ${food}`
+        ];
+
+        tctx.font = 'bold 11px "Inter", sans-serif';
+        let maxWidth = 0;
+        lines.forEach(l => {
+            const w = tctx.measureText(l).width;
+            if (w > maxWidth) maxWidth = w;
+        });
+
+        const padding = 12;
+        const boxWidth = maxWidth + padding * 2;
+        const lineHeight = 16;
+        const boxHeight = lines.length * lineHeight + padding * 2;
+
+        tempCanvas.width = boxWidth + 4;
+        tempCanvas.height = boxHeight + 4;
+
+        tctx.font = 'bold 11px "Inter", sans-serif';
+        tctx.translate(2, 2);
+
+        // Background
+        tctx.fillStyle = 'rgba(15, 20, 25, 0.95)';
+        tctx.strokeStyle = loyaltyColor + 'aa';
+        tctx.lineWidth = 2;
+        this.drawRoundedRect(tctx, 0, 0, boxWidth, boxHeight, 10);
+        tctx.fill();
+        tctx.stroke();
+
+        // Loyalty Bar
+        tctx.fillStyle = 'rgba(255,255,255,0.1)';
+        tctx.fillRect(padding, boxHeight - 8, boxWidth - padding * 2, 3);
+        tctx.fillStyle = loyaltyColor;
+        tctx.fillRect(padding, boxHeight - 8, (boxWidth - padding * 2) * (loyalty / 100), 3);
+
+        // Text
+        tctx.fillStyle = '#ffffff';
+        tctx.textAlign = 'left';
+        tctx.textBaseline = 'top';
+        lines.forEach((line, i) => {
+            tctx.fillText(line, padding, padding + i * lineHeight);
+        });
+
+        return {
+            canvas: tempCanvas,
+            width: tempCanvas.width,
+            height: tempCanvas.height
+        };
+    }
+
     renderInfluenceOverlay(ctx) {
-        const ns = this.engine.systemManager?.nationSystem;
-        if (!ns) return;
+        const nationSystem = this.engine.systemManager?.nationSystem;
+        const vs = this.engine.systemManager?.villageSystem;
+        if (!nationSystem || !vs) return;
 
+        // 🚀 [Expert Optimization] Check if redraw is needed
+        let currentHash = '';
+        for (const nation of nationSystem.nations.values()) {
+            currentHash += `${nation.id}:${nation.villages.size}:${nation.color}|`;
+        }
+
+        // Also check total territory count for more precision
+        let totalTerritoryCount = 0;
+        for (const [id, village] of vs.villages) {
+            totalTerritoryCount += village.territory?.size || 0;
+        }
+        currentHash += `T:${totalTerritoryCount}`;
+
+        if (this.lastTerritoryHash !== currentHash) {
+            this.isInfluenceDirty = true;
+            this.lastTerritoryHash = currentHash;
+        }
+
+        if (this.isInfluenceDirty) {
+            this.updateInfluenceBuffer(nationSystem, vs);
+            this.isInfluenceDirty = false;
+        }
+
+        // Draw the cached influence map
         ctx.save();
-        ctx.globalCompositeOperation = 'screen'; // 밝게 합성
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(this.influenceCanvas, 0, 0);
 
-        for (const nation of ns.nations.values()) {
-            const color = nation.color;
-            ctx.fillStyle = `rgba(${(color >> 16) & 0xFF}, ${(color >> 8) & 0xFF}, ${color & 0xFF}, 0.15)`;
-            
-            // 국가의 모든 마을 영토를 순회하며 영향력 시각화
+        // Draw Capitals and Names (Still dynamic but lightweight)
+        this.renderNationLabels(ctx, nationSystem, vs);
+        ctx.restore();
+    }
+
+    updateInfluenceBuffer(nationSystem, vs) {
+        const tileSize = 16;
+        const worldWidth = this.engine.mapWidth || 2000;
+        const worldHeight = this.engine.mapHeight || 2000;
+
+        if (this.influenceCanvas.width !== worldWidth || this.influenceCanvas.height !== worldHeight) {
+            this.influenceCanvas.width = worldWidth;
+            this.influenceCanvas.height = worldHeight;
+        }
+
+        const ictx = this.influenceCtx;
+        ictx.clearRect(0, 0, worldWidth, worldHeight);
+
+        const parseColor = (hex) => {
+            if (this.colorCache.has(hex)) return this.colorCache.get(hex);
+            const safeHex = String(hex || '#ffffff').replace('#', '');
+            const expanded = safeHex.length === 3
+                ? safeHex.split('').map(ch => ch + ch).join('')
+                : safeHex.padEnd(6, 'f').slice(0, 6);
+            const result = {
+                r: parseInt(expanded.slice(0, 2), 16) || 255,
+                g: parseInt(expanded.slice(2, 4), 16) || 255,
+                b: parseInt(expanded.slice(4, 6), 16) || 255
+            };
+            this.colorCache.set(hex, result);
+            return result;
+        };
+
+        ictx.save();
+        for (const nation of nationSystem.nations.values()) {
+            const { r, g, b } = parseColor(nation.color);
+
             for (const villageId of nation.villages) {
-                const village = this.engine.systemManager.villageSystem.getVillage(villageId);
+                const village = vs.getVillage(villageId);
                 if (!village) continue;
 
-                // 🚀 [Expert Optimization] 실제 모든 타일을 그리는 대신 중심점 기준 그라데이션으로 대략적 표현
-                const grad = ctx.createRadialGradient(
-                    village.centerX, village.centerY, 0,
-                    village.centerX, village.centerY, 150 + (nation.culture * 2)
+                const radius = Math.max(96, 120 + Math.sqrt(village.members?.size || 1) * 12);
+
+                // 1. Draw influence circle (Radial Gradient)
+                const grad = ictx.createRadialGradient(
+                    village.centerX, village.centerY, radius * 0.1,
+                    village.centerX, village.centerY, radius
                 );
-                grad.addColorStop(0, `rgba(${(color >> 16) & 0xFF}, ${(color >> 8) & 0xFF}, ${color & 0xFF}, 0.3)`);
-                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(village.centerX, village.centerY, 150 + (nation.culture * 2), 0, Math.PI * 2);
-                ctx.fill();
+                grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.15)`);
+                grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+                ictx.fillStyle = grad;
+                ictx.beginPath();
+                ictx.arc(village.centerX, village.centerY, radius, 0, Math.PI * 2);
+                ictx.fill();
+
+                // 2. Draw territory tiles (Batch Fill)
+                if (village.territory) {
+                    ictx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.25)`;
+                    for (const key of village.territory) {
+                        const tx = key & 0xFFFF;
+                        const ty = key >> 16;
+                        ictx.fillRect(tx * tileSize + 1, ty * tileSize + 1, tileSize - 2, tileSize - 2);
+                    }
+                }
             }
         }
-        ctx.restore();
+        ictx.restore();
+    }
+
+    renderNationLabels(ctx, nationSystem, vs) {
+        const camera = this.engine.camera;
+        for (const nation of nationSystem.nations.values()) {
+            const color = this.colorCache.get(nation.color) || { r: 255, g: 255, b: 255 };
+
+            for (const villageId of nation.villages) {
+                const village = vs.getVillage(villageId);
+                if (!village) continue;
+
+                if (nation.capitalId === village.id) {
+                    const sx = (village.centerX - camera.x) * camera.zoom;
+                    const sy = (village.centerY - camera.y) * camera.zoom;
+                    if (sx > 0 && sx < this.engine.width && sy > 0 && sy < this.engine.height) {
+                        ctx.save();
+                        ctx.setTransform(1, 0, 0, 1, 0, 0);
+                        ctx.font = `${Math.max(16, 24 * camera.zoom)}px serif`;
+                        ctx.textAlign = 'center';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = 'gold';
+                        ctx.fillText('👑', sx, sy - 20 * camera.zoom);
+                        ctx.restore();
+                    }
+                }
+            }
+
+            if (nation.territorySize > 0 && camera.zoom > 0.25) {
+                const sx = (nation.visualCentroidX - camera.x) * camera.zoom;
+                const sy = (nation.visualCentroidY - camera.y) * camera.zoom;
+
+                if (sx > 0 && sx < this.engine.width && sy > 0 && sy < this.engine.height) {
+                    ctx.save();
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.font = `bold ${Math.max(14, 20 * camera.zoom)}px "Inter", sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
+                    ctx.lineWidth = 4;
+                    ctx.strokeText(nation.name.toUpperCase(), sx, sy);
+                    ctx.fillText(nation.name.toUpperCase(), sx, sy);
+                    ctx.restore();
+                }
+            }
+        }
     }
 
     /** 🌬️ [Wind View] 월드 전역 바람 흐름 시각화 */
@@ -400,7 +603,7 @@ export default class RenderCoordinator extends System {
         const wind = this.engine.wind;
         const spacing = 40; // 화살표 간격
         const camera = this.engine.camera;
-        
+
         // 화면에 보이는 영역만 렌더링 (Culling)
         const startX = Math.floor(camera.x / spacing) * spacing;
         const startY = Math.floor(camera.y / spacing) * spacing;
@@ -415,22 +618,22 @@ export default class RenderCoordinator extends System {
         for (let y = startY; y < endY; y += spacing) {
             for (let x = startX; x < endX; x += spacing) {
                 const sway = wind.getSway(x, y);
-                
+
                 ctx.save();
                 ctx.translate(x, y);
-                
+
                 // 화살표 그리기
                 const angle = Math.atan2(sway.y, sway.x);
                 const length = Math.sqrt(sway.x * sway.x + sway.y * sway.y) * 10;
-                
+
                 ctx.rotate(angle);
-                
+
                 // 몸통
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
                 ctx.lineTo(length, 0);
                 ctx.stroke();
-                
+
                 // 촉 (Head)
                 if (length > 2) {
                     ctx.beginPath();
@@ -439,62 +642,145 @@ export default class RenderCoordinator extends System {
                     ctx.lineTo(length - 4, 3);
                     ctx.fill();
                 }
-                
+
                 ctx.restore();
             }
         }
         ctx.restore();
     }
 
-    /** 🗺️ [Zone View] 활동 구역 시각화 */
     renderZoneView(ctx) {
         const engine = this.engine;
-        const zoneManager = engine.systemManager?.civilization?.zoneManager || 
-                            engine.systemManager?.zoneManager ||
-                            engine.systemManager?.systems?.find?.(s => s.constructor.name === 'ZoneManager');
-        
-        // 만약 못 찾으면 시스템 목록에서 직접 탐색
-        const zm = zoneManager || (Array.isArray(engine.systems) ? engine.systems.find(s => s.constructor.name === 'ZoneManager') : null);
-        
+        const zm = engine.systemManager?.zoneManager;
         if (!zm || !zm.zones || zm.zones.size === 0) return;
 
         ctx.save();
-        
+
+        const zoneColors = {
+            'residential': '#4fc3f7',
+            'lumber': '#8d6e63',
+            'mining': '#9e9e9e',
+            'agricultural': '#81c784'
+        };
+
         for (const [id, zone] of zm.zones) {
-            // 카메라 좌표계 적용
             const screenX = (zone.bounds.minX - engine.camera.x) * engine.camera.zoom;
             const screenY = (zone.bounds.minY - engine.camera.y) * engine.camera.zoom;
             const screenW = zone.bounds.width * engine.camera.zoom;
             const screenH = zone.bounds.height * engine.camera.zoom;
 
-            // 화면 밖에 있으면 스킵
             if (screenX + screenW < 0 || screenX > this.offscreenCanvas.width ||
                 screenY + screenH < 0 || screenY > this.offscreenCanvas.height) {
                 continue;
             }
 
-            // 🚀 [Tile Fix] 사각형 영역 대신 타일 시스템이 렌더링하도록 위임했으므로,
-            // 여기서는 구역 라벨과 정보만 렌더링합니다.
+            const color = zoneColors[zone.type] || '#ffffff';
 
-            // 3. 구역 라벨 (배경 상자 추가)
-            ctx.font = 'bold 11px "Courier New", monospace';
-            const label = ` 🗺️ ${zone.type.toUpperCase()} (${zone.id}) `;
+            // Draw zone pattern/border
+            ctx.strokeStyle = color + '88';
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 2;
+            ctx.strokeRect(screenX, screenY, screenW, screenH);
+            ctx.setLineDash([]);
+
+            // Zone Label
+            ctx.font = 'bold 10px "Inter", sans-serif';
+            const label = ` ${zone.type.toUpperCase()} `;
             const metrics = ctx.measureText(label);
-            
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-            ctx.fillRect(screenX, screenY - 20, metrics.width + 4, 20);
-            
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(label, screenX + 2, screenY - 6);
-            
-            // 4. 할당된 작업자 수 표시
-            if (zone.assignedWorkers && zone.assignedWorkers.size > 0) {
-                const workerText = `👷 ${zone.assignedWorkers.size} Workers`;
-                ctx.fillStyle = '#ffeb3b';
-                ctx.fillText(workerText, screenX + 5, screenY + 15);
+
+            ctx.fillStyle = color;
+            ctx.fillRect(screenX, screenY - 18, metrics.width + 4, 18);
+
+            ctx.fillStyle = '#000';
+            ctx.fillText(label, screenX + 2, screenY - 5);
+        }
+
+        ctx.restore();
+    }
+
+    /** 🧠 [AI Debug View] 개체별 AI 경로 및 타겟 시각화 */
+    renderDebugAI(ctx) {
+        const engine = this.engine;
+        const camera = engine.camera;
+        const margin = 50;
+        const viewX = camera.x - margin;
+        const viewY = camera.y - margin;
+        const viewW = (camera.width / camera.zoom) + (margin * 2);
+        const viewH = (camera.height / camera.zoom) + (margin * 2);
+
+        const visibleIds = engine.spatialHash?.queryRect(viewX, viewY, viewW, viewH) || [];
+
+        ctx.save();
+        ctx.lineWidth = 1.5;
+
+        for (const id of visibleIds) {
+            const entity = engine.entityManager.entities.get(id);
+            if (!entity) continue;
+
+            const state = entity.components.get('AIState');
+            const transform = entity.components.get('Transform');
+            if (!state || !transform) continue;
+
+            const x = transform.x;
+            const y = transform.y;
+
+            // Task-based colors
+            let pathColor = '#ffffff';
+            const mode = state.mode;
+            if (mode.includes('gather')) pathColor = '#81c784';
+            else if (mode.includes('hunt') || mode === 'attack') pathColor = '#ff5252';
+            else if (mode === 'build') pathColor = '#ffca28';
+            else if (mode === 'wander') pathColor = '#b0bec5';
+
+            // 1. Draw Target Line
+            const target = state.targetId ? engine.entityManager.entities.get(state.targetId) : null;
+            let targetPos = target ? target.components.get('Transform') : null;
+
+            if (targetPos) {
+                ctx.beginPath();
+                ctx.strokeStyle = pathColor + '66';
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(x, y);
+                ctx.lineTo(targetPos.x, targetPos.y);
+                ctx.stroke();
+            }
+
+            // 2. Draw HPA* Path
+            if (state.path && state.path.length > 0) {
+                ctx.beginPath();
+                ctx.strokeStyle = pathColor;
+                ctx.setLineDash([]);
+                ctx.moveTo(x, y);
+                for (let i = state.pathIndex || 0; i < state.path.length; i++) {
+                    const wp = state.path[i];
+                    ctx.lineTo(wp.x, wp.y);
+                }
+                ctx.stroke();
+
+                // Draw Waypoints
+                ctx.fillStyle = pathColor;
+                for (let i = state.pathIndex || 0; i < state.path.length; i++) {
+                    const wp = state.path[i];
+                    ctx.beginPath();
+                    ctx.arc(wp.x, wp.y, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // 3. Draw Abstract Path (HPA* Hierarchical)
+            if (state.abstractPath && state.abstractPath.length > 0) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#4fc3f7';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([2, 2]);
+                ctx.moveTo(x, y);
+                for (let i = state.abstractIndex || 0; i < state.abstractPath.length; i++) {
+                    const node = state.abstractPath[i];
+                    ctx.lineTo(node.x, node.y);
+                }
+                ctx.stroke();
             }
         }
-        
         ctx.restore();
     }
 
@@ -519,14 +805,14 @@ export default class RenderCoordinator extends System {
     /** 🚀 [Expert Design] 플로팅 텍스트 업데이트 및 렌더링 */
     updateAndRenderFloatingTexts(ctx, time) {
         const dt = 0.016; // 대략적인 deltaTime (추후 엔진 dt 연동 고려)
-        
+
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
         for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
             const t = this.floatingTexts[i];
-            
+
             // 위치 업데이트
             t.x += t.vx;
             t.y += t.vy;
@@ -535,7 +821,7 @@ export default class RenderCoordinator extends System {
             // 수명 및 알파 업데이트
             t.life -= dt;
             t.alpha = Math.max(0, t.life / t.maxLife);
-            
+
             if (t.life <= 0) {
                 this.floatingTexts.splice(i, 1);
                 this.textPool.release(t);
@@ -545,16 +831,16 @@ export default class RenderCoordinator extends System {
             // 그리기
             ctx.globalAlpha = t.alpha;
             ctx.font = `bold ${t.size}px "Courier New", monospace`;
-            
+
             // 텍스트 외곽선 (가독성 향상)
             ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
             ctx.lineWidth = 3;
             ctx.strokeText(t.text, t.x, t.y);
-            
+
             ctx.fillStyle = t.color;
             ctx.fillText(t.text, t.x, t.y);
         }
-        
+
         ctx.restore();
     }
 }

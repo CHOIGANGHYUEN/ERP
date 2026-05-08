@@ -55,7 +55,7 @@ export default class TargetManager {
         switch (targetType) {
             case 'RESOURCE':
                 bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent, false);
-                if (!bestTargetId) {
+                if (bestTargetId === null || bestTargetId === undefined) {
                     bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent, true);
                 }
                 break;
@@ -68,7 +68,7 @@ export default class TargetManager {
                 break;
             case 'BLUEPRINT':
                 bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity, req.intent, false);
-                if (!bestTargetId) {
+                if (bestTargetId === null || bestTargetId === undefined) {
                     bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity, req.intent, true);
                 }
                 break;
@@ -76,7 +76,7 @@ export default class TargetManager {
                 break;
         }
 
-        if (bestTargetId) {
+        if (bestTargetId !== null && bestTargetId !== undefined) {
             const aiState = entity.components.get('AIState');
             if (aiState) {
                 // 🚫 [Blacklist Check] 최근에 실패한 타겟은 무시
@@ -171,7 +171,9 @@ export default class TargetManager {
             const village = vs?.getVillage(civ.villageId);
             if (village) {
                 // 인텐트에 따라 적절한 마을 구역 반환 (나무 채집은 벌목 구역, 건설은 주거 구역 등)
-                if (intent === 'gather_wood' || intent === 'forage') return zm.getZone(village.lumberZoneId);
+                if (intent === 'gather_wood' || intent === 'gather_plant' || intent === 'gather_stone' || intent === 'forage') {
+                    return zm.getZone(village.lumberZoneId);
+                }
                 if (intent === 'build') return zm.getZone(village.residentialZoneId);
                 return zm.getZone(village.residentialZoneId);
             }
@@ -205,30 +207,32 @@ export default class TargetManager {
 
                     // 🗺️ [Zone System] 구역 제한 검사
                     const transform = ent.components.get('Transform');
-                    if (transform && !this._isInZone(transform.x, transform.y, zone)) return false;
+                    if (!transform) return false;
+                    if (!this._isInZone(transform.x, transform.y, zone)) return false;
 
                     const res = ent.components.get('Resource');
                     const drop = ent.components.get('DroppedItem');
                     
                     // 타입 및 카테고리 교차 검사
                     if (res) {
-                        const resType = res.type.toLowerCase();
-                        const resCat = res.category.toLowerCase();
+                        const resType = (res.type || '').toLowerCase();
+                        const resCat = (res.category || '').toLowerCase();
                         const searchType = type;
 
                         // 🔍 [Intelligence] 'wood'를 찾으면 'tree' 카테고리도 인정, 'food'를 찾으면 'plant'/'food' 카테고리 인정
                         let isMatch = (resType === searchType || resCat === searchType);
                         if (!isMatch) {
-                            if (searchType === 'wood' && (resCat === 'tree' || resType.includes('tree'))) isMatch = true;
-                            if (searchType === 'food' && (resCat === 'plant' || resCat === 'berry' || resCat === 'fruit')) isMatch = true;
-                            if (searchType === 'stone' && (resCat === 'mineral' || resCat === 'ore')) isMatch = true;
+                            if (searchType === 'wood' && (resCat === 'tree' || resType.includes('tree') || res.isTree)) isMatch = true;
+                            if (searchType === 'food' && (resCat === 'food' || resCat === 'plant' || resCat === 'berry' || resCat === 'fruit' || res.edible)) isMatch = true;
+                            if ((searchType === 'stone' || searchType === 'mineral') && (resCat === 'mineral' || resCat === 'ore' || res.isMineral)) isMatch = true;
+                            if (searchType === 'iron_ore' && (resType.includes('iron') || resType.includes('ore') || resCat === 'mineral' || res.isMineral)) isMatch = true;
                         }
 
                         if (!isMatch) return false;
                         if (res.value <= 0 || res.isFalling) return false;
                         if (res.claimedBy && res.claimedBy !== entity.id) return false;
                     } else if (drop) {
-                        if (drop.itemType.toLowerCase() !== type) return false;
+                        if ((drop.itemType || '').toLowerCase() !== type) return false;
                         const reqCiv = entity.components.get('Civilization');
                         const isOwner = drop.villageId === -1 || (reqCiv && drop.villageId === reqCiv.villageId);
                         if (!isOwner || (drop.claimedBy && drop.claimedBy !== entity.id)) return false;
@@ -253,7 +257,7 @@ export default class TargetManager {
                 });
             }
 
-            if (bestId) return bestId;
+            if (bestId !== null && bestId !== undefined) return bestId;
         }
 
         return null;

@@ -3,7 +3,9 @@ export default class JobController {
         this.currentJob = null;
         this.zoneId = null;
         this.jobState = null;
+        this.data = {}; // 📦 직업별 고유 데이터 저장 (타이머, 타겟 보존 등)
         this.equipment = null; // 직업 관련 도구 참조 등
+        this.lastJobSwitchTime = Date.now(); // ⏱️ 마지막 직업 변경 시간
     }
 
     assignJob(jobType, zoneId = null) {
@@ -15,11 +17,22 @@ export default class JobController {
         this.currentJob = jobType;
         this.zoneId = zoneId;
         this.jobState = 'IDLE'; // Job 내부 세부 상태
+        this.data = {}; // 초기화
+        this.lastJobSwitchTime = Date.now();
     }
 
     interrupt() {
         this.equipment = null;
         this.jobState = 'IDLE';
+        this.data = {}; // 진행 중이던 직업 내부 데이터 증발
+    }
+
+    setData(key, value) {
+        this.data[key] = value;
+    }
+
+    getData(key) {
+        return this.data[key];
     }
 
     /**

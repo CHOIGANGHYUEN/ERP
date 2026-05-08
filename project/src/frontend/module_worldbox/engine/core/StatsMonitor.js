@@ -93,17 +93,40 @@ export default class StatsMonitor {
                 const nationSystem = this.engine.systemManager.nationSystem;
                 if (nationSystem && nationSystem.nations) {
                     for (const nation of nationSystem.nations.values()) {
+                        const diplomacy = nationSystem.getNationDiplomacy
+                            ? nationSystem.getNationDiplomacy(nation.id)
+                            : [];
+                        const nationVillages = Array.from(nation.villages || []).map(villageId => {
+                            const village = civSystem?.villages?.get(villageId);
+                            return village ? {
+                                id: village.id,
+                                name: village.name,
+                                population: village.members?.size || 0,
+                                territorySize: village.territory?.size || 0,
+                                loyalty: Math.round(village.loyalty ?? 70),
+                                unrest: Math.round(village.unrest || 0)
+                            } : null;
+                        }).filter(Boolean);
                         nationStats.push({ 
                             id: nation.id, 
                             name: nation.name,
                             color: nation.color,
                             population: nation.totalPopulation || 0,
                             villageCount: nation.villages.size || 0,
+                            territorySize: nation.territorySize || 0,
+                            stability: Math.round(nation.stability ?? 70),
+                            averageLoyalty: Math.round(nation.averageLoyalty ?? 70),
+                            wars: Array.from(nation.atWarWith || []),
+                            allies: Array.from(nation.allies || []),
+                            hostiles: Array.from(nation.hostiles || []),
+                            diplomacy,
+                            villages: nationVillages,
                             resources: { ...nation.resources },
                             taxRate: nation.taxRate || 0,
                             prestige: Math.floor(nation.prestige || 0),
                             tech: Math.floor(nation.tech || 0),
-                            culture: Math.floor(nation.culture || 0)
+                            culture: Math.floor(nation.culture || 0),
+                            tributeLedger: (nation.tributeLedger || []).slice(-6)
                         });
                     }
                 }

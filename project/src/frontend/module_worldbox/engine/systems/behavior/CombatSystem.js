@@ -82,6 +82,48 @@ export default class CombatSystem extends System {
         }
     }
 
+    findNearestWarEnemy(entity, radius = 240) {
+        const transform = entity.components.get('Transform');
+        const civ = entity.components.get('Civilization');
+        const ns = this.engine.systemManager?.nationSystem;
+        const vs = this.engine.systemManager?.villageSystem;
+        const spatialHash = this.engine.spatialHash;
+        if (!transform || !civ || !ns || !vs || !spatialHash) return null;
+
+        const ownVillage = vs.getVillage(civ.villageId);
+        const ownNationId = civ.nationId ?? ownVillage?.nationId ?? -1;
+        if (ownNationId === -1) return null;
+
+        let bestId = null;
+        let bestDistSq = radius * radius;
+        spatialHash.eachInRange(transform.x, transform.y, radius, (otherId) => {
+            if (otherId === entity.id) return;
+            const other = this.entityManager.entities.get(otherId);
+            if (!other || !other.components.has('Animal')) return;
+            const otherCiv = other.components.get('Civilization');
+            if (!otherCiv) return;
+
+            const otherVillage = vs.getVillage(otherCiv.villageId);
+            const otherNationId = otherCiv.nationId ?? otherVillage?.nationId ?? -1;
+            if (!ns.isAtWar(ownNationId, otherNationId)) return;
+
+            const otherStats = other.components.get('BaseStats');
+            if (otherStats && otherStats.health <= 0) return;
+
+            const otherTransform = other.components.get('Transform');
+            if (!otherTransform) return;
+            const dx = transform.x - otherTransform.x;
+            const dy = transform.y - otherTransform.y;
+            const distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestId = otherId;
+            }
+        });
+
+        return bestId;
+    }
+
     update(dt, time) {
         // 상태 이상(독, 화상 등)에 의한 지속 데미지 로직이 필요할 때 활용 가능
     }

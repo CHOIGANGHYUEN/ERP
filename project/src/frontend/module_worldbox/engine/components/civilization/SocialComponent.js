@@ -13,5 +13,10 @@ export default class SocialComponent {
         this.lastBirth = 0;
         this.isBreeding = false;
         this.breedingTimer = 0;
+        this.loyalty = 70;
+        this.nationId = -1;
+        this.villageId = -1;
+        this.diplomacy = [];
+        this.lastDiplomacySync = 0;
     }
 }

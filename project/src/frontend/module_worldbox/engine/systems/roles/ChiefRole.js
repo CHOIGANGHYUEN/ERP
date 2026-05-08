@@ -59,14 +59,15 @@ export default class ChiefRole extends BaseRole {
             }
         }
 
-        // 📋 2. 마을 할일 목록(TODO List) 갱신
-        this._updateVillageTaskBoard(village);
-
         // 📊 3. 현재 마을 필요(Needs) 분석
         const needs = this._analyzeVillageNeeds(village, vs);
 
+        // 📋 2. 마을 할일 목록(TODO List) 갱신
+        this._updateVillageTaskBoard(village, needs);
+
         // ⚙️ 4. 지능적 직업 재배치
         const distribution = this._getJobDistribution(village);
+        const quotas = this._getWorkforceQuotas(village);
 
         for (const memberId of village.members) {
             if (memberId === entity.id) continue;
@@ -76,15 +77,15 @@ export default class ChiefRole extends BaseRole {
             const mCiv = member.components.get('Civilization');
             if (!mCiv) continue;
 
-            const shouldReassign = this._checkReassignmentNeeded(mCiv, needs, distribution);
+            const shouldReassign = this._checkReassignmentNeeded(mCiv, needs, distribution, quotas, village, member);
 
             if (shouldReassign) {
                 const oldJob = mCiv.jobType;
-                const newJob = this._assignJob(member, needs, distribution, village);
+                const newJob = this._assignJob(member, needs, distribution, village, quotas);
                 if (newJob && oldJob !== newJob) {
                     if (distribution[oldJob] !== undefined) distribution[oldJob]--;
                     distribution[newJob] = (distribution[newJob] || 0) + 1;
-                    GlobalLogger.info(`👑 Chief re-tasked entity ${memberId}: [${oldJob}] -> [${newJob}]`);
+                    // GlobalLogger.info는 _assignJob 내부에서 중요한 경우에만 남기도록 변경함
                 }
             }
         }
@@ -93,23 +94,15 @@ export default class ChiefRole extends BaseRole {
     }
 
     /** 📋 마을 할일 목록(TaskBoard)을 현재 상황에 맞춰 갱신합니다. */
-    _updateVillageTaskBoard(village) {
+    _updateVillageTaskBoard(village, needs) {
         if (!village.taskBoard) village.taskBoard = [];
 
-        // 1. 완료된 작업 제거 및 유령 작업(죽은 주민이 점유한 작업) 해제
+        // 1. 완료된 작업 제거 및 유령 작업 해제
         village.taskBoard = village.taskBoard.filter(t => t.status !== 'DONE');
 
-        for (const task of village.taskBoard) {
-            if (task.status === 'CLAIMED' && task.claimedBy) {
-                if (!this.em.entities.has(task.claimedBy)) {
-                    GlobalLogger.info(`♻️ [Chief] Reclaiming task from deceased entity ${task.claimedBy}`);
-                    task.status = 'AVAILABLE';
-                    task.claimedBy = null;
-                }
-            }
-        }
+        const urgency = needs.urgency;
 
-        // 2. 건설 과업 추가 (청사진 탐색)
+        // 2. 건설 과업 추가
         for (const bId of village.buildings) {
             const b = this.em.entities.get(bId);
             const struc = b?.components.get('Structure');
@@ -120,8 +113,8 @@ export default class ChiefRole extends BaseRole {
                         id: `build_${bId}`,
                         type: 'build',
                         targetId: bId,
-                        zoneId: village.residentialZoneId, // 🏗️ 타겟 영역을 거주 구역으로 제한
-                        priority: struc.type === 'bonfire' || struc.type === 'storage' ? 100 : 50,
+                        zoneId: village.residentialZoneId,
+                        priority: struc.type === 'bonfire' || struc.type === 'storage' ? 100 : 60,
                         status: 'AVAILABLE',
                         claimedBy: null
                     });
@@ -129,117 +122,69 @@ export default class ChiefRole extends BaseRole {
             }
         }
 
-        // 3. 자원 수급 과업 추가 (임계치 이하일 때)
-        const woodNeed = (village.resourceNeeds?.wood || 20) + 50;
-        if (village.resources.wood < woodNeed) {
-            // 🪵 자원 채집 영역(Gathering Zone) 내의 나무 자원 타겟만 제한하여 확인
-            let droppedWoodCount = 0;
-            const zm = this.engine.systemManager?.zoneManager;
-            const gatherZone = zm?.getZone(village.lumberZoneId);
-
-            if (gatherZone && gatherZone.bounds && this.engine.spatialHash) {
-                const b = gatherZone.bounds;
-                const nearbyIds = this.engine.spatialHash.queryRect(b.minX, b.minY, b.width, b.height);
-                for (const resId of nearbyIds) {
-                    const ent = this.em.entities.get(resId);
-                    const item = ent?.components.get('DroppedItem');
-                    // 🏘️ [Ownership] 자국 소유거나 무소속인 아이템만 카운트
-                    if (item && item.itemType === 'wood' && (item.villageId === -1 || item.villageId === village.id)) {
-                        droppedWoodCount += (item.amount || 1);
-                    }
-                }
-            }
-
-            const existingGather = village.taskBoard.filter(t => t.type === 'gather_wood').length;
-            const existingPickup = village.taskBoard.filter(t => t.type === 'pickup_wood').length;
-
-            // A. 바닥에 나무가 많으면 '줍기' 과업 우선 생성
-            if (droppedWoodCount >= 5 && existingPickup < 2) {
-                village.taskBoard.push({
-                    id: `pickup_wood_${Date.now()}`,
-                    type: 'pickup_wood',
-                    zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: 70,
-                    status: 'AVAILABLE',
-                    claimedBy: null
-                });
-            }
-
-            // B. 바닥에 나무가 적을 때만 '벌목' 과업 생성
-            if (droppedWoodCount < 10 && existingGather < 3) {
+        // 3. 자원 수급 과업 (긴급도 기반)
+        if (urgency.wood > 20) {
+            const existing = village.taskBoard.filter(t => t.type === 'gather_wood').length;
+            if (existing < 3) {
                 village.taskBoard.push({
                     id: `gather_wood_${Date.now()}_${Math.random()}`,
                     type: 'gather_wood',
-                    zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: village.resources.wood < 15 ? 90 : 40, // 🪵 부족할 때 우선순위 대폭 상향
+                    zoneId: village.lumberZoneId,
+                    priority: urgency.wood,
                     status: 'AVAILABLE',
                     claimedBy: null
                 });
             }
         }
 
-        const foodNeed = (village.resourceNeeds?.food || 20) + 30;
-        if (village.resources.food < foodNeed) {
-            // 🍎 자원 채집 영역(Gathering Zone) 내의 식량 타겟만 제한하여 확인
-            let droppedFoodCount = 0;
-            const zm = this.engine.systemManager?.zoneManager;
-            const gatherZone = zm?.getZone(village.lumberZoneId);
-
-            if (gatherZone && gatherZone.bounds && this.engine.spatialHash) {
-                const b = gatherZone.bounds;
-                const nearbyIds = this.engine.spatialHash.queryRect(b.minX, b.minY, b.width, b.height);
-                const edibleTypes = ['food', 'fruit', 'meat', 'berry'];
-                for (const resId of nearbyIds) {
-                    const ent = this.em.entities.get(resId);
-                    const item = ent?.components.get('DroppedItem');
-                    // 🏘️ [Ownership] 자국 소유거나 무소속인 아이템만 카운트
-                    if (item && edibleTypes.includes(item.itemType) && (item.villageId === -1 || item.villageId === village.id)) {
-                        droppedFoodCount += (item.amount || 1);
-                    }
-                }
-            }
-
-            const existingGather = village.taskBoard.filter(t => t.type === 'gather_food' || t.type === 'hunt').length;
-            const existingPickup = village.taskBoard.filter(t => t.type === 'pickup_food').length;
-
-            // A. 바닥에 식량이 많으면 '줍기' 과업 우선 생성
-            if (droppedFoodCount >= 5 && existingPickup < 2) {
-                village.taskBoard.push({
-                    id: `pickup_food_${Date.now()}`,
-                    type: 'pickup_food',
-                    zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: 85,
-                    status: 'AVAILABLE',
-                    claimedBy: null
-                });
-            }
-
-            // B. 바닥에 식량이 적을 때만 '채집/사냥' 과업 생성
-            if (droppedFoodCount < 10 && existingGather < 4) {
+        if (urgency.food > 20) {
+            const existing = village.taskBoard.filter(t => t.type === 'gather_food' || t.type === 'hunt').length;
+            if (existing < 4) {
                 const type = Math.random() < 0.7 ? 'gather_food' : 'hunt';
                 village.taskBoard.push({
                     id: `${type}_${Date.now()}`,
                     type: type,
-                    zoneId: village.lumberZoneId, // 타겟 영역 제한
-                    priority: village.resources.food < 15 ? 95 : 45, // 🍎 아사 위기 시 최우선순위
+                    zoneId: village.lumberZoneId,
+                    priority: urgency.food,
                     status: 'AVAILABLE',
                     claimedBy: null
                 });
             }
         }
 
-        // 🪨 4. 석재 수급 과업 추가 (주택/건물 건설에 필요할 때)
-        const stoneNeed = village.resourceNeeds?.stone || 0;
-        if (village.resources.stone < stoneNeed + 30) {
-            const existingGather = village.taskBoard.filter(t => t.type === 'gather_stone').length;
-            if (existingGather < 2) {
+        if (urgency.stone > 20) {
+            const existing = village.taskBoard.filter(t => t.type === 'gather_stone').length;
+            if (existing < 2) {
                 village.taskBoard.push({
                     id: `gather_stone_${Date.now()}`,
                     type: 'gather_stone',
-                    priority: village.resources.stone < 5 ? 85 : 40,
+                    priority: urgency.stone,
                     status: 'AVAILABLE',
                     claimedBy: null
                 });
+            }
+        }
+
+        // 🚜 4. 농경 관련 과업 (농부용)
+        for (const bId of village.buildings) {
+            const b = this.em.entities.get(bId);
+            const farm = b?.components.get('Farm');
+            if (farm) {
+                // 수확 또는 파종이 필요한 농장 과업
+                const needsWork = farm.isHarvestable || !farm.isSeeded;
+                if (needsWork) {
+                    const existing = village.taskBoard.find(t => t.type === 'farm_work' && t.targetId === bId);
+                    if (!existing) {
+                        village.taskBoard.push({
+                            id: `farm_${bId}`,
+                            type: 'farm_work',
+                            targetId: bId,
+                            priority: farm.isHarvestable ? 90 : 70,
+                            status: 'AVAILABLE',
+                            claimedBy: null
+                        });
+                    }
+                }
             }
         }
     }
@@ -257,98 +202,191 @@ export default class ChiefRole extends BaseRole {
     }
 
     _analyzeVillageNeeds(village, vs) {
-        let dynamicWoodNeed = village.resourceNeeds?.wood || 10;
-        let dynamicFoodNeed = village.resourceNeeds?.food || 15;
-        let dynamicStoneNeed = village.resourceNeeds?.stone || 0;
+        const targets = this._getResourceTargets(village);
+        const current = village.resources || {};
+        
+        // 📊 자원별 긴급도 점수 (0 ~ 100)
+        // (목표치 - 현재치) / 목표치 * 100
+        const woodScore = Math.max(0, Math.min(100, ((targets.wood - (current.wood || 0)) / targets.wood) * 100));
+        const foodScore = Math.max(0, Math.min(100, ((targets.food - (current.food || 0)) / targets.food) * 100));
+        const stoneScore = Math.max(0, Math.min(100, ((targets.stone - (current.stone || 0)) / targets.stone) * 100));
 
         const blackboard = this.system.engine?.systemManager?.blackboard;
         const hasAnyBlueprint = blackboard && blackboard.blueprints && blackboard.blueprints.length > 0;
-
-        if (village.plan.length > 0 || (village.currentTask && village.currentTask.type === 'build') || hasAnyBlueprint) {
-            dynamicWoodNeed += 80;
-            dynamicStoneNeed += 40;
-        }
-
-        const pop = village.members.size;
-        dynamicFoodNeed += pop * 10;
+        const isConstructing = (village.plan && village.plan.length > 0) || hasAnyBlueprint;
 
         const needs = {
-            canBuild: (village.currentTask && village.currentTask.type === 'build') || hasAnyBlueprint,
-            needFood: (village.resources?.food || 0) < dynamicFoodNeed,
-            needWood: (village.resources?.wood || 0) < dynamicWoodNeed,
-            needStone: (village.resources?.stone || 0) < dynamicStoneNeed,
-            isFoodFull: (village.resources?.food || 0) >= (village.resourceMax?.food || 100),
-            isWoodFull: (village.resources?.wood || 0) >= (village.resourceMax?.wood || 100),
-            isStoneFull: (village.resources?.stone || 0) >= (village.resourceMax?.stone || 100)
+            targets,
+            urgency: {
+                wood: woodScore,
+                food: foodScore,
+                stone: stoneScore,
+                build: isConstructing ? 80 : 0
+            },
+            isConstructing,
+            isFoodFull: (current.food || 0) >= (village.resourceMax?.food || 200),
+            isWoodFull: (current.wood || 0) >= (village.resourceMax?.wood || 200),
+            isStoneFull: (current.stone || 0) >= (village.resourceMax?.stone || 200)
         };
         return needs;
     }
 
-    _checkReassignmentNeeded(mCiv, needs, distribution) {
+    /** 🎯 마을 인구 및 건물 상황에 따른 이상적인 자원 보유 목표를 계산합니다. */
+    _getResourceTargets(village) {
+        const pop = village.members.size;
+        const buildCount = village.buildings.size;
+        
+        return {
+            wood: 100 + (buildCount * 30) + (pop * 10),
+            food: 150 + (pop * 20),
+            stone: 50 + (village.plan.length * 40)
+        };
+    }
+
+    /** 🏢 마을 건물 인프라에 따른 권장 직업 할당 인원(Quota)을 계산합니다. */
+    _getWorkforceQuotas(village) {
+        const em = this.em;
+        const quotas = {};
+        for (const type of Object.values(JobTypes)) quotas[type] = 0;
+
+        let farmCount = 0;
+        let blacksmithCount = 0;
+
+        for (const bId of village.buildings) {
+            const b = em.entities.get(bId);
+            const building = b?.components.get('Building');
+            if (building) {
+                if (building.type === 'farm') farmCount++;
+                else if (building.type === 'blacksmith') blacksmithCount++;
+            }
+        }
+
+        quotas[JobTypes.FARMER] = farmCount * 2; // 농장당 2명
+        quotas[JobTypes.MINER] = 1 + (blacksmithCount * 2); // 대장간당 추가 광부
+        quotas[JobTypes.ARCHITECT] = Math.min(5, Math.ceil(village.members.size / 5));
+
+        return quotas;
+    }
+
+    /** ⚖️ 각 직업의 현재 우선순위 점수를 계산합니다 (0 ~ 100) */
+    _calculateJobPriority(jobType, needs, distribution, village, quotas) {
+        let score = 10; // 기본 점수
+
+        const urgency = needs.urgency;
+        const pop = village.members.size;
+        const currentCount = distribution[jobType] || 0;
+        const quota = quotas[jobType] || 0;
+
+        switch (jobType) {
+            case JobTypes.ARCHITECT:
+                if (needs.isConstructing) {
+                    score = urgency.build;
+                    // 인원 제한 (쿼터 초과 시 감점)
+                    if (currentCount >= quota) score *= 0.5;
+                } else {
+                    score = 0;
+                }
+                break;
+
+            case JobTypes.FARMER:
+                if (quota > 0) {
+                    score = urgency.food * 1.2;
+                    if (currentCount >= quota) score *= 0.3; // 농장은 자리가 한정됨
+                } else {
+                    score = 0;
+                }
+                break;
+
+            case JobTypes.GATHERER:
+            case JobTypes.HUNTER:
+                score = urgency.food;
+                // 인구 비례 최소 인원 확보 (농장이 없을 때 중요)
+                const minGatherers = Math.ceil(pop / 4);
+                if (currentCount < minGatherers) score += 30;
+                break;
+
+            case JobTypes.LOGGER:
+                score = urgency.wood;
+                if (needs.isWoodFull) score = 0;
+                break;
+
+            case JobTypes.MINER:
+                score = urgency.stone;
+                if (currentCount < quota) score += 20; // 대장간 등이 있으면 가점
+                if (needs.isStoneFull) score = 0;
+                break;
+        }
+
+        // 약간의 랜덤성 추가 (유연한 배분)
+        return score + (Math.random() * 5);
+    }
+
+    _checkReassignmentNeeded(mCiv, needs, distribution, quotas, village, member) {
         const job = mCiv.jobType;
         if (!job || job === JobTypes.UNEMPLOYED) return true;
         
-        if (job === JobTypes.ARCHITECT && (!needs.canBuild || distribution[JobTypes.ARCHITECT] > 5)) return true;
-        if (job === JobTypes.LOGGER && needs.isWoodFull) return true;
-        if (job === JobTypes.MINER && needs.isStoneFull) return true;
-        if ((job === JobTypes.GATHERER || job === JobTypes.HUNTER) && needs.isFoodFull) return true;
+        // ⏱️ [Persistence] 최소 직업 유지 시간 (10초)
+        const jobCtrl = member.components.get('JobController');
+        if (jobCtrl) {
+            const timeSinceSwitch = (Date.now() - jobCtrl.lastJobSwitchTime) / 1000;
+            if (timeSinceSwitch < 10) {
+                // 아주 긴급한 상황(긴급도 90점 초과)이 아니면 유지
+                const urgency = needs.urgency;
+                const isCritical = urgency.food > 90 || urgency.wood > 90 || urgency.stone > 90;
+                if (!isCritical) return false;
+            }
+        }
+
+        // 현재 직업의 점수 계산
+        const currentScore = this._calculateJobPriority(job, needs, distribution, village, quotas);
         
-        // 위급 상황 시 재배치
-        if (needs.needFood && (job === JobTypes.LOGGER || job === JobTypes.MINER) && distribution[job] > 1) return true;
-        
-        return false;
+        // 다른 직업들 중 더 높은 점수가 있는지 확인
+        let bestScore = 0;
+        for (const type of Object.values(JobTypes)) {
+            if (type === JobTypes.CHIEF || type === JobTypes.UNEMPLOYED) continue;
+            const score = this._calculateJobPriority(type, needs, distribution, village, quotas);
+            if (score > bestScore) bestScore = score;
+        }
+
+        // 🛡️ [Anti-Jitter] 전환 임계값: 점수 차이가 20점 이상일 때만 변경
+        return (bestScore > currentScore + 20);
     }
 
-    _assignJob(member, needs, distribution, village) {
-        let job = JobTypes.LOGGER;
-        const board = village.taskBoard || [];
-        const pop = village.members.size;
-        
-        // 🏗️ [Scale Fix] 인구에 따라 건축가 최대 수 조정 (최대 5명)
-        const maxArchitects = Math.min(5, Math.ceil(pop / 5));
-        
-        const hasBuildTask = board.some(t => t.type === 'build' && t.status === 'AVAILABLE');
-        const hasWoodTask = board.some(t => t.type === 'gather_wood' && t.status === 'AVAILABLE');
-        const hasFoodTask = board.some(t => (t.type === 'gather_food' || t.type === 'hunt') && t.status === 'AVAILABLE');
-        const hasStoneTask = board.some(t => t.type === 'gather_stone' && t.status === 'AVAILABLE');
+    _assignJob(member, needs, distribution, village, quotas) {
+        let bestJob = JobTypes.LOGGER;
+        let highestScore = -1;
 
-        if (hasBuildTask && (distribution[JobTypes.ARCHITECT] || 0) < maxArchitects) {
-            job = JobTypes.ARCHITECT;
-        } else if (hasFoodTask && (distribution[JobTypes.GATHERER] || 0) < Math.ceil(pop / 3)) {
-            job = Math.random() < 0.7 ? JobTypes.GATHERER : JobTypes.HUNTER;
-        } else if (hasStoneTask && (distribution[JobTypes.MINER] || 0) < 2) {
-            job = JobTypes.MINER;
-        } else if (hasWoodTask) {
-            job = JobTypes.LOGGER;
-        } else if (needs.needFood && !needs.isFoodFull) {
-            job = Math.random() < 0.5 ? JobTypes.GATHERER : JobTypes.HUNTER;
-        } else if (needs.needWood && !needs.isWoodFull) {
-            job = JobTypes.LOGGER;
-        } else if (needs.needStone && !needs.isStoneFull) {
-            job = JobTypes.MINER;
-        } else {
-            const rand = Math.random();
-            if (rand < 0.3) job = JobTypes.LOGGER;
-            else if (rand < 0.6) job = JobTypes.GATHERER;
-            else if (rand < 0.8) job = JobTypes.MINER;
-            else job = JobTypes.HUNTER;
+        for (const type of Object.values(JobTypes)) {
+            if (type === JobTypes.CHIEF || type === JobTypes.UNEMPLOYED) continue;
+            const score = this._calculateJobPriority(type, needs, distribution, village, quotas);
+            if (score > highestScore) {
+                highestScore = score;
+                bestJob = type;
+            }
         }
 
         const mCiv = member.components.get('Civilization');
         if (mCiv) {
-            mCiv.jobType = job;
+            const oldJob = mCiv.jobType;
+            mCiv.jobType = bestJob;
+            
             const roleFactory = this.system.roleFactory || this.engine.systemManager?.humanBehavior?.roleFactory;
             if (roleFactory) {
-                mCiv.role = roleFactory.createRole(job);
+                mCiv.role = roleFactory.createRole(bestJob);
             }
 
-            // 🧠 [AI Sync] JobController가 있다면 즉시 직업 변경 통보
             const jobCtrl = member.components.get('JobController');
             if (jobCtrl) {
-                jobCtrl.assignJob(job);
+                jobCtrl.assignJob(bestJob);
+            }
+
+            // 📢 [Rationale Logging] 중요한 직업 변경 시 로그 남기기
+            if (oldJob !== bestJob && highestScore > 70) {
+                const jobLabel = JobTypes[bestJob.toUpperCase()];
+                GlobalLogger.info(`👑 [Chief] Reassigned to ${jobLabel} (Priority: ${highestScore.toFixed(1)}) due to urgent village needs.`);
             }
         }
-        return job;
+        return bestJob;
     }
 
     // ==========================================

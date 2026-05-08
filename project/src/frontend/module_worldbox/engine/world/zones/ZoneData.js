@@ -17,21 +17,26 @@ export default class ZoneData {
         this.assignedWorkers = new Set();
 
         // 🗺️ [Tile-Based Territory] 구역에 할당된 타일 목록
-        this.territory = new Set(); // Set of "tx,ty"
+        this.territory = new Set(); // Set of packed tile keys: (ty << 16) | tx
 
         // 📚 [Civilization] 구역 내 문화 및 영향력 수치
         this.culture = 0;
         this.influence = 0;
+        this.influenceRadius = Math.max(width, height) * 0.5;
+        this.influenceAlpha = 0.18;
+        this.villageId = undefined;
+        this.nationId = -1;
         this.growthPool = 0; // 영토 확장을 위한 에너지 축적
     }
 
     contains(x, y) {
         const tx = Math.floor(x / 16);
         const ty = Math.floor(y / 16);
-        const key = `${tx},${ty}`;
+        const packedKey = (ty << 16) | tx;
+        const legacyKey = `${tx},${ty}`;
 
         if (this.territory.size > 0) {
-            return this.territory.has(key);
+            return this.territory.has(packedKey) || this.territory.has(legacyKey);
         }
 
         return x >= this.bounds.minX && x <= this.bounds.maxX &&

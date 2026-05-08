@@ -26,6 +26,84 @@ export default class EconomyManager {
         }
     }
 
+    processNationalTributeAndDistribution(nationSystem, villageSystem) {
+        if (!nationSystem || !villageSystem) return null;
+        const ledger = [];
+        const resourceTypes = ['food', 'wood', 'stone', 'gold'];
+
+        for (const nation of nationSystem.nations.values()) {
+            if (!nation.resources) nation.resources = { wood: 0, food: 0, stone: 0, gold: 0 };
+            const villageList = Array.from(nation.villages || [])
+                .map(id => villageSystem.getVillage(id))
+                .filter(Boolean);
+
+            for (const village of villageList) {
+                village.resources = village.resources || {};
+                village.resourceNeeds = village.resourceNeeds || {};
+
+                for (const type of resourceTypes) {
+                    const current = village.resources[type] || 0;
+                    const reserve = Math.max(20, (village.resourceNeeds[type] || 0) * 1.4);
+                    if (current <= reserve) continue;
+
+                    const tribute = Math.min(current - reserve, Math.max(1, current * 0.08));
+                    const taken = this._withdrawFromVillage(village, type, tribute);
+                    if (taken <= 0) continue;
+
+                    nation.resources[type] = (nation.resources[type] || 0) + taken;
+                    village.resources[type] = Math.max(0, (village.resources[type] || 0) - taken);
+                    ledger.push({ nationId: nation.id, villageId: village.id, type, amount: taken, direction: 'tribute' });
+                }
+            }
+
+            for (const village of villageList) {
+                for (const type of resourceTypes) {
+                    const current = village.resources?.[type] || 0;
+                    const need = village.resourceNeeds?.[type] || 0;
+                    if (need <= 0 || current >= need || (nation.resources[type] || 0) <= 0) continue;
+
+                    const grant = Math.min(need - current, nation.resources[type], 35);
+                    const added = this._depositToVillage(village, type, grant);
+                    if (added <= 0) continue;
+
+                    nation.resources[type] -= added;
+                    village.resources[type] = (village.resources[type] || 0) + added;
+                    ledger.push({ nationId: nation.id, villageId: village.id, type, amount: added, direction: 'grant' });
+                }
+            }
+
+            nation.tributeLedger = ledger.filter(entry => entry.nationId === nation.id).slice(-20);
+        }
+
+        return ledger;
+    }
+
+    _withdrawFromVillage(village, type, amount) {
+        let remaining = amount;
+        if (!village.storageIds) return 0;
+        for (const storageId of village.storageIds) {
+            const storageEnt = this.entityManager.entities.get(storageId);
+            const storage = storageEnt?.components.get('Storage');
+            if (!storage) continue;
+            remaining -= storage.withdraw(type, remaining);
+            if (remaining <= 0) break;
+        }
+        return amount - remaining;
+    }
+
+    _depositToVillage(village, type, amount) {
+        if (!village.storageIds || village.storageIds.size === 0) return 0;
+        let remaining = amount;
+        for (const storageId of village.storageIds) {
+            const storageEnt = this.entityManager.entities.get(storageId);
+            const storage = storageEnt?.components.get('Storage');
+            if (!storage) continue;
+            remaining -= storage.addItem(type, remaining);
+            if (remaining <= 0) break;
+        }
+        return amount - remaining;
+    }
+
     /**
      * Blackboard에 최신 창고 정보를 갱신
      */

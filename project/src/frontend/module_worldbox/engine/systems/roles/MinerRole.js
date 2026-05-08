@@ -24,6 +24,7 @@ export default class MinerRole extends BaseRole {
             state.targetId = null;
             return null;
         }
+        state.targetResourceType = 'stone';
 
         // 인벤토리가 꽉 찼으면 창고에 보관
         if (inventory && inventory.getTotal() >= inventory.capacity) {
@@ -73,7 +74,7 @@ export default class MinerRole extends BaseRole {
             const rType = (resource.type || '').toLowerCase();
             const rCat = (resource.category || '').toLowerCase();
 
-            const isStone = (rCat === 'mineral' || rCat === 'stone' || rType.includes('stone') || rType.includes('ore'));
+            const isStone = (rCat === 'mineral' || rCat === 'stone' || rType.includes('stone') || rType.includes('ore') || resource.isMineral);
             if (!isStone) return false;
             
             if (state.unreachableTargets && state.unreachableTargets.has(ent.id)) return false;
@@ -90,9 +91,9 @@ export default class MinerRole extends BaseRole {
             const targetEnt = this.em.entities.get(nearestStoneId);
             const targetRes = targetEnt?.components.get('Resource');
             if (targetRes) targetRes.claimedBy = entity.id;
-            return 'gather_stone';
+            return 'job_miner';
         }
 
-        return null;
+        return 'job_miner'; // 기본적으로 MinerState에 위임하여 타겟 요청 수행
     }
 }

@@ -92,8 +92,10 @@ export default class GatherWoodState extends GatherState {
             if (!state.isTargetRequested) {
                 const targetManager = this.system.engine.systemManager.targetManager;
                 if (targetManager) {
-                    const reqType = state.targetResourceType || 'wood';
-                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: reqType }, 'gather_wood');
+                    const isMining = state.mode === 'gather_stone';
+                    const defaultResourceType = isMining ? 'stone' : 'wood';
+                    const reqType = state.targetResourceType || defaultResourceType;
+                    targetManager.requestTarget(entityId, 'RESOURCE', { resourceType: reqType }, isMining ? 'gather_stone' : 'gather_wood');
                     state.isTargetRequested = true;
                 }
             }

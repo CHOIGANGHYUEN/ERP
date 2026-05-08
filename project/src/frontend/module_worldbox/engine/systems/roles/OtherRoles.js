@@ -11,11 +11,19 @@ import BaseRole from './BaseRole.js';
 
 export class FarmerRole extends BaseRole {
     decide(entity, dt) {
-        // TODO: FarmingSystem과 연동하여 농장 타일로 이동 후 경작
-        // 현재는 채집가(FORAGE)로 임시 처리
         const state = entity.components.get('AIState');
-        if (!state) return null;
-        return null; // 기본 HumanBrain에 위임
+        const transform = entity.components.get('Transform');
+        const civ = entity.components.get('Civilization');
+        const jobCtrl = entity.components.get('JobController');
+        if (!state || !transform || !civ || !jobCtrl) return null;
+
+        // 이미 작업 중이면 유지
+        if (state.mode === 'job_farmer' && jobCtrl.jobState !== 'IDLE') {
+            return 'job_farmer';
+        }
+
+        // TODO: 더 정교한 농장 배정 로직 (현재는 FarmerState 내부에서 탐색)
+        return 'job_farmer';
     }
 }
 

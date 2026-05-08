@@ -37,6 +37,12 @@ export default class FarmingSystem extends System {
         // 건설이 완료된 농장만 작동
         if (!farm || !transform || (structure && !structure.isComplete)) return;
 
+        // 🚜 [System Decoupling] 농부가 씨앗을 뿌린 상태(isSeeded)여야만 성장이 진행됨
+        if (!farm.isSeeded) {
+            farm.growth = 0;
+            return;
+        }
+
         // 지형 비옥도 확인 (0~255)
         const terrain = this.engine.terrainGen;
         const x = Math.floor(transform.x);
@@ -48,8 +54,11 @@ export default class FarmingSystem extends System {
         if (farm.growth === undefined) farm.growth = 0;
 
         if (farm.currentCrops < (farm.maxCrops || 10)) {
+            // 농부가 옆에서 돌봐주고 있으면(isTending) 성장 속도 2배 보너스
+            const tendingBonus = farm.isTending ? 2.0 : 1.0;
             const fertilityMult = (fertility / 255) + 0.2; // 비옥도 가중치
-            farm.growth += (farm.growthRate || 0.05) * fertilityMult * 5;
+            
+            farm.growth += (farm.growthRate || 0.05) * fertilityMult * 5 * tendingBonus;
 
             if (farm.growth >= 100) {
                 farm.growth = 0;
@@ -58,16 +67,7 @@ export default class FarmingSystem extends System {
             }
         }
 
-        // 수확 시점 (작물이 어느 정도 찼을 때)
-        if (farm.currentCrops >= (farm.maxCrops || 10) * 0.8) {
-            if (storage && !storage.isFull) {
-                const harvested = farm.currentCrops;
-                storage.addItem(farm.cropType || 'wheat', harvested);
-                farm.currentCrops = 0;
-                farm.growth = 0;
-                GlobalLogger.success(`🌾 Farm ${id} harvested ${harvested} units of ${farm.cropType}`);
-                this.eventBus.emit('FARM_HARVESTED', { id, amount: harvested });
-            }
-        }
+        // 수확 가능 여부 플래그 업데이트 (농부 AI가 이를 보고 수확하러 옴)
+        farm.isHarvestable = farm.currentCrops >= (farm.maxCrops || 10) * 0.8;
     }
 }

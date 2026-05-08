@@ -19,13 +19,64 @@ export default class UISystem extends System {
         this.initLogUI();
         this.initMonitorUI();
 
+        // Window state management
+        this.panelState = {
+            logs: { collapsed: false, visible: false, x: window.innerWidth - 370, y: window.innerHeight - 530 },
+            monitor: { collapsed: false, visible: false, x: window.innerWidth - 630, y: window.innerHeight - 530 }
+        };
+
         // EventBus를 통해 사용자의 클릭(Inspect) 명령을 수신합니다.
         this.eventBus.on('INSPECT_REQUEST', (worldPos) => {
             this.handleSelect(worldPos);
         });
     }
 
-    /** 📜 로깅 뷰어 UI 생성 및 바인딩 */
+    /** 🚀 [Expert Interface] 드래그 가능하게 만들기 */
+    makeDraggable(element, handle, stateKey) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        
+        handle.onmousedown = dragMouseDown.bind(this);
+
+        function dragMouseDown(e) {
+            e = e || window.event;
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag.bind(this);
+            handle.style.cursor = 'grabbing';
+        }
+
+        function elementDrag(e) {
+            e = e || window.event;
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            
+            const newY = element.offsetTop - pos2;
+            const newX = element.offsetLeft - pos1;
+            
+            element.style.top = newY + "px";
+            element.style.left = newX + "px";
+            element.style.bottom = 'auto';
+            element.style.right = 'auto';
+            
+            // Save state
+            if (this.panelState[stateKey]) {
+                this.panelState[stateKey].x = newX;
+                this.panelState[stateKey].y = newY;
+            }
+        }
+
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+            handle.style.cursor = 'grab';
+        }
+    }
+
     initLogUI() {
         const createUI = () => {
             if (!document.body) return;
@@ -35,82 +86,118 @@ export default class UISystem extends System {
             this.logContainer.id = 'worldbox-log-container';
             Object.assign(this.logContainer.style, {
                 position: 'fixed',
-                bottom: '70px',
-                right: '20px',
+                top: (window.innerHeight - 530) + 'px',
+                left: (window.innerWidth - 370) + 'px',
                 width: '350px',
                 height: '450px',
-                backgroundColor: 'rgba(13, 25, 41, 0.9)',
-                backdropFilter: 'blur(15px)',
+                backgroundColor: 'rgba(10, 15, 25, 0.85)',
+                backdropFilter: 'blur(25px)',
                 color: '#e3f2fd',
-                fontFamily: "'Cascadia Code', 'Consolas', monospace",
-                fontSize: '11px',
-                padding: '12px',
-                borderRadius: '16px',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                overflowY: 'auto',
+                fontFamily: "'Inter', sans-serif",
+                borderRadius: '20px',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
                 display: 'none',
                 zIndex: '999999',
-                boxShadow: '0 12px 48px rgba(0,0,0,0.5)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                scrollbarWidth: 'thin'
+                boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
+                overflow: 'hidden',
+                display: 'none',
+                flexDirection: 'column'
             });
 
-            // 2. 토글 버튼 생성
+            // 2. Header (Draggable)
+            const header = document.createElement('div');
+            header.id = 'log-header';
+            Object.assign(header.style, {
+                padding: '14px 18px',
+                background: 'linear-gradient(to right, rgba(255,255,255,0.05), transparent)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                cursor: 'grab',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                userSelect: 'none'
+            });
+            header.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:14px;">📜</span>
+                    <span style="font-size:0.75rem; font-weight:900; letter-spacing:2px; color:#4fc3f7;">SYSTEM ACTIVITY</span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button id="log-collapse-btn" style="background:none; border:none; color:#888; cursor:pointer; font-size:16px;">−</button>
+                    <button id="log-close-btn" style="background:none; border:none; color:#888; cursor:pointer; font-size:16px;">✕</button>
+                </div>
+            `;
+            this.logContainer.appendChild(header);
+
+            // 3. Content Area
+            this.logContent = document.createElement('div');
+            Object.assign(this.logContent.style, {
+                flex: '1',
+                overflowY: 'auto',
+                padding: '15px',
+                fontFamily: "'Cascadia Code', monospace",
+                fontSize: '11px'
+            });
+            this.logContainer.appendChild(this.logContent);
+
+            // 4. Toggle Button
             this.logToggleButton = document.createElement('button');
-            this.logToggleButton.innerHTML = '<span style="margin-right:8px;">📜</span>SYSTEM LOGS';
+            this.logToggleButton.innerHTML = '<span style="margin-right:10px; font-size:16px;">📋</span>LOGS & MONITOR';
             Object.assign(this.logToggleButton.style, {
                 position: 'fixed',
-                bottom: '20px',
-                right: '20px',
-                padding: '10px 20px',
-                backgroundColor: '#0288d1',
+                bottom: '25px',
+                right: '25px',
+                padding: '12px 24px',
+                backgroundColor: 'rgba(2, 136, 209, 0.9)',
+                backdropFilter: 'blur(10px)',
                 color: '#fff',
-                border: '1px solid rgba(255,255,255,0.3)',
+                border: '1px solid rgba(255,255,255,0.2)',
                 borderRadius: '30px',
                 cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '800',
-                letterSpacing: '0.5px',
+                fontSize: '0.8rem',
+                fontWeight: '900',
+                letterSpacing: '1px',
                 zIndex: '1000000',
-                boxShadow: '0 4px 20px rgba(2, 136, 209, 0.4)',
+                boxShadow: '0 8px 32px rgba(2, 136, 209, 0.3)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
             });
 
-            this.logToggleButton.onmouseover = () => {
-                this.logToggleButton.style.backgroundColor = '#03a9f4';
-                this.logToggleButton.style.transform = 'translateY(-2px)';
-            };
-            this.logToggleButton.onmouseout = () => {
-                this.logToggleButton.style.backgroundColor = '#0288d1';
-                this.logToggleButton.style.transform = 'translateY(0)';
-            };
-            
             this.logToggleButton.onclick = () => {
-                const isVisible = this.logContainer.style.display === 'block';
-                const nextState = isVisible ? 'none' : 'block';
-                
+                const isVisible = this.logContainer.style.display === 'flex';
+                const nextState = isVisible ? 'none' : 'flex';
                 this.logContainer.style.display = nextState;
                 if (this.monitorContainer) this.monitorContainer.style.display = nextState;
-                
-                if (!isVisible) {
-                    this.logContainer.scrollTop = 0; 
-                    this.refreshMonitor();
-                }
+                this.logToggleButton.style.transform = isVisible ? 'scale(1)' : 'scale(0.95)';
+                this.logToggleButton.style.backgroundColor = isVisible ? 'rgba(2, 136, 209, 0.9)' : 'rgba(2, 136, 209, 1)';
             };
 
             document.body.appendChild(this.logContainer);
             document.body.appendChild(this.logToggleButton);
 
-            // 3. 로거 콜백 등록 (직접 렌더링 대신 데이터 캐싱 및 플래그 설정)
+            // Functionality
+            this.makeDraggable(this.logContainer, header, 'logs');
+            
+            const collapseBtn = header.querySelector('#log-collapse-btn');
+            collapseBtn.onclick = () => {
+                const isCollapsed = this.logContent.style.display === 'none';
+                this.logContent.style.display = isCollapsed ? 'block' : 'none';
+                this.logContainer.style.height = isCollapsed ? '450px' : 'auto';
+                collapseBtn.innerText = isCollapsed ? '−' : '+';
+            };
+
+            const closeBtn = header.querySelector('#log-close-btn');
+            closeBtn.onclick = () => {
+                this.logContainer.style.display = 'none';
+                if (this.monitorContainer) this.monitorContainer.style.display = 'none';
+            };
+
             GlobalLogger.onUpdate = (logs) => {
                 this.cachedLogs = logs;
                 this.logDirty = true;
             };
-            
-            GlobalLogger.success('LOGGING SYSTEM READY: Monitoring world events...');
         };
 
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -120,7 +207,6 @@ export default class UISystem extends System {
         }
     }
 
-    /** 📊 월드 실시간 모니터링 UI 생성 */
     initMonitorUI() {
         const createUI = () => {
             if (!document.body) return;
@@ -129,25 +215,72 @@ export default class UISystem extends System {
             this.monitorContainer.id = 'worldbox-monitor-container';
             Object.assign(this.monitorContainer.style, {
                 position: 'fixed',
-                bottom: '70px',
-                right: '380px',
-                width: '240px',
+                top: (window.innerHeight - 530) + 'px',
+                left: (window.innerWidth - 630) + 'px',
+                width: '250px',
                 height: 'auto',
-                maxHeight: '400px',
                 backgroundColor: 'rgba(7, 15, 25, 0.85)',
-                backdropFilter: 'blur(20px)',
+                backdropFilter: 'blur(25px)',
                 color: '#fff',
                 fontFamily: "'Inter', sans-serif",
-                padding: '16px',
-                borderRadius: '16px',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '20px',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
                 display: 'none',
                 zIndex: '999998',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                transition: 'all 0.3s ease'
+                boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+                overflow: 'hidden',
+                flexDirection: 'column'
             });
 
+            // Header (Draggable)
+            const header = document.createElement('div');
+            Object.assign(header.style, {
+                padding: '14px 18px',
+                background: 'linear-gradient(to right, rgba(255,255,255,0.05), transparent)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                cursor: 'grab',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                userSelect: 'none'
+            });
+            header.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:14px;">📊</span>
+                    <span style="font-size:0.7rem; font-weight:900; letter-spacing:2px; color:#ffd54f;">WORLD MONITOR</span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button id="mon-collapse-btn" style="background:none; border:none; color:#888; cursor:pointer; font-size:16px;">−</button>
+                    <button id="mon-close-btn" style="background:none; border:none; color:#888; cursor:pointer; font-size:16px;">✕</button>
+                </div>
+            `;
+            this.monitorContainer.appendChild(header);
+
+            this.monitorContent = document.createElement('div');
+            Object.assign(this.monitorContent.style, {
+                padding: '16px',
+                maxHeight: '400px',
+                overflowY: 'auto'
+            });
+            this.monitorContainer.appendChild(this.monitorContent);
+
             document.body.appendChild(this.monitorContainer);
+
+            // Functionality
+            this.makeDraggable(this.monitorContainer, header, 'monitor');
+
+            const collapseBtn = header.querySelector('#mon-collapse-btn');
+            collapseBtn.onclick = () => {
+                const isCollapsed = this.monitorContent.style.display === 'none';
+                this.monitorContent.style.display = isCollapsed ? 'block' : 'none';
+                collapseBtn.innerText = isCollapsed ? '−' : '+';
+            };
+
+            const closeBtn = header.querySelector('#mon-close-btn');
+            closeBtn.onclick = () => {
+                this.monitorContainer.style.display = 'none';
+                if (this.logContainer) this.logContainer.style.display = 'none';
+            };
         };
 
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -158,8 +291,8 @@ export default class UISystem extends System {
     }
 
     refreshMonitor() {
-        if (!this.monitorContainer || this.monitorContainer.style.display === 'none') return;
-
+        if (!this.monitorContent || this.monitorContainer.style.display === 'none') return;
+        
         const stats = {
             population: 0,
             villages: 0,
@@ -168,7 +301,14 @@ export default class UISystem extends System {
             resources: { food: 0, wood: 0, stone: 0, iron_ore: 0 }
         };
 
+        // 🚀 [Expert Optimization] Use pre-aggregated data from systems
+        const vs = this.engine.systemManager?.villageSystem;
         const ns = this.engine.systemManager?.nationSystem;
+        
+        stats.population = this.entityManager.humanIds.size;
+        stats.animals = this.entityManager.animalIds.size - stats.population;
+        stats.villages = vs?.villages.size || 0;
+
         if (ns) {
             for (const nation of ns.nations.values()) {
                 stats.nations.push({
@@ -183,63 +323,46 @@ export default class UISystem extends System {
             }
         }
 
-        // 🛡️ [Performance Safety] 엔티티가 너무 많으면 집계를 건너뛰거나 샘플링
-        const entityCount = this.entityManager.entities.size;
-        if (entityCount > 5000) {
-            this.monitorContainer.innerHTML = `<div style="color:#ff5252; font-size:10px;">⚠️ Too many entities to monitor (${entityCount})</div>`;
-            return;
-        }
-
-        for (const [id, ent] of this.entityManager.entities) {
-            if (ent.components.has('Civilization')) stats.population++;
-            if (ent.components.has('Animal') && !ent.components.has('Civilization')) stats.animals++;
-            
-            const storage = ent.components.get('Storage');
-            if (storage) {
+        // Global Stocks from all villages
+        if (vs) {
+            for (const v of vs.villages.values()) {
                 for (const type in stats.resources) {
-                    stats.resources[type] += (storage.items[type] || 0);
+                    stats.resources[type] += (v.resources?.[type] || 0);
                 }
             }
         }
 
-        stats.villages = this.engine.systemManager?.villageSystem?.villages?.size || 0;
-
-        this.monitorContainer.innerHTML = `
-            <div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 800; color: #ffeb3b; font-size: 13px; letter-spacing: 1px;">📊 WORLD MONITOR</span>
-                <span style="font-size: 10px; opacity: 0.6;">LIVE</span>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
-                <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 10px; opacity: 0.5;">POPULATION</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #4fc3f7;">${stats.population}</div>
+        this.monitorContent.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size: 9px; font-weight: 800; color: #888; margin-bottom: 4px;">PEOPLE</div>
+                    <div style="font-size: 18px; font-weight: 900; color: #4fc3f7;">${stats.population}</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 10px; opacity: 0.5;">VILLAGES</div>
-                    <div style="font-size: 16px; font-weight: 800; color: #f48fb1;">${stats.villages}</div>
+                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size: 9px; font-weight: 800; color: #888; margin-bottom: 4px;">VILLAGES</div>
+                    <div style="font-size: 18px; font-weight: 900; color: #f48fb1;">${stats.villages}</div>
                 </div>
             </div>
 
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; font-size: 11px; background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: 6px;">
-                <span style="color: #81c784; font-weight: 700;">🐾 WILDLIFE</span>
-                <span style="font-weight: 800;">${stats.animals}</span>
+            <div style="margin-bottom: 15px; display: flex; justify-content: space-between; font-size: 11px; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                <span style="color: #81c784; font-weight: 800;">🐾 WILDLIFE</span>
+                <span style="font-weight: 900; color: #fff;">${stats.animals}</span>
             </div>
 
-            <div style="margin-bottom: 12px;">
-                <div style="font-size: 11px; margin-bottom: 6px; color: #ffeb3b; font-weight: 700;">🚩 NATIONS</div>
-                <div style="display: grid; gap: 6px;">
+            <div style="margin-bottom: 15px;">
+                <div style="font-size: 10px; margin-bottom: 8px; color: #ffd54f; font-weight: 900; letter-spacing: 1px;">NATIONS</div>
+                <div style="display: grid; gap: 8px;">
                     ${stats.nations.map(n => `
-                        <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; border-left: 3px solid ${n.color};">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                <span style="font-weight: 700; font-size: 12px;">${n.name}</span>
-                                <span style="font-size: 10px; background: rgba(255,215,0,0.2); color: #ffd700; padding: 1px 4px; border-radius: 4px;">🏆 ${n.prestige}</span>
+                        <div style="background: rgba(255,255,255,0.04); padding: 10px; border-radius: 12px; border-left: 4px solid ${n.color};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-weight: 800; font-size: 0.8rem;">${n.name}</span>
+                                <span style="font-size: 9px; background: rgba(255,215,0,0.2); color: #ffd700; padding: 2px 6px; border-radius: 6px; font-weight: 800;">🏆 ${n.prestige}</span>
                             </div>
-                            <div style="display: flex; gap: 8px; font-size: 9px; opacity: 0.7;">
-                                <span>👥 ${n.population}</span>
-                                <span>🏘️ ${n.villageCount}</span>
-                                <span>🪵 ${Math.floor(n.resources.wood)}</span>
-                                <span>🍎 ${Math.floor(n.resources.food)}</span>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 9px; opacity: 0.8; font-weight: 600;">
+                                <span>👤 ${n.population} Pop</span>
+                                <span>🏘️ ${n.villageCount} Vil</span>
+                                <span>🪵 ${Math.floor(n.resources.wood)} Wood</span>
+                                <span>🍎 ${Math.floor(n.resources.food)} Food</span>
                             </div>
                         </div>
                     `).join('')}
@@ -247,12 +370,12 @@ export default class UISystem extends System {
             </div>
 
             <div>
-                <div style="font-size: 11px; margin-bottom: 6px; color: #ffb74d; font-weight: 700;">📦 GLOBAL STORAGE</div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <div style="font-size: 10px; margin-bottom: 8px; color: #ffb74d; font-weight: 900; letter-spacing: 1px;">GLOBAL STOCK</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     ${Object.entries(stats.resources).map(([type, val]) => `
-                        <div style="display: flex; justify-content: space-between; font-size: 10px; padding: 2px 0;">
-                            <span style="opacity: 0.7;">${type.toUpperCase()}</span>
-                            <span style="font-weight: 700;">${Math.floor(val)}</span>
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                            <span style="opacity: 0.6; font-weight: 800;">${type.slice(0, 4).toUpperCase()}</span>
+                            <span style="font-weight: 900;">${Math.floor(val)}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -265,23 +388,17 @@ export default class UISystem extends System {
      * 백그라운드에서 쌓인 로그를 배치로 처리합니다.
      */
     renderLogs() {
-        if (!this.logContainer || this.logContainer.style.display === 'none' || !this.logDirty) return;
+        if (!this.logContent || this.logContainer.style.display === 'none' || !this.logDirty) return;
 
         const fragment = document.createDocumentFragment();
-        const header = document.createElement('div');
-        header.style.cssText = 'border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; margin-bottom: 10px; font-weight: 800; color: #4fc3f7; text-transform: uppercase; letter-spacing: 1px;';
-        header.innerHTML = '📋 System Activity Log';
-        fragment.appendChild(header);
-
-        // 최신 100개만 우선 렌더링하여 DOM 부하 방지
-        const visibleLogs = this.cachedLogs.slice(0, 100);
+        const visibleLogs = this.cachedLogs.slice(0, 50);
 
         visibleLogs.forEach(log => {
             const div = document.createElement('div');
-            div.style.cssText = 'margin-bottom: 6px; line-height: 1.5; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); border-left: 3px solid transparent;';
+            div.style.cssText = 'margin-bottom: 6px; line-height: 1.4; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); border-left: 3px solid transparent; font-size: 10px;';
             
-            let color = '#e0e0e0';
-            let borderColor = 'transparent';
+            let color = '#cfd8dc';
+            let borderColor = 'rgba(255,255,255,0.1)';
             
             if (log.type === 'warn') {
                 color = '#ffd54f';
@@ -295,12 +412,12 @@ export default class UISystem extends System {
             }
             
             div.style.borderLeftColor = borderColor;
-            div.innerHTML = `<span style="color: rgba(255,255,255,0.3); font-size: 9px; margin-right: 8px;">${log.timestamp}</span><span style="color: ${color}">${log.message}</span>`;
+            div.innerHTML = `<div style="display:flex; justify-content:space-between; margin-bottom:2px;"><span style="color:rgba(255,255,255,0.2); font-size:8px;">${log.timestamp}</span></div><div style="color: ${color}">${log.message}</div>`;
             fragment.appendChild(div);
         });
 
-        this.logContainer.innerHTML = '';
-        this.logContainer.appendChild(fragment);
+        this.logContent.innerHTML = '';
+        this.logContent.appendChild(fragment);
         this.logDirty = false;
     }
 

@@ -1,4 +1,5 @@
 import ZoneData from '../../world/zones/ZoneData.js';
+import { GlobalLogger } from '../../utils/Logger.js';
 
 export default class ZoneManager {
     constructor(engine) {
@@ -33,12 +34,12 @@ export default class ZoneManager {
     _processVillageExpansion(village, dt) {
         const ns = this.engine.systemManager?.nationSystem;
         const nation = village.nationId !== -1 ? ns?.getNation(village.nationId) : null;
-        
+
         // 확장 강도 계산: 인구 + 국가 문화/기술 보너스
         const popFactor = Math.sqrt(village.members.size) * 0.5;
         const cultureFactor = (nation?.culture || 0) * 0.1;
         const policyFactor = village.cultureRate || 1.0;
-        
+
         const expansionStrength = (popFactor + cultureFactor) * policyFactor;
 
         // 주거 구역과 벌목 구역 각각 확장 시도
@@ -51,18 +52,19 @@ export default class ZoneManager {
         if (!zone || !zone.territory || zone.territory.size === 0) return;
 
         zone.growthPool += strength;
-        
+
         // 임계값 도달 시 확장 (영토가 넓어질수록 더 많은 에너지가 필요함)
         const threshold = 10 + (zone.territory.size * 0.5);
         if (zone.growthPool >= threshold) {
             zone.growthPool = 0;
-            this._expandOneTile(villageId, zoneId);
+            this._expandOneTile(villageId, zoneId, strength);
         }
     }
 
-    _expandOneTile(villageId, zoneId) {
+    _expandOneTile(villageId, zoneId, strength = 0) {
         const zone = this.zones.get(zoneId);
         const vs = this.engine.systemManager?.villageSystem;
+        const ns = this.engine.systemManager?.nationSystem;
         const village = vs?.getVillage(villageId);
         if (!zone || !village) return;
 
@@ -77,10 +79,10 @@ export default class ZoneManager {
             for (const [dx, dy] of dirs) {
                 const nx = tx + dx, ny = ty + dy;
                 const nKey = (ny << 16) | nx;
-                
+
                 // 1. 맵 경계 체크
                 if (nx < 0 || nx >= this.engine.mapWidth / 16 || ny < 0 || ny >= this.engine.mapHeight / 16) continue;
-                
+
                 // 2. 이미 점유된 타일인 경우 처리 (Conflict Logic)
                 const tg = this.engine.terrainGen;
                 const territoryBuffer = tg?.territoryBuffer;
@@ -89,13 +91,13 @@ export default class ZoneManager {
 
                 if (currentOwnerId > 0) {
                     if (currentOwnerId === villageId) continue; // 내 타일이면 패스
-                    
+
                     // 타지마을 타일인 경우: 내 확장 강도가 상대의 방어력(문화/인구)보다 월등히 높아야 탈취 가능
                     const otherVillage = vs.getVillage(currentOwnerId);
                     if (otherVillage) {
                         const myStrength = strength;
                         const otherDefense = (Math.sqrt(otherVillage.members.size) * 0.5) + ((ns?.getNation(otherVillage.nationId)?.culture || 0) * 0.1);
-                        
+
                         // ⚔️ 탈취 시도 (2배 이상 강력할 때)
                         if (myStrength > otherDefense * 2.0) {
                             candidates.push({ nx, ny, nKey, isConflict: true, oldOwner: currentOwnerId });
@@ -114,7 +116,7 @@ export default class ZoneManager {
         if (candidates.length > 0) {
             // 랜덤하게 하나 선택하여 확장 (탈취 타겟이 있으면 우선순위 고려 가능하지만 여기서는 랜덤)
             const pick = candidates[Math.floor(Math.random() * candidates.length)];
-            
+
             if (pick.isConflict) {
                 // 기존 소유자로부터 제거
                 const oldVillage = vs.getVillage(pick.oldOwner);
@@ -132,10 +134,10 @@ export default class ZoneManager {
 
             // 마을 영토에 추가
             village.territory.add(pick.nKey);
-            
+
             // 구역에 추가
             this.addTileToZone(zoneId, pick.nx, pick.ny);
-            
+
             // 🎨 [Sync] TerrainGen 버퍼 동기화
             const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
             if (territoryBuffer) {
@@ -153,6 +155,67 @@ export default class ZoneManager {
             }
 
             GlobalLogger.info(`🌍 Territory Expanded: Village ${villageId} claimed tile (${pick.nx}, ${pick.ny})`);
+        }
+    }
+
+    transferTileToVillage(tileKey, fromVillageId, toVillageId) {
+        const vs = this.engine.systemManager?.villageSystem;
+        const fromVillage = vs?.getVillage(fromVillageId);
+        const toVillage = vs?.getVillage(toVillageId);
+        if (!fromVillage || !toVillage || fromVillageId === toVillageId) return false;
+
+        const key = typeof tileKey === 'number'
+            ? tileKey
+            : (() => {
+                const [tx, ty] = String(tileKey).split(',').map(Number);
+                return (ty << 16) | tx;
+            })();
+        const tx = key & 0xFFFF;
+        const ty = key >> 16;
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+
+        fromVillage.territory?.delete(key);
+        fromVillage.territory?.delete(`${tx},${ty}`);
+        if (!toVillage.territory) toVillage.territory = new Set();
+        toVillage.territory.add(key);
+
+        for (const zone of this.zones.values()) {
+            if (zone.villageId !== fromVillageId) continue;
+            if (zone.territory?.delete(key) || zone.territory?.delete(`${tx},${ty}`)) {
+                if (this.tileToZoneMap.get(key) === zone.id) this.tileToZoneMap.delete(key);
+                this.syncVillageZone(zone.id);
+            }
+        }
+
+        const targetZoneId = toVillage.lumberZoneId || toVillage.residentialZoneId;
+        if (targetZoneId) {
+            this.addTileToZone(targetZoneId, tx, ty);
+            this.syncVillageZone(targetZoneId);
+        }
+
+        this._paintTerritoryBufferTile(tx, ty, toVillageId);
+        this.engine.chunkManager?.markDirty(tx * 16, ty * 16);
+        this.eventBus?.emit('TERRITORY_TRANSFERRED', {
+            tileKey: key,
+            fromVillageId,
+            toVillageId,
+            tx,
+            ty
+        });
+        return true;
+    }
+
+    _paintTerritoryBufferTile(tx, ty, villageId) {
+        const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
+        if (!territoryBuffer) return;
+        for (let dy = 0; dy < 16; dy++) {
+            const rowOff = (ty * 16 + dy) * this.engine.mapWidth;
+            for (let dx = 0; dx < 16; dx++) {
+                const idx = rowOff + (tx * 16 + dx);
+                if (idx >= 0 && idx < territoryBuffer.length) {
+                    territoryBuffer[idx] = villageId;
+                }
+            }
         }
     }
 
@@ -196,7 +259,7 @@ export default class ZoneManager {
                 if (y < minY) minY = y;
                 if (x + 16 > maxX) maxX = x + 16;
                 if (y + 16 > maxY) maxY = y + 16;
-                
+
                 // 🚀 [Map Sync]
                 this.tileToZoneMap.set(key, zoneId);
             }
@@ -220,8 +283,9 @@ export default class ZoneManager {
     /** 🗺️ 특정 타일을 구역에 추가합니다. (중첩 방지 포함) */
     addTileToZone(zoneId, tx, ty) {
         const targetZone = this.zones.get(zoneId);
+
         if (!targetZone) return;
-        
+
         const key = (ty << 16) | tx;
 
         // 🚀 [O(1) Strict Overlap Check] 이미 다른 구역이 이 타일을 점유하고 있는지 확인
@@ -242,12 +306,12 @@ export default class ZoneManager {
 
         targetZone.territory.add(key);
         this.tileToZoneMap.set(key, zoneId);
-        
+
         // 경계 업데이트
-        zone.bounds.minX = Math.min(zone.bounds.minX, tx * 16);
-        zone.bounds.minY = Math.min(zone.bounds.minY, ty * 16);
-        zone.bounds.maxX = Math.max(zone.bounds.maxX, (tx + 1) * 16);
-        zone.bounds.maxY = Math.max(zone.bounds.maxY, (ty + 1) * 16);
+        targetZone.bounds.minX = Math.min(targetZone.bounds.minX, tx * 16);
+        targetZone.bounds.minY = Math.min(targetZone.bounds.minY, ty * 16);
+        targetZone.bounds.maxX = Math.max(targetZone.bounds.maxX, (tx + 1) * 16);
+        targetZone.bounds.maxY = Math.max(targetZone.bounds.maxY, (ty + 1) * 16);
     }
 
     /** 🗺️ [Modification] 구역에서 타일을 제거합니다. */
@@ -563,7 +627,7 @@ export default class ZoneManager {
                 }
             }
             // 🚀 [Tile Fix] 사각형 기반 렌더링을 완전히 제거하고 타일 기반만 허용하거나 라벨만 표시합니다.
-            
+
             // 3. 구역 라벨 및 정보 텍스트 (중앙 정렬)
             ctx.fillStyle = `rgba(${color}, 1.0)`;
             ctx.font = `bold ${Math.max(12, 14 * camera.zoom)}px sans-serif`;

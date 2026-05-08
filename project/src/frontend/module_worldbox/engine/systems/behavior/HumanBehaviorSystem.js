@@ -92,7 +92,7 @@ export default class HumanBehaviorSystem extends System {
         let maxSpeed = config.moveSpeed || 60;
         
         // 1. 생체 리듬 및 감정 업데이트
-        this._updateVitals(stats, dt, state);
+        this._updateVitals(id, entity, stats, dt, state);
 
         // 2. 🏷️ JobController 기반 구역 이탈 방지 & Job State 라우팅 (생존 위기 아닐 때만)
         const jobCtrl = entity.components.get('JobController');
@@ -159,7 +159,8 @@ export default class HumanBehaviorSystem extends System {
         // 타겟 유지 조건 (건설, 채집, 식사 등은 타겟 보존)
         const preservesTarget = [
             AnimalStates.EAT, AnimalStates.PICKUP, AnimalStates.ATTACK, 
-            'build', 'deposit', 'gather_wood', 'gather_stone', 
+            'build', 'deposit', 'withdraw',
+            'gather_wood', 'gather_plant', 'gather_stone',
             AnimalStates.FORAGE, AnimalStates.HUNT
         ].includes(nextMode) || nextMode.startsWith('job_');
 
@@ -178,7 +179,7 @@ export default class HumanBehaviorSystem extends System {
         return this.engine.systems?.get?.('ZoneManager') || null;
     }
 
-    _updateVitals(stats, dt, state) {
+    _updateVitals(id, entity, stats, dt, state) {
         const timeSystem = this.engine.timeSystem;
         const hour = timeSystem.hours;
         const timeScale = timeSystem.timeScale;

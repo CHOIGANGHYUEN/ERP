@@ -1,15 +1,23 @@
 <template>
   <Transition name="slide-right">
-    <div v-if="store.showNationInfo" class="nation-panel">
-      <div class="panel-header">
+    <div 
+      v-if="store.showNationInfo" 
+      class="nation-panel"
+      :style="panelStyle"
+      :class="{ 'minimized': isMinimized }"
+    >
+      <div class="panel-header" @mousedown="startDrag">
         <div class="header-main">
           <span class="icon">🚩</span>
           <h2>EMPIRE OVERVIEW</h2>
         </div>
-        <button class="close-btn" @click="closePanel">×</button>
+        <div class="header-actions">
+          <button class="action-btn minimize-btn" @click.stop="isMinimized = !isMinimized">{{ isMinimized ? '□' : '−' }}</button>
+          <button class="action-btn close-btn" @click.stop="closePanel">×</button>
+        </div>
       </div>
 
-      <div class="panel-content custom-scrollbar">
+      <div class="panel-content custom-scrollbar" v-show="!isMinimized">
         <div v-if="store.nations.length === 0" class="empty-state">
           No nations founded yet. Expand your territory!
         </div>
@@ -28,6 +36,14 @@
             <div class="stat-box">
               <div class="stat-label">VILLAGES</div>
               <div class="stat-value">{{ nation.villageCount }}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">TERRITORY</div>
+              <div class="stat-value">{{ nation.territorySize || 0 }}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">STABILITY</div>
+              <div class="stat-value">{{ nation.stability ?? 70 }}%</div>
             </div>
           </div>
 
@@ -55,6 +71,45 @@
               Tax Rate: {{ (nation.taxRate * 100).toFixed(0) }}% per cycle
             </div>
           </div>
+
+          <div class="progress-section">
+            <div class="metric-row">
+              <span>Culture</span>
+              <strong>{{ nation.culture || 0 }}</strong>
+            </div>
+            <div class="metric-row">
+              <span>Tech</span>
+              <strong>{{ nation.tech || 0 }}</strong>
+            </div>
+            <div class="metric-row">
+              <span>Prestige</span>
+              <strong>{{ nation.prestige || 0 }}</strong>
+            </div>
+          </div>
+
+          <div v-if="nation.diplomacy && nation.diplomacy.length" class="diplomacy-section">
+            <div class="section-title">DIPLOMACY</div>
+            <div v-for="rel in nation.diplomacy" :key="rel.nationId" class="relation-row">
+              <span class="relation-dot" :style="{ backgroundColor: rel.color }"></span>
+              <span class="relation-name">{{ rel.name }}</span>
+              <span class="relation-state" :class="stateClass(rel.state)">
+                {{ stateLabel(rel.state) }} {{ rel.opinion }}
+              </span>
+            </div>
+          </div>
+
+          <div v-if="nation.villages && nation.villages.length" class="village-section">
+            <div class="section-title">VILLAGES</div>
+            <div v-for="village in nation.villages" :key="village.id" class="village-row">
+              <div>
+                <strong>{{ village.name }}</strong>
+                <span>{{ village.population }} pop · {{ village.territorySize }} tiles</span>
+              </div>
+              <div class="loyalty-pill" :class="{ low: village.loyalty < 35 }">
+                {{ village.loyalty }}%
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -62,13 +117,63 @@
 </template>
 
 <script setup>
+import { ref, computed } from 'vue';
 import { useWorldboxStore } from '../store/worldboxStore';
 const store = useWorldboxStore();
 
+// --- Window Management ---
+const isMinimized = ref(false);
+const position = ref({ x: 20, y: 80 }); // Initial offset
+const isDragging = ref(false);
+let dragOffset = { x: 0, y: 0 };
+
+const panelStyle = computed(() => ({
+  top: `${position.value.y}px`,
+  right: `${position.value.x}px`,
+}));
+
+const startDrag = (e) => {
+  isDragging.value = true;
+  dragOffset = {
+    x: e.clientX + position.value.x,
+    y: e.clientY - position.value.y
+  };
+  window.addEventListener('mousemove', onDrag);
+  window.addEventListener('mouseup', stopDrag);
+};
+
+const onDrag = (e) => {
+  if (!isDragging.value) return;
+  position.value = {
+    x: dragOffset.x - e.clientX,
+    y: e.clientY - dragOffset.y
+  };
+};
+
+const stopDrag = () => {
+  isDragging.value = false;
+  window.removeEventListener('mousemove', onDrag);
+  window.removeEventListener('mouseup', stopDrag);
+};
+// -------------------------
+
+const stateLabel = (state) => {
+  if (state === 'war') return 'WAR';
+  if (state === 'ally') return 'ALLY';
+  if (state === 'hostile') return 'HOSTILE';
+  return 'NEUTRAL';
+};
+
+const stateClass = (state) => ({
+  war: state === 'war',
+  ally: state === 'ally',
+  hostile: state === 'hostile'
+});
+
 const closePanel = () => {
-  store.showNationInfo = false;
+  store.closeNationInfo();
   if (window.gameEngine) {
-    window.gameEngine.toggleView('view_nation');
+    if (window.gameEngine.preRenderTerrain) window.gameEngine.preRenderTerrain();
   }
 };
 </script>
@@ -76,17 +181,15 @@ const closePanel = () => {
 <style scoped>
 .nation-panel {
   position: absolute;
-  top: 80px;
-  right: 20px;
   width: 320px;
   max-height: calc(100% - 150px);
   background: rgba(10, 15, 25, 0.9);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  backdrop-filter: blur(25px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 15px 50px rgba(0,0,0,0.6);
+  box-shadow: 0 40px 100px rgba(0,0,0,0.8), inset 0 0 20px rgba(255,255,255,0.01);
   z-index: 1100;
   pointer-events: auto;
   color: #fff;
@@ -112,7 +215,9 @@ const closePanel = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: grab;
 }
+.panel-header:active { cursor: grabbing; }
 
 .header-main {
   display: flex;
@@ -122,22 +227,39 @@ const closePanel = () => {
 
 .header-main h2 {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   letter-spacing: 2px;
-  font-weight: 800;
+  font-weight: 900;
   color: #4fc3f7;
+  text-transform: uppercase;
 }
 
-.close-btn {
-  background: none;
-  border: none;
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
   color: #888;
-  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  line-height: 1;
+  transition: all 0.3s;
 }
 
-.close-btn:hover { color: #fff; }
+.action-btn:hover { 
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.close-btn:hover { color: #ff5252; background: rgba(255,82,82,0.2); border-color: rgba(255,82,82,0.3); }
 
 .panel-content {
   flex: 1;
@@ -239,6 +361,78 @@ const closePanel = () => {
   color: #666;
   text-align: right;
   font-style: italic;
+}
+
+.progress-section,
+.diplomacy-section,
+.village-section {
+  padding: 0 15px 15px;
+}
+
+.metric-row,
+.relation-row,
+.village-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  font-size: 0.72rem;
+  color: #cfd8dc;
+}
+
+.metric-row strong {
+  color: #ffffff;
+  font-family: 'Cascadia Code', monospace;
+}
+
+.relation-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.relation-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relation-state,
+.loyalty-pill {
+  border-radius: 8px;
+  padding: 3px 7px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #b0bec5;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.relation-state.ally { color: #81c784; }
+.relation-state.hostile { color: #ffb74d; }
+.relation-state.war,
+.loyalty-pill.low { color: #ff8a80; }
+
+.village-row div:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.village-row strong {
+  color: #ffffff;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.village-row span {
+  color: #78909c;
+  font-size: 0.62rem;
 }
 
 .empty-state {

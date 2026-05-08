@@ -8,6 +8,15 @@ export default class Velocity {
         this._index = -1;
     }
 
+    reset() {
+        this._vx = 0;
+        this._vy = 0;
+        this._ax = 0;
+        this._ay = 0;
+        this._buffer = null;
+        this._index = -1;
+    }
+
     /** 🚀 [Expert Optimization] TypedArray 버퍼 연결 */
     linkBuffer(buffer, index) {
         const isFirstLink = (this._buffer === null);

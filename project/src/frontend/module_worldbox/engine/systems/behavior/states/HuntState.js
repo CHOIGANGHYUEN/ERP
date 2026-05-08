@@ -78,11 +78,13 @@ export default class HuntState extends State {
                     if (isDead) {
                         // 사냥 성공 -> Forage 상태로 전이하여 드랍된 고기를 찾도록 함
                         state.targetId = null;
+                        if (target.components.has('Civilization')) return AnimalStates.IDLE;
                         return AnimalStates.FORAGE;
                     }
                 } else {
                     // 체력 컴포넌트가 없는 경우 즉시 Forage로 전환
                     state.targetId = null;
+                    if (target.components.has('Civilization')) return AnimalStates.IDLE;
                     return AnimalStates.FORAGE;
                 }
                 state.attackCooldown = 1.0; // 1초 쿨타임

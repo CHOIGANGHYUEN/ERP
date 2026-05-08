@@ -40,6 +40,8 @@ export default class SocialSystem extends System {
             const civ = entity.components.get('Civilization');
             if (!stats || !civ || stats.health <= 0) continue;
 
+            this._syncPoliticalAwareness(social, civ, time);
+
             // 1. 💍 파트너 찾기 (미혼 성인)
             if (!social.isMarried && stats.hunger > 50) {
                 this._findPartner(id, entity, social, civ);
@@ -49,6 +51,23 @@ export default class SocialSystem extends System {
             if (social.isMarried && stats.hunger > 60) {
                 this._processReproduction(id, entity, social, civ, time, dt);
             }
+        }
+    }
+
+    _syncPoliticalAwareness(social, civ, time) {
+        const vs = this.engine.systemManager?.villageSystem;
+        const ns = this.engine.systemManager?.nationSystem;
+        const village = vs?.getVillage(civ.villageId);
+        const nationId = civ.nationId ?? village?.nationId ?? -1;
+
+        civ.nationId = nationId;
+        social.villageId = civ.villageId ?? -1;
+        social.nationId = nationId;
+        social.loyalty = village?.loyalty ?? social.loyalty ?? 70;
+
+        if (nationId !== -1 && ns && time - (social.lastDiplomacySync || 0) > 3000) {
+            social.diplomacy = ns.getNationDiplomacy(nationId);
+            social.lastDiplomacySync = time;
         }
     }
 

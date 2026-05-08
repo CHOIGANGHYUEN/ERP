@@ -6,6 +6,16 @@ export default class Transform {
         this._index = -1;
     }
 
+    reset() {
+        this._x = 0;
+        this._y = 0;
+        this._buffer = null;
+        this._index = -1;
+        this._velocity = null;
+        this._velocityBuffer = null;
+        this._vIndex = -1;
+    }
+
     /** 🚀 [Expert Optimization] TypedArray 버퍼 연결 */
     linkBuffer(buffer, index) {
         // 이미 연결된 상태에서 재연결(Resize)되는 경우, 기존 버퍼의 값을 보존해야 함

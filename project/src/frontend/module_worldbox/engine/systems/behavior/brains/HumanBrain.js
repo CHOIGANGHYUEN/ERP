@@ -33,7 +33,12 @@ export default class HumanBrain {
         state.thinkTimer = 0;
 
         // 🛡️ [Busy Protection] 현재 작업을 수행 중이고 타겟이 유효하면 상태 유지 (경로 재계산 방지)
-        const busyStates = [AnimalStates.PICKUP, 'build', 'deposit', 'gather_wood', 'gather_stone', 'withdraw'];
+        const busyStates = [
+            AnimalStates.HUNT,
+            AnimalStates.PICKUP,
+            'build', 'deposit', 'withdraw',
+            'gather_wood', 'gather_plant', 'gather_stone'
+        ];
         if (busyStates.includes(state.mode) && state.targetId) {
             if (this.em.entities.has(state.targetId)) return state.mode;
         }
@@ -79,6 +84,12 @@ export default class HumanBrain {
         // 🏘️ LEVEL 2: VILLAGE & JOB (마을 및 직업 활동 - 공적 할일)
         // ========================================================================
         // 4. 부여받은 직업(Role) 기반 행동 결정
+        const warTargetId = this.engine.systemManager?.combat?.findNearestWarEnemy(entity, 260);
+        if (warTargetId !== null && warTargetId !== undefined) {
+            state.targetId = warTargetId;
+            return AnimalStates.HUNT;
+        }
+
         if (civ && civ.role) {
             const roleDecision = civ.role.decide(entity, dt);
             if (roleDecision) return roleDecision;

@@ -21,10 +21,23 @@ export const AnimalStates = {
 export const StateIndices = {
     'idle': 0, 'wander': 1, 'sleep': 2, 'run': 3, 'flee': 4,
     'evade': 5, 'hunt': 6, 'forage': 7, 'eat': 8, 'graze': 9,
-    'pickup': 10, 'die': 11, 'grabbed': 12
+    'pickup': 10, 'die': 11, 'grabbed': 12,
+
+    // Human work states
+    'build': 13, 'deposit': 14, 'withdraw': 15,
+    'gather_wood': 16, 'gather_plant': 17, 'gather_stone': 18,
+    'job_architect': 19, 'job_logger': 20, 'job_gatherer': 21,
+    'job_farmer': 22, 'job_transporter': 23, 'wait_target': 24,
+
+    // Non-animal specialized states
+    'bee_gather': 25, 'bee_return': 26, 'bee_inside': 27,
+    'bee_wander': 28, 'gather': 29, 'attack': 30, 'walk': 31
 };
 
-export const StateNames = Object.keys(StateIndices);
+export const StateNames = [];
+for (const [name, index] of Object.entries(StateIndices)) {
+    StateNames[index] = name;
+}
 
 
 
@@ -61,6 +74,7 @@ export default class State extends Component {
 
         this.targetId = options.targetId || null;
         this.wanderAngle = Math.random() * Math.PI * 2;
+        this.wanderTarget = null;
         this.stateTimer = 0;
         this.searchCooldown = 0;
         this.modeStack = [];
@@ -77,6 +91,55 @@ export default class State extends Component {
         this.abstractIndex = 0;
     }
 
+    reset(options = {}) {
+        this._buffer = null;
+        this._index = -1;
+
+        const initialMode = typeof options === 'string'
+            ? options
+            : (options.mode || AnimalStates.IDLE);
+
+        this._mode = initialMode;
+        this.targetId = options.targetId || null;
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        this.wanderTarget = null;
+        this.stateTimer = 0;
+        this.searchCooldown = 0;
+        this.modeStack = [];
+        this.failedPathCount = 0;
+        this.blacklist = new Map();
+        this.unreachableTargets = new Set();
+        this.searchRange = 0;
+        this.targetName = null;
+        this.interruptible = options.interruptible !== undefined ? options.interruptible : true;
+        this.thinkTimer = 0;
+        this.path = null;
+        this.pathIndex = 0;
+        this.abstractPath = null;
+        this.abstractIndex = 0;
+        this.isTargetRequested = false;
+        this.targetRequestFailed = false;
+        this.targetResourceType = null;
+        this.storageTargetId = null;
+        this.previousMode = null;
+        this.pathTargetId = null;
+        this.lastPathCalcTime = 0;
+        this.timer = 0;
+        this.retryTimer = 0;
+        this.chopTimer = 0;
+        this.chopInterval = null;
+        this.isChopping = false;
+        this.fallingTargetId = null;
+        this.fallTimer = 0;
+        this.lastHarvestedItemId = null;
+        this.animTimer = 0;
+        this.waitTimer = 0;
+        this.idleWaitTimer = undefined;
+        this._buildProgressCounter = 0;
+        this.canSearchThisFrame = false;
+        this.lastRequestTime = 0;
+    }
+
     /** 🚀 [Expert Optimization] 버퍼 연결 */
     linkBuffer(buffer, index) {
         const isFirstLink = (this._buffer === null);
@@ -84,7 +147,7 @@ export default class State extends Component {
         this._index = index;
         
         if (isFirstLink && this._buffer) {
-            this._buffer[this._index] = StateIndices[this._mode] || 0;
+            this._buffer[this._index] = StateIndices[this._mode] ?? StateIndices[AnimalStates.IDLE];
             this._updateBitmask();
         }
     }
@@ -98,14 +161,13 @@ export default class State extends Component {
     }
 
     get mode() {
-        if (this._buffer) return StateNames[this._buffer[this._index]] || 'idle';
         return this._mode;
     }
 
     set mode(v) {
-        this._mode = v;
+        this._mode = v || AnimalStates.IDLE;
         if (this._buffer) {
-            this._buffer[this._index] = StateIndices[v] || 0;
+            this._buffer[this._index] = StateIndices[this._mode] ?? StateIndices[AnimalStates.IDLE];
             this._updateBitmask();
         }
     }

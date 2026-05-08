@@ -31,11 +31,11 @@ export default class ResourceFactory extends IEntityFactory {
             case 'gold':
             case 'coal':
                 builder.withVisual({ type: 'rock', color: config.color || '#757575', size: 12 })
-                       .addComponent('Resource', new ResourceNode(type, 100));
+                       .addComponent('Resource', new ResourceNode(type, 100, config.type || 'mineral'));
                 break;
             default:
                 builder.withVisual({ type: type, size: 8 })
-                       .addComponent('Resource', new ResourceNode(type, 100));
+                       .addComponent('Resource', new ResourceNode(type, 100, config.type || 'resource'));
         }
 
         if (this.engine.spatialHash) {

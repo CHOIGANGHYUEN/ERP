@@ -1,15 +1,23 @@
 <template>
-  <div class="entity-status-panel" v-if="entity">
-    <div class="panel-header">
+  <div 
+    class="entity-status-panel" 
+    v-if="entity"
+    :style="panelStyle"
+    :class="{ 'minimized': isMinimized }"
+  >
+    <div class="panel-header" @mousedown="startDrag">
       <div class="title-wrap">
         <span class="icon">{{ getIcon(entity.type, entity.subType) }}</span>
         <h3>{{ entity.name }}</h3>
         <span v-if="entity.isChief" class="chief-tag" title="Village Chief">👑</span>
       </div>
-      <button class="close-btn" @click="closePanel">✕</button>
+      <div class="header-actions">
+        <button class="action-btn minimize-btn" @click.stop="isMinimized = !isMinimized">{{ isMinimized ? '□' : '−' }}</button>
+        <button class="action-btn close-btn" @click.stop="closePanel">✕</button>
+      </div>
     </div>
     
-    <div class="panel-body">
+    <div class="panel-body" v-show="!isMinimized">
       <div class="status-row">
         <span class="label">Species:</span>
         <span class="value species-text">{{ entity.type }}</span>
@@ -192,12 +200,48 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useWorldboxStore } from '../store/worldboxStore';
 import { JobMeta, JobTypes } from '../../engine/config/JobTypes.js';
 
 const store = useWorldboxStore();
 const entity = computed(() => store.selectedEntity);
+
+// --- Window Management ---
+const isMinimized = ref(false);
+const position = ref({ x: 20, y: 20 });
+const isDragging = ref(false);
+let dragOffset = { x: 0, y: 0 };
+
+const panelStyle = computed(() => ({
+  top: `${position.value.y}px`,
+  right: `${position.value.x}px`, // Using right to keep it anchored to right by default
+}));
+
+const startDrag = (e) => {
+  isDragging.value = true;
+  dragOffset = {
+    x: e.clientX + position.value.x,
+    y: e.clientY - position.value.y
+  };
+  window.addEventListener('mousemove', onDrag);
+  window.addEventListener('mouseup', stopDrag);
+};
+
+const onDrag = (e) => {
+  if (!isDragging.value) return;
+  position.value = {
+    x: dragOffset.x - e.clientX,
+    y: e.clientY - dragOffset.y
+  };
+};
+
+const stopDrag = () => {
+  isDragging.value = false;
+  window.removeEventListener('mousemove', onDrag);
+  window.removeEventListener('mouseup', stopDrag);
+};
+// -------------------------
 
 const closePanel = () => {
   store.clearSelection();
@@ -290,21 +334,24 @@ const getItemEmoji = (type) => {
 <style scoped>
 .entity-status-panel {
   position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 250px;
+  width: 280px;
   max-height: 85vh;
-  overflow-y: auto;
-  background: rgba(15, 15, 20, 0.9);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: 15px;
+  background: rgba(15, 20, 30, 0.85);
+  backdrop-filter: blur(25px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
   color: #eee;
   pointer-events: auto;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-  font-family: sans-serif;
-  z-index: 1100;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.05);
+  font-family: 'Inter', system-ui, sans-serif;
+  z-index: 2000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.entity-status-panel.minimized {
+  max-height: auto;
 }
 
 @media (max-width: 768px) {
@@ -335,19 +382,71 @@ const getItemEmoji = (type) => {
   background: rgba(255, 255, 255, 0.4);
 }
 
-.panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 10px; }
-.title-wrap { display: flex; align-items: center; gap: 8px; }
-.title-wrap h3 { margin: 0; font-size: 1.1rem; color: #fff; }
+.panel-header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  border-bottom: 1px solid rgba(255,255,255,0.08); 
+  padding: 14px 18px; 
+  cursor: grab;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.03), transparent);
+}
+.panel-header:active { cursor: grabbing; }
+
+.title-wrap { display: flex; align-items: center; gap: 10px; }
+.title-wrap h3 { 
+  margin: 0; 
+  font-size: 0.85rem; 
+  font-weight: 900; 
+  letter-spacing: 1px;
+  color: #fff; 
+  text-transform: uppercase;
+}
 .chief-tag {
   font-size: 1.1rem;
   filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.5));
-  animation: float 2s ease-in-out infinite;
 }
-.icon { font-size: 1.2rem; }
-.close-btn { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
-.close-btn:hover { color: #fff; }
+.icon { font-size: 1.4rem; }
 
-.panel-body { display: flex; flex-direction: column; gap: 8px; }
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.close-btn:hover {
+  background: rgba(255, 82, 82, 0.2);
+  color: #ff5252;
+  border-color: rgba(255, 82, 82, 0.3);
+}
+
+.panel-body { 
+  padding: 18px;
+  overflow-y: auto;
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; 
+}
 .status-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; }
 .task-row {
   background: rgba(255, 255, 255, 0.05);

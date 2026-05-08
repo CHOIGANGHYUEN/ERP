@@ -265,13 +265,14 @@ const updateSimParams = () => {
 const selectTool = (tool) => {
   console.log(`🎯 Tool Selected: ${tool.name} (${tool.id}), isBrush: ${tool.isBrush}`);
   if (tool.isInstant && tool.id.startsWith('view_')) {
+    const panelView = tool.id === 'view_village' || tool.id === 'view_nation';
     if (tool.id === 'view_village') {
       store.showVillageInfo = !store.showVillageInfo;
     }
     if (tool.id === 'view_nation') {
       store.showNationInfo = !store.showNationInfo;
     }
-    if (engine.value) engine.value.toggleView(tool.id);
+    if (engine.value && !panelView) engine.value.toggleView(tool.id);
     return;
   }
   activeTool.value = tool.id;
@@ -291,9 +292,12 @@ watch(() => store.showVillageInfo, (isOpen) => {
     engine.value.viewFlags = engine.value.viewFlags || {};
     engine.value.viewFlags.showVillageInfo = false;
     engine.value.viewFlags.showVillages = false;
+    engine.value.viewFlags.village = isOpen;
     engine.value.viewFlags.VILLAGETILE = isOpen;
     if (isOpen) {
         engine.value.viewFlags.NATIONTILE = false;
+        engine.value.viewFlags.nation = false;
+        engine.value.viewFlags.influence = false;
         store.showNationInfo = false;
     }
     // 강제 리프레시를 위해 preRenderTerrain 호출 필요할 수 있음 (toggleView 내부 로직 참조)
@@ -314,8 +318,11 @@ watch(() => store.showVillageInfo, (isOpen) => {
 watch(() => store.showNationInfo, (isOpen) => {
   if (engine.value) {
     engine.value.viewFlags = engine.value.viewFlags || {};
+    engine.value.viewFlags.nation = isOpen;
     engine.value.viewFlags.NATIONTILE = isOpen;
+    engine.value.viewFlags.influence = isOpen;
     if (isOpen) {
+        engine.value.viewFlags.village = false;
         engine.value.viewFlags.VILLAGETILE = false;
         store.showVillageInfo = false;
     }

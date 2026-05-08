@@ -15,6 +15,28 @@ import { FarmerRole, RancherRole, WarriorRole, MerchantRole, BlacksmithRole, Car
 export default class RoleFactory {
     constructor(system) {
         this.system = system;
+        this.roles = new Map();
+
+        this._registerDefaults();
+    }
+
+    _registerDefaults() {
+        this.registerRole(JobTypes.CHIEF, ChiefRole);
+        this.registerRole(JobTypes.ARCHITECT, ArchitectRole);
+        this.registerRole(JobTypes.LOGGER, LoggerRole);
+        this.registerRole(JobTypes.GATHERER, GathererRole);
+        this.registerRole(JobTypes.HUNTER, HunterRole);
+        this.registerRole(JobTypes.MINER, MinerRole);
+        this.registerRole(JobTypes.FARMER, FarmerRole);
+        this.registerRole(JobTypes.RANCHER, RancherRole);
+        this.registerRole(JobTypes.WARRIOR, WarriorRole);
+        this.registerRole(JobTypes.MERCHANT, MerchantRole);
+        this.registerRole(JobTypes.BLACKSMITH, BlacksmithRole);
+        this.registerRole(JobTypes.CARPENTER, CarpenterRole);
+    }
+
+    registerRole(jobType, roleClass) {
+        this.roles.set(jobType, roleClass);
     }
 
     /**
@@ -22,22 +44,10 @@ export default class RoleFactory {
      * @returns {BaseRole|null}
      */
     createRole(jobType) {
-        switch (jobType) {
-            case JobTypes.CHIEF:      return new ChiefRole(this.system);
-            case JobTypes.ARCHITECT:  return new ArchitectRole(this.system);
-            case JobTypes.LOGGER:     return new LoggerRole(this.system);
-            case JobTypes.GATHERER:   return new GathererRole(this.system);
-            case JobTypes.HUNTER:     return new HunterRole(this.system);
-            case JobTypes.MINER:      return new MinerRole(this.system);
-            case JobTypes.FARMER:     return new FarmerRole(this.system);
-            case JobTypes.RANCHER:    return new RancherRole(this.system);
-            case JobTypes.WARRIOR:    return new WarriorRole(this.system);
-            case JobTypes.MERCHANT:   return new MerchantRole(this.system);
-            case JobTypes.BLACKSMITH: return new BlacksmithRole(this.system);
-            case JobTypes.CARPENTER:  return new CarpenterRole(this.system);
-            case JobTypes.UNEMPLOYED:
-            default:
-                return null;
+        const RoleClass = this.roles.get(jobType);
+        if (RoleClass) {
+            return new RoleClass(this.system);
         }
+        return null;
     }
 }

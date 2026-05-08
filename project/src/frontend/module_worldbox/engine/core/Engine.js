@@ -80,7 +80,7 @@ export default class Engine {
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
-        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: false, showNames: false, village: false, nation: false, zone: false };
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: false, showNames: false, village: false, nation: false, influence: false, zone: false };
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
         this._onWorldSpawnDust = (e) => {
@@ -365,12 +365,14 @@ export default class Engine {
             this.viewFlags.village = !this.viewFlags.village;
             this.viewFlags.VILLAGETILE = this.viewFlags.village;
             this.viewFlags.NATIONTILE = false;
+            this.viewFlags.influence = false;
             this.preRenderTerrain();
         }
         if (id === 'view_nation') {
             this.viewFlags.nation = !this.viewFlags.nation;
             this.viewFlags.NATIONTILE = this.viewFlags.nation;
             this.viewFlags.VILLAGETILE = false;
+            this.viewFlags.influence = this.viewFlags.nation;
             this.preRenderTerrain();
         }
         if (id === 'view_zone') this.viewFlags.zone = !this.viewFlags.zone;
