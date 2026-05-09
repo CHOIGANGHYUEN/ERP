@@ -1,11 +1,65 @@
+import { JobTypes as GlobalJobTypes } from '../../config/JobTypes.js';
+
+// 🚀 [DOD Mapping] 문자열 JobType을 Buffer용 인덱스로 변환
+const JobTypeToIndex = {
+    [GlobalJobTypes.UNEMPLOYED]: 0,
+    [GlobalJobTypes.CHIEF]: 1,
+    [GlobalJobTypes.ARCHITECT]: 2,
+    [GlobalJobTypes.LOGGER]: 3,
+    [GlobalJobTypes.MINER]: 4,
+    [GlobalJobTypes.FARMER]: 5,
+    [GlobalJobTypes.GATHERER]: 6,
+    [GlobalJobTypes.HUNTER]: 7,
+    [GlobalJobTypes.WARRIOR]: 8,
+    [GlobalJobTypes.MERCHANT]: 9,
+    [GlobalJobTypes.BLACKSMITH]: 10,
+    [GlobalJobTypes.CARPENTER]: 11
+};
+
+export const JobStates = {
+    'IDLE': 0, 'SEARCHING': 1, 'MOVING': 2, 'WORKING': 3, 
+    'MINING': 4, 'FARMING': 5, 'FIGHTING': 6, 'PATROLLING': 7
+};
+
 export default class JobController {
     constructor() {
-        this.currentJob = null;
+        this._currentJob = GlobalJobTypes.UNEMPLOYED;
         this.zoneId = null;
-        this.jobState = null;
+        this._jobState = 'IDLE';
         this.data = {}; // 📦 직업별 고유 데이터 저장 (타이머, 타겟 보존 등)
         this.equipment = null; // 직업 관련 도구 참조 등
         this.lastJobSwitchTime = Date.now(); // ⏱️ 마지막 직업 변경 시간
+
+        this._buffer = null;
+        this._index = -1;
+    }
+
+    /** 🚀 [Expert Optimization] 버퍼 연결 */
+    linkBuffer(buffer, index) {
+        const isFirstLink = (this._buffer === null);
+        this._buffer = buffer;
+        this._index = index;
+        
+        if (isFirstLink && this._buffer) {
+            this._buffer[this._index] = JobTypeToIndex[this._currentJob] ?? 0;
+            this._buffer[this._index + 1] = JobStates[this._jobState] || 0;
+        }
+    }
+
+    get currentJob() { return this._currentJob; }
+    set currentJob(v) {
+        this._currentJob = v;
+        if (this._buffer) {
+            this._buffer[this._index] = JobTypeToIndex[v] ?? 0;
+        }
+    }
+
+    get jobState() { return this._jobState; }
+    set jobState(v) {
+        this._jobState = v;
+        if (this._buffer) {
+            this._buffer[this._index + 1] = JobStates[v] || 0;
+        }
     }
 
     assignJob(jobType, zoneId = null) {

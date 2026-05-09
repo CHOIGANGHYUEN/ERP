@@ -18,43 +18,43 @@ export default class HumanBrain {
         // 🧠 전용 센서 초기화 (블랙리스트 연동 지원)
         this.predatorSensor = new PredatorSensor(entityManager, spatialHash);
         this.foodSensor = new FoodSensor(entityManager, spatialHash);
+        
+        // 🚀 [Optimization] 고정된 세트를 사용하여 Includes 체크 비용 절감
+        this.busyStates = new Set([
+            'hunt', 'pickup', 'build', 'deposit', 'withdraw',
+            'gather_wood', 'gather_plant', 'gather_stone'
+        ]);
     }
 
     /**
      * 인간의 현재 상태를 기반으로 최적의 행동(State)을 결정합니다.
      */
     decide(entity, state, stats, emotion, inventory, dt) {
-        // 🛑 [LOD/Optimization] 플레이어에게 잡힌 상태면 어떤 판단도 하지 않음
         if (state.mode === AnimalStates.GRABBED) return AnimalStates.GRABBED;
 
-        // 🧠 [Stable AI Decision] 판단 주기를 조절하여 부하 감소
+        // 🧠 [Responsiveness Fix] IDLE 상태이거나 할일이 없을 때는 더 빠르게 판단 (1.0s -> 0.2s)
+        const isIdle = !state.mode || state.mode === AnimalStates.IDLE || state.mode === AnimalStates.WANDER;
+        const thinkThreshold = isIdle ? 0.2 : 1.0;
+
         state.thinkTimer = (state.thinkTimer || 0) + dt;
-        if (state.thinkTimer < 1.0 && state.mode) return state.mode;
+        if (state.thinkTimer < thinkThreshold && state.mode) return state.mode;
         state.thinkTimer = 0;
 
-        // 🛡️ [Busy Protection] 현재 작업을 수행 중이고 타겟이 유효하면 상태 유지 (경로 재계산 방지)
-        const busyStates = [
-            AnimalStates.HUNT,
-            AnimalStates.PICKUP,
-            'build', 'deposit', 'withdraw',
-            'gather_wood', 'gather_plant', 'gather_stone'
-        ];
-        if (busyStates.includes(state.mode) && state.targetId) {
+        // 🛡️ [Busy Protection] 현재 작업을 수행 중이고 타겟이 유효하면 상태 유지
+        if (state.targetId && this.busyStates.has(state.mode)) {
             if (this.em.entities.has(state.targetId)) return state.mode;
         }
 
         const civ = entity.components.get('Civilization');
 
         // ========================================================================
-        // 🚨 LEVEL 1: PERSONAL SURVIVAL (생존 및 위급 상황 - 개인 할일)
+        // 🚨 LEVEL 1: PERSONAL SURVIVAL
         // ========================================================================
 
         // 1. 위협 회피 (최우선)
         const nearbyPredator = this.predatorSensor.findNearestPredator(entity, state, 150);
         if (nearbyPredator) {
-            state.targetId = nearbyPredator; // 긴급 상황은 예외적으로 타겟 즉시 변경
-            const job = civ?.jobType ? ` (${civ.jobType})` : '';
-            //GlobalLogger.warn(`🚨 EMERGENCY: Citizen ${entity.id}${job} is FLEEING from a predator!`);
+            state.targetId = nearbyPredator;
             return AnimalStates.FLEE;
         }
 
@@ -126,7 +126,7 @@ export default class HumanBrain {
         const stats = entity.components.get('BaseStats');
         if (!transform) return null;
 
-        const searchRadius = 250;
+        const searchRadius = 400; // 수집 범위 상향
         let bestTargetId = null;
         let bestScore = -1;
 
@@ -148,7 +148,7 @@ export default class HumanBrain {
             const distSq = dx * dx + dy * dy;
 
             // 거리 기반 점수 (제곱근 연산 회피)
-            score -= (distSq / (searchRadius * searchRadius)) * 50;
+            score -= (distSq / (searchRadius * searchRadius)) * 80;
 
             const itemType = item.itemType;
             const job = civ?.jobType;

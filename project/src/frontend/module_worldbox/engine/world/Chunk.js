@@ -4,6 +4,8 @@
  * 자신만의 OffscreenCanvas를 가지며, LOD(Level of Detail)에 따라
  * 고해상도(LOD1) 또는 저해상도(LOD0) 이미지를 제공합니다.
  */
+import { textureManager } from '../systems/render/TextureManager.js';
+
 export default class Chunk {
     constructor(x, y, size, engine, manager) {
         this.x = x; // 월드 좌표 (pixel)
@@ -13,6 +15,7 @@ export default class Chunk {
         this.manager = manager;
 
         this.isDirty = true;
+        this.hasWater = false;
         this.offscreenCanvas = null;
         this.offscreenCtx = null;
 
@@ -117,6 +120,7 @@ export default class Chunk {
     /** 🔄 캔버스 픽셀 데이터 갱신 */
     updateCanvas() {
         this.acquireCanvas();
+        this.hasWater = false;
         const ctx = this.offscreenCtx;
         const size = this.size;
         const mapWidth = this.engine.mapWidth;
@@ -167,12 +171,34 @@ export default class Chunk {
                     const g = (rgb >> 8) & 0xFF;
                     const b = rgb & 0xFF;
 
+                    // 🌊 [Water Check] 수역 여부 확인 (파란색 계열)
+                    if (b > r && b > g) this.hasWater = true;
+
                     data[rowOffset + cx] = (255 << 24) | (b << 16) | (g << 8) | r;
                 }
             }
         }
 
         ctx.putImageData(imgData, 0, 0);
+
+        // 🎨 [Expert Polish] 고해상도 텍스처 오버레이 (Subtle Texture Blend)
+        // 픽셀 데이터 위에 텍스처 패턴을 곱하기(Multiply) 모드로 은은하게 입혀 시각적 깊이를 더합니다.
+        if (!hasViewFilters) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.globalAlpha = 0.4;
+            
+            // 텍스처 매니저에서 풀밭 패턴을 가져와 반복(repeat) 패턴 생성
+            const tex = textureManager.getTexture('pattern_grass');
+            if (tex) {
+                const pattern = ctx.createPattern(tex, 'repeat');
+                if (pattern) {
+                    ctx.fillStyle = pattern;
+                    ctx.fillRect(0, 0, size, size);
+                }
+            }
+            ctx.restore();
+        }
     }
 
     markDirty() {

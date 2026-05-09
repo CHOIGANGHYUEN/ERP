@@ -47,6 +47,10 @@ export default class EntityBuilder {
         return this.addComponent('Age', factoryProvider.getComponent('Age', options));
     }
 
+    withJobController(options = {}) {
+        return this.addComponent('JobController', factoryProvider.getComponent('JobController', options));
+    }
+
     build() {
         return this.id;
     }

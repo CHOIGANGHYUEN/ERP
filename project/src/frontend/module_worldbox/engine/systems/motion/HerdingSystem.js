@@ -20,6 +20,13 @@ export default class SocialSystem {
             }
         }
 
+        const camera = this.engine?.camera;
+        const viewW = camera ? (this.engine.width / camera.zoom) + 100 : 0;
+        const viewH = camera ? (this.engine.height / camera.zoom) + 100 : 0;
+        const viewX = camera ? camera.x - 50 : 0;
+        const viewY = camera ? camera.y - 50 : 0;
+        const frameCount = this.engine.frameCount || 0;
+
         // 2. Assign herds & apply flocking (동물 개체만 선별하여 처리)
         for (const id of em.animalIds) {
             const entity = em.entities.get(id);
@@ -32,6 +39,23 @@ export default class SocialSystem {
             if (animal && animal.type === 'human') continue;
 
             if (animal && transform) {
+                // 🚀 [Expert Optimization] 가시성 및 거리에 따른 극단적 업데이트 빈도 조절
+                const isVisible = transform.x >= viewX && transform.x <= viewX + viewW &&
+                                   transform.y >= viewY && transform.y <= viewY + viewH;
+                
+                if (!isVisible) {
+                    const centerX = viewX + viewW / 2;
+                    const centerY = viewY + viewH / 2;
+                    const dist = Math.abs(transform.x - centerX) + Math.abs(transform.y - centerY);
+                    const isFar = dist > (viewW + viewH) * 2; 
+                    
+                    // 원거리는 허딩 연산 자체를 완전히 생략 (O(N^2) 폭주 방지)
+                    if (isFar) continue;
+                    
+                    // 근거리 화면 밖은 15프레임(약 4FPS)당 1번만 허딩 계산
+                    if ((id + frameCount) % 15 !== 0) continue;
+                }
+
                 this.maintainHerd(id, animal);
                 this.applyFlocking(id, animal, transform, dt);
             }

@@ -10,13 +10,18 @@ export const BuildRender = {
         const actualType = v?.subtype || type;
         const isComplete = !structure || structure.isComplete;
         
+        // 🏥 [Damage State] 내구도에 따른 파손 상태 계산
+        const hpPercent = structure ? (structure.hp / structure.maxHp) : 1.0;
+        const isDamaged = hpPercent < 0.6;
+        const isSeverelyDamaged = hpPercent < 0.3;
+
         // 💡 [Fix] 청사진 상태(건설 중)일 때도 본체(집 모양 등)를 반투명하게 그리도록 강제
         if (!isComplete && !overlayOnly) {
             this.renderConstructionDust(ctx, t, v, time);
             
             ctx.save();
             ctx.globalAlpha = 0.6; // 청사진 알파
-            this._drawBuildingBody(ctx, t, v, actualType, time, false);
+            this._drawBuildingBody(ctx, t, v, actualType, time, false, hpPercent);
             ctx.restore();
             
             this.renderBlueprintInfo(ctx, t, structure);
@@ -26,19 +31,28 @@ export const BuildRender = {
 
         // 완성된 건물의 오버레이(연기 등)만 그리는 경우
         if (overlayOnly) {
-            this._drawBuildingBody(ctx, t, v, actualType, time, true);
+            this._drawBuildingBody(ctx, t, v, actualType, time, true, hpPercent);
             ctx.restore();
             return;
         }
 
         // 일반 렌더링 (완성된 건물)
-        this._drawBuildingBody(ctx, t, v, actualType, time, false);
+        this._drawBuildingBody(ctx, t, v, actualType, time, false, hpPercent);
+        
+        // 🏚️ [Visual Feedback] 파손된 상태일 경우 균열 및 파편 효과 추가
+        if (isDamaged && !overlayOnly) {
+            this.renderDamageEffects(ctx, v.size || 30, hpPercent);
+        }
         
         ctx.restore();
     },
 
     /** 🏗️ 실제 건물 모양을 그리는 내부 메서드 (중복 제거) */
-    _drawBuildingBody(ctx, t, v, type, time, overlayOnly) {
+    _drawBuildingBody(ctx, t, v, type, time, overlayOnly, hpPercent = 1.0) {
+        if (hpPercent < 0.5) {
+            ctx.filter = `brightness(${70 + hpPercent * 60}%) saturate(${80 + hpPercent * 40}%)`;
+        }
+        
         switch (type) {
             case 'bonfire':
             case 'camp':
@@ -77,6 +91,39 @@ export const BuildRender = {
                 if (!overlayOnly) this.drawDefaultBuilding(ctx, t, v);
                 break;
         }
+        
+        ctx.filter = 'none';
+    },
+
+    /** 🏚️ 건물 파손 효과 (균열 및 파편) */
+    renderDamageEffects(ctx, size, hpPercent) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)';
+        ctx.lineWidth = 1;
+        
+        const severity = 1.0 - hpPercent; // 0.4 ~ 1.0
+        const crackCount = Math.floor(severity * 8);
+
+        // 1. 균열(Cracks) 그리기
+        for (let i = 0; i < crackCount; i++) {
+            const rx = (Math.random() - 0.5) * size;
+            const ry = -(Math.random() * size * 0.8);
+            
+            ctx.beginPath();
+            ctx.moveTo(rx, ry);
+            ctx.lineTo(rx + (Math.random() - 0.5) * 10, ry + (Math.random() - 0.5) * 10);
+            ctx.stroke();
+        }
+
+        // 2. 파편(Debris) - 아주 심각한 손상일 때
+        if (hpPercent < 0.2) {
+            ctx.fillStyle = '#424242';
+            for (let i = 0; i < 5; i++) {
+                ctx.fillRect((Math.random() - 0.5) * size, 0, 3, 2);
+            }
+        }
+        
+        ctx.restore();
     },
 
     /** 🧱 건설 중 먼지 파티클 효과 */

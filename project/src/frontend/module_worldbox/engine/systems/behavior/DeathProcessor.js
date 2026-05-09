@@ -10,11 +10,18 @@ export default class DeathProcessor extends System {
 
     update(dt, time) {
         const em = this.entityManager;
+        const statsBuffer = em.statsBuffer;
         
-        // 🏥 [Health Integration] 모든 엔티티의 체력을 검사하여 사망 처리
-        for (const [id, entity] of em.entities) {
-            const health = entity.components.get('Health');
-            if (health && health.currentHp <= 0) {
+        // 🏥 [Expert Optimization] entities Map 대신 denseIds와 StatsBuffer(DOD) 직접 참조
+        // 20만 마리 전수 검사 시 Map Iterator 및 Component Lookup 오버헤드를 원천 제거합니다.
+        for (let i = 0; i < em.denseIds.length; i++) {
+            const id = em.denseIds[i];
+            
+            // StatsBuffer에서 HP(0번 인덱스) 직접 확인
+            if (statsBuffer[id * 8] <= 0) {
+                const entity = em.entities.get(id);
+                if (!entity) continue;
+
                 // 🛑 [Safety] 나무가 쓰러지는 중(isFalling)이면 DeathProcessor가 가로채서 삭제하지 않도록 보호
                 const res = entity.components.get('Resource');
                 if (res && res.isFalling) continue;
@@ -28,8 +35,15 @@ export default class DeathProcessor extends System {
             const entity = em.entities.get(id);
             const drop = entity?.components.get('DroppedItem');
             if (drop) {
-                drop.update(dt);
-                if (drop.isDecayed) {
+                // 🛠️ [Persistence Fix] 불러오기 후 POJO 상태일 경우를 대비한 방어적 처리
+                if (typeof drop.update === 'function') {
+                    drop.update(dt);
+                } else if (drop.decayTimer !== undefined) {
+                    drop.decayTimer -= dt;
+                }
+
+                const isDecayed = typeof drop.isDecayed === 'boolean' ? drop.isDecayed : (drop.decayTimer <= 0);
+                if (isDecayed) {
                     this.cleanupSpatialHash(entity, entity.components.get('Transform'));
                     em.removeEntity(id);
                 }

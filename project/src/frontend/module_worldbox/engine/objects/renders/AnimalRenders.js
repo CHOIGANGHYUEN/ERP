@@ -109,6 +109,22 @@ export const AnimalRenders = {
         // 🚀 고도화된 상태별 물리 변환 적용
         this.applyAdvancedStateMotion(ctx, type, mode, time, entity);
 
+        // 💥 [Task 82] Squash & Stretch (Impact Motion)
+        if (visual.impactTime > 0) {
+            const dt = time - visual.impactTime;
+            const duration = 300; // 0.3초간 진행
+            if (dt < duration) {
+                const progress = dt / duration;
+                // 사인파 기반 스쿼시 앤 스트레치 (처음에 눌리고 나중에 튀어오름)
+                const wave = Math.sin(progress * Math.PI * 2) * Math.exp(-progress * 3);
+                const scaleX = 1.0 + wave * 0.2;
+                const scaleY = 1.0 - wave * 0.2;
+                ctx.scale(scaleX, scaleY);
+            } else {
+                visual.impactTime = 0; // 효과 종료
+            }
+        }
+
         // 💀 사망 애니메이션 (회전하며 작아짐)
         if (mode === AnimalStates.DIE) {
             const dieTime = visual.lastDeathTime ? (time - visual.lastDeathTime) : 0;

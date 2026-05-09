@@ -6,6 +6,7 @@ import Health from '../../components/stats/Health.js';
 import Visual from '../../components/render/Visual.js';
 import State from '../../components/behavior/State.js';
 import Age from '../../components/stats/Age.js';
+import JobController from '../../components/behavior/JobController.js';
 
 // Factories
 import AnimalFactory from '../entities/AnimalFactory.js';
@@ -51,6 +52,7 @@ class FactoryProvider {
         this.pools.set('Visual', new ObjectPool(() => new Visual(), (c) => {}, 100));
         this.pools.set('AIState', new ObjectPool(() => new State(), (c) => c.reset(), 100));
         this.pools.set('Age', new ObjectPool(() => new Age(), (c) => {}, 100));
+        this.pools.set('JobController', new ObjectPool(() => new JobController(), (c) => c.clearJob(), 100));
     }
 
     /** 🚀 [Expert Interface] 중앙 스폰 브릿지 */

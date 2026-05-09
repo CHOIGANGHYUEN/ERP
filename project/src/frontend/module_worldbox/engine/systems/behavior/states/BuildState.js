@@ -61,28 +61,60 @@ export default class BuildState extends State {
         const isReached = Pathfinder.followPath(transform, state, bPos, 70, this.system.engine, 40, 2000, blueprintId, velocity);
         
         if (isReached === true) {
-            // 도착 시 정지 및 연출 (실제 자원 소모와 진행도는 ConstructionSystem에서 처리)
+            // 도착 시 정지 및 연출 (실제 자원 소모와 진행도는 여기서 직접 처리하여 성능 확보)
             transform.vx = 0;
             transform.vy = 0;
 
+            // 🚀 [Construction Logic] 건설 진행도 업데이트
+            if (inventory) {
+                // 건물별 요구 자원 결정
+                let requiredType = 'wood';
+                const type = structure.type;
+                const prog = structure.progress || 0;
+
+                if (type === 'house') { if (prog > 50) requiredType = 'stone'; }
+                else if (type === 'well' || type === 'temple') { requiredType = 'stone'; }
+                else if (type === 'blacksmith') { requiredType = prog > 40 ? 'iron_ore' : 'stone'; }
+                else if (type === 'watchtower') { requiredType = 'stone'; }
+                else if (type === 'warehouse' || type === 'storage') { requiredType = 'wood'; }
+
+                if (inventory.has(requiredType, 1)) {
+                    const builderComp = entity.components.get('Builder');
+                    const buildSpeed = builderComp ? (builderComp.buildSpeed || 15) : 15;
+                    const progressPerTick = buildSpeed * dt;
+
+                    state._buildProgressCounter = (state._buildProgressCounter || 0) + progressPerTick;
+                    
+                    if (state._buildProgressCounter >= 10) {
+                        if (inventory.consume(requiredType, 1)) {
+                            structure.progress = Math.min(structure.maxProgress, (structure.progress || 0) + 10);
+                            state._buildProgressCounter -= 10;
+                            
+                            // 완공 체크
+                            if (structure.progress >= structure.maxProgress) {
+                                const constructionSystem = this.system.engine.systemManager?.construction;
+                                if (constructionSystem) {
+                                    constructionSystem.finalizeBuilding(blueprint, blueprintId, structure);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // 자원 부족 시 IDLE로 돌아가 Role이 재판단하게 함
+                    state.mode = AnimalStates.IDLE;
+                    state.targetId = null;
+                    return AnimalStates.IDLE;
+                }
+            }
+
             state.animTimer = (state.animTimer || 0) + dt;
             if (state.animTimer >= 0.6) {
-                // 🔨 망치질 먼지 효과
+                // 🔨 망치질 연출
                 this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                     x: bPos.x + (Math.random() - 0.5) * 10,
                     y: bPos.y - 5,
                     count: 2, type: 'DUST', color: '#d2b48c'
                 });
-
-                // 💦 땀방울 효과 (파란색 작은 파티클)
-                this.system.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
-                    x: transform.x, y: transform.y - 15,
-                    count: 1, type: 'EFFECT', color: '#4fc3f7', speed: 0.5
-                });
-
-                if (Math.random() < 0.25) {
-                    this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: '🔨', duration: 500 });
-                }
                 state.animTimer = 0;
             }
         } else if (isReached === -1) {

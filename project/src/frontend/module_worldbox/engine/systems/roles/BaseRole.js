@@ -21,7 +21,6 @@ export default class BaseRole {
      * @param {number} dt
      * @returns {string|null} 다음 state 이름, 또는 null (현재 상태 유지)
      */
-    /** 📋 마을 할일 목록에서 내 직업에 맞는 가장 우선순위 높은 작업을 수주합니다. */
     claimTask(entity, village, taskType) {
         if (!village || !village.taskBoard) return null;
 
@@ -29,19 +28,24 @@ export default class BaseRole {
         const myTask = village.taskBoard.find(t => t.claimedBy === entity.id && t.type === taskType);
         if (myTask) return myTask;
 
-        // 2. 새로운 작업 수주 (우선순위 순)
-        const availableTasks = village.taskBoard
-            .filter(t => t.type === taskType && t.status === 'AVAILABLE')
-            .sort((a, b) => b.priority - a.priority);
+        // 2. 새로운 작업 수주 (O(N) 단일 패스 최적화)
+        let bestTask = null;
+        for (let i = 0; i < village.taskBoard.length; i++) {
+            const t = village.taskBoard[i];
+            if (t.type === taskType && t.status === 'AVAILABLE') {
+                if (!bestTask || t.priority > bestTask.priority) {
+                    bestTask = t;
+                }
+            }
+        }
 
-        if (availableTasks.length > 0) {
-            const task = availableTasks[0];
-            task.status = 'CLAIMED';
-            task.claimedBy = entity.id;
+        if (bestTask) {
+            bestTask.status = 'CLAIMED';
+            bestTask.claimedBy = entity.id;
             const civ = entity.components.get('Civilization');
             const jobName = civ?.jobType ? civ.jobType.toUpperCase() : 'CITIZEN';
-            GlobalLogger.info(`📝 JOB: [${jobName}] Entity ${entity.id} has claimed task [${task.type.toUpperCase()}]`);
-            return task;
+            // GlobalLogger.info(`📝 JOB: [${jobName}] Entity ${entity.id} has claimed task [${bestTask.type.toUpperCase()}]`);
+            return bestTask;
         }
 
         return null;

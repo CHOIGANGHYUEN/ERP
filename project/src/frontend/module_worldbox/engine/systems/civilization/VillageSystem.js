@@ -21,11 +21,24 @@ export default class VillageSystem extends System {
         // 📡 Listen for events
         this.eventBus.on('CREATE_VILLAGE', (payload) => this.createVillage(payload));
         // 📦 [Event Listeners] 저장소 관리 및 자원 동기화
+        this.eventBus.on('BUILDING_SPAWNED', (data) => this._onBuildingSpawned(data));
         this.eventBus.on('BUILDING_COMPLETE', (data) => this._onBuildingComplete(data));
         this.eventBus.on('STORAGE_CHANGED', (data) => this._onStorageChanged(data));
         this.eventBus.on('VILLAGER_DEATH', (data) => this._onVillagerDeath(data));
 
         this.dirtyVillages = new Set(); // 🚀 [Optimization]
+    }
+
+    _onBuildingSpawned(data) {
+        const { id, villageId } = data;
+        if (villageId === undefined || villageId === -1) return;
+
+        const village = this.villages.get(villageId);
+        if (village) {
+            if (!village.buildings) village.buildings = new Set();
+            village.buildings.add(id);
+            GlobalLogger.info(`🏗️ Building ${id} registered to Village ${village.name}`);
+        }
     }
 
     /** 🔍 [Specialization] 주변 자원 밀도를 분석하여 마을의 전문 분야를 결정합니다. */
@@ -557,6 +570,14 @@ export default class VillageSystem extends System {
         village.buffs.stoneGatherRate = bonuses.stoneGatherRate || 1.0;
 
         this._applyNationBuffs(village);
+
+        // 📡 [Event-Driven] 자원 변경 사항 전파 (Task 68: Decoupling)
+        if (this.eventBus) {
+            this.eventBus.emit('VILLAGE_RESOURCES_UPDATED', {
+                villageId: village.id,
+                resources: village.resources
+            });
+        }
     }
 
     _applyNationBuffs(village) {
@@ -1048,6 +1069,12 @@ export default class VillageSystem extends System {
         const woodCritical  = (res.wood  || 0) < pop * 1.5; // 1인당 1.5단 미만
         const stoneCritical = (res.stone || 0) < 10;
 
+        // 🏛️ [Nation Synergy] 국가 상태 반영
+        const ns = this.engine.systemManager?.nationSystem;
+        const nation = ns?.getNation(village.nationId);
+        const isNationalWar = nation && nation.atWarWith && nation.atWarWith.size > 0;
+        const nationalFoodScarcity = nation && (nation.resources.food < 50);
+
         // 현재 직업 분포 집계
         const distribution = {};
         for (const memberId of village.members) {
@@ -1093,9 +1120,20 @@ export default class VillageSystem extends System {
             reassigned++;
         };
 
-        if (foodCritical)  { _reassign(JT.GATHERER); _reassign(JT.FARMER); }
+        if (foodCritical || nationalFoodScarcity) { _reassign(JT.GATHERER); _reassign(JT.FARMER); }
         if (woodCritical)  { _reassign(JT.LOGGER); }
         if (stoneCritical) { _reassign(JT.MINER); }
+
+        // ⚔️ [War Draft] 전쟁 시 전사 징집
+        if (isNationalWar) {
+            const currentWarriors = distribution[JT.WARRIOR] || 0;
+            const targetWarriors = Math.ceil(pop * 0.25); // 인구의 25%를 전사로 유지 시도
+            if (currentWarriors < targetWarriors) {
+                for (let i = 0; i < (targetWarriors - currentWarriors); i++) {
+                    _reassign(JT.WARRIOR);
+                }
+            }
+        }
 
         // 남은 무직자는 기본 생산직 배치
         while (candidates.length > 0 && reassigned < MAX_REASSIGN) {

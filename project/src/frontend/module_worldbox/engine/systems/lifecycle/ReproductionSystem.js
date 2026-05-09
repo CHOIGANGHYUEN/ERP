@@ -12,8 +12,18 @@ export default class ReproductionSystem extends System {
         const blackboard = this.engine?.systemManager?.blackboard;
         const speciesConfig = this.engine?.speciesConfig || {};
 
+        const items = em.animalIds.items; // 🚀 [Expert Optimization] Raw Array 참조
+        const frameCount = this.engine.frameCount || 0;
+        const camera = this.engine.camera;
+        const margin = 200;
+        const viewX = camera.x - margin;
+        const viewY = camera.y - margin;
+        const viewW = (camera.width / camera.zoom) + (margin * 2);
+        const viewH = (camera.height / camera.zoom) + (margin * 2);
+
         // 🐕 생명체 번식 및 성장 처리
-        for (const id of em.animalIds) {
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
             const entity = em.entities.get(id);
             if (!entity) continue;
 
@@ -24,6 +34,21 @@ export default class ReproductionSystem extends System {
             const emotion = entity.components.get('Emotion');
 
             if (animal && transform && age) {
+                // 🚀 [Optimization] 가시성 및 거리에 따른 업데이트 빈도 조절
+                const isVisible = (transform.x > viewX && transform.x < viewX + viewW && 
+                                   transform.y > viewY && transform.y < viewY + viewH);
+                
+                if (!isVisible) {
+                    const centerX = viewX + viewW / 2;
+                    const centerY = viewY + viewH / 2;
+                    const dist = Math.abs(transform.x - centerX) + Math.abs(transform.y - centerY);
+                    const isFar = dist > (viewW + viewH) * 2;
+                    
+                    // 원거리 개체는 번식 계산을 1분(60프레임 * 10초 등)에 한 번 수준으로 대폭 낮춤
+                    const skipFactor = isFar ? 60 : 15;
+                    if ((id + frameCount) % skipFactor !== 0) continue;
+                }
+
                 // 1. 성장 처리 (Aging 로직은 MetabolismSystem에서 수행하므로 여기선 Stage 업데이트만)
                 if (animal.isBaby) {
                     if (age.growthStage === 'adult') {
@@ -49,7 +74,7 @@ export default class ReproductionSystem extends System {
                     // 🌾 [Population Control] 식량 재고와 주거 수용량 체크
                     const storages = blackboard.storages || [];
                     const totalFood = storages.reduce((sum, s) => sum + (s.items['food'] || 0), 0);
-                    const population = em.animalIds.size; // 대략적인 인구수 (인간만 필터링 필요할 수 있음)
+                    const population = items.length; // 🚀 items.length 사용
                     
                     // 식량이 인당 5개 미만이거나, 인구가 너무 많으면 번식 억제
                     if (totalFood < population * 5) isEnvironmentReady = false;
@@ -64,8 +89,9 @@ export default class ReproductionSystem extends System {
                         continue;
                     }
                     
-                    // 전역 엔티티 제한
-                    if (em.entities.size > 2000) continue;
+                    // 🚀 [Scale Fix] 전역 엔티티 제한을 스트레스 테스트 모드에 맞춰 대폭 상향
+                    const entityLimit = this.engine.isStressTestMode ? 250000 : 10000;
+                    if (em.entities.size > entityLimit) continue;
 
                     if (Math.random() < 0.05 * dt) {
                         stats.hunger -= 40; 

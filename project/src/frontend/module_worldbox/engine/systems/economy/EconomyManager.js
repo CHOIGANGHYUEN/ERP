@@ -11,6 +11,14 @@ export default class EconomyManager {
         this.transportTasks = [];
         this.blueprints = [];
         this.updateTimer = 0;
+        this.globalPrices = new Map(); // 💹 자원별 시세 (Scarcity-based)
+        this._initPrices();
+    }
+
+    _initPrices() {
+        ['food', 'wood', 'stone', 'gold', 'iron_ore'].forEach(type => {
+            this.globalPrices.set(type, 10.0); // 기본값 10
+        });
     }
 
     /**
@@ -50,8 +58,16 @@ export default class EconomyManager {
                     const taken = this._withdrawFromVillage(village, type, tribute);
                     if (taken <= 0) continue;
 
+                    // 💹 [Value Adjustment] 희귀 자원은 가중치 부여
+                    const price = this.globalPrices.get(type) || 10;
+                    const valueBoost = price > 20 ? 1.5 : 1.0; 
+
                     nation.resources[type] = (nation.resources[type] || 0) + taken;
                     village.resources[type] = Math.max(0, (village.resources[type] || 0) - taken);
+                    
+                    // 위신(Prestige) 보너스: 비싼 자원을 바치면 더 많이 올라감
+                    nation.prestige += (taken * price * 0.01) * valueBoost;
+                    
                     ledger.push({ nationId: nation.id, villageId: village.id, type, amount: taken, direction: 'tribute' });
                 }
             }
@@ -178,6 +194,32 @@ export default class EconomyManager {
         if (totalFound > 0) {
             // console.log(`[EconomyManager] Cached ${totalFound} resources in ${resourceNodes.size} categories.`);
         }
+
+        this._updateResourcePrices();
+    }
+
+    /** 📊 [Dynamic Pricing] 희소성에 기반한 자원 가치 산정 */
+    _updateResourcePrices() {
+        const storages = this.blackboard.storages;
+        if (storages.length === 0) return;
+
+        const totalStock = {};
+        ['food', 'wood', 'stone', 'gold', 'iron_ore'].forEach(type => totalStock[type] = 0);
+
+        storages.forEach(s => {
+            Object.keys(s.items).forEach(type => {
+                if (totalStock[type] !== undefined) totalStock[type] += s.items[type];
+            });
+        });
+
+        // 자원 총량의 역수에 비례하여 가격 책정 (많으면 싸고 적으면 비쌈)
+        Object.keys(totalStock).forEach(type => {
+            const stock = totalStock[type];
+            const basePrice = 10;
+            // 지수적 희소성 반영 ( stock이 0에 가까워질수록 가격 폭등)
+            const price = basePrice * (500 / (stock + 50));
+            this.globalPrices.set(type, Math.max(1, Math.min(100, price)));
+        });
     }
 
     /**

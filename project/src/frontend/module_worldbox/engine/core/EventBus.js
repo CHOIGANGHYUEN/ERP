@@ -71,13 +71,18 @@ export default class EventBus {
         this.deferredEvents.get(event).push(data);
     }
 
-    /** 🧹 [Expert Optimization] 지연된 이벤트들을 일괄 실행하고 큐를 비웁니다. */
+    /** 🧹 [Expert Optimization] 지연된 이벤트들을 일괄 실행하고 큐를 비웁니다. (GC Zero Allocation) */
     flush() {
         if (this.deferredEvents.size === 0) return;
 
         for (const [event, queue] of this.deferredEvents) {
+            if (queue.length === 0) continue;
+            
             const listeners = this.listeners.get(event);
-            if (!listeners || listeners.length === 0) continue;
+            if (!listeners || listeners.length === 0) {
+                queue.length = 0; // 리스너가 없어도 배열은 재사용 위해 비움
+                continue;
+            }
 
             // 전략이 있으면 적용, 없으면 큐 전체 처리
             const processedQueue = this.strategies[event] ? this.strategies[event](queue) : queue;
@@ -88,14 +93,17 @@ export default class EventBus {
                     listeners[j](data);
                 }
             }
+            
+            // 🚀 [Task 96] 배열을 삭제하지 않고 길이를 0으로 초기화하여 풀링(Pooling) 효과 달성
+            queue.length = 0;
         }
-
-        this.deferredEvents.clear();
     }
 
     // 모든 구독 초기화 (메모리 정리용)
     clear() {
         this.listeners.clear();
-        this.deferredEvents.clear();
+        for (const queue of this.deferredEvents.values()) {
+            queue.length = 0;
+        }
     }
 }

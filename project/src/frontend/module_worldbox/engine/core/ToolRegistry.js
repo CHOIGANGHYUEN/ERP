@@ -33,6 +33,20 @@ export class GrabTool extends Tool {
     constructor() { super({ id: 'grab_entity', name: 'Grab', icon: '🫳', category: 'Interaction', description: '생명체를 잡아 원하는 위치로 옮깁니다.' }); }
 }
 
+export class SpeedTool extends Tool {
+    constructor({ id, name, icon, speed, description }) {
+        super({ id, name, icon, category: 'Interaction', description });
+        this.speed = speed;
+        this.isInstant = true;
+    }
+    execute({ engine }) {
+        if (engine) {
+            engine.dispatchCommand({ type: 'SET_GAME_SPEED', payload: { speed: this.speed } });
+        }
+        return null;
+    }
+}
+
 export class BrushTool extends Tool {
     constructor(config) {
         super(config);
@@ -184,10 +198,33 @@ export class InspectTool extends Tool {
     }
 }
 
+export class SystemTool extends Tool {
+    constructor(config) {
+        super(config);
+        this.action = config.action;
+        this.isInstant = true;
+    }
+
+    execute({ engine }) {
+        if (!engine) return;
+        if (this.action === 'export') {
+            engine.exportSave();
+        } else if (this.action === 'import') {
+            engine.eventBus.emit('UI_TRIGGER_IMPORT');
+        } else if (this.action === 'stress_test') {
+            engine.toggleStressTest(!engine.isStressTestMode);
+        }
+    }
+}
+
 // 🚀 DI Config: 신규 도구 추가 시 이곳에 선언하기만 하면 전체 시스템이 자동으로 연동됨 (개방폐쇄 원칙)
 export const DefaultTools = (engine) => [
     new MoveTool(),
     new GrabTool(),
+    new SpeedTool({ id: 'speed_1x', name: 'Speed 1x', icon: '▶️', speed: 1, description: '기본 속도로 시뮬레이션을 진행합니다.' }),
+    new SpeedTool({ id: 'speed_2x', name: 'Speed 2x', icon: '⏩', speed: 2, description: '시뮬레이션 속도를 2배로 높입니다.' }),
+    new SpeedTool({ id: 'speed_3x', name: 'Speed 3x', icon: '🚀', speed: 3, description: '시뮬레이션 속도를 3배로 높입니다.' }),
+    new SpeedTool({ id: 'speed_5x', name: 'Speed 5x', icon: '⚡', speed: 5, description: '시뮬레이션 속도를 5배로 극대화합니다.' }),
     
     // 🎨 Fill (전략 패턴 적용: FillBrush)
     new BrushTool({ id: 'fill_grass', name: 'Fill Meadow', icon: '🎨', category: 'Landscape', biome: 'GRASS', strategy: new FillBrush(engine), description: '전체 지형을 푸른 초원으로 뒤덮습니다.' }),
@@ -301,6 +338,11 @@ export const DefaultTools = (engine) => [
     new ToggleTool({ id: 'view_zone', name: 'Zone View', icon: '🗺️', category: 'View', flagName: 'zone', description: '마을 내 구역 설정(주거/벌목 등)을 표시합니다.' }),
     new ToggleTool({ id: 'view_job_monitor', name: 'Job Monitor', icon: '📊', category: 'View', flagName: 'jobMonitor', description: '모든 주민의 직업 상태와 도구 장착 현황을 실시간으로 모니터링합니다.' }),
     new InspectTool(),
+
+    // ⚙️ System (Persistence & Performance)
+    new SystemTool({ id: 'sys_save', name: 'Export Save', icon: '📤', category: 'System', action: 'export', description: '현재 세계의 모든 데이터를 JSON 파일로 내보냅니다. (DB 없이 세이브 가능)' }),
+    new SystemTool({ id: 'sys_load', name: 'Import Save', icon: '📥', category: 'System', action: 'import', description: 'JSON 세이브 파일을 불러와 이전 세계를 복구합니다.' }),
+    new SystemTool({ id: 'sys_stress', name: 'Stress Test', icon: '🌡️', category: 'System', action: 'stress_test', description: '시뮬레이션 속도를 5배로 높이고 대량의 엔티티를 강제 소환하여 성능 안정성을 테스트합니다.' }),
 
 
 ];

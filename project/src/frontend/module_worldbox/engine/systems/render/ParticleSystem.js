@@ -8,10 +8,19 @@ export default class ParticleSystem extends System {
         this.particles = [];
 
         // 🚀 [Expert Optimization] Object Pooling for Particles
+        // Hidden Class 유지를 위해 모든 프로퍼티를 미리 정의하고 초기화합니다.
         this.pool = new ObjectPool(
-            () => ({}), // Factory: Simple object
-            (p) => {    // Reset: Clear all properties for safety
-                for (const key in p) delete p[key];
+            () => ({
+                x: 0, y: 0, vx: 0, vy: 0, vz: 0, z: 0,
+                color: '', size: 0, type: '', life: 0, maxLife: 0,
+                alpha: 1, rotation: 0, targetY: 0, action: '',
+                biome: 0, resourceId: -1, treeType: '', text: ''
+            }),
+            (p) => {
+                p.x = 0; p.y = 0; p.vx = 0; p.vy = 0; p.vz = 0; p.z = 0;
+                p.color = ''; p.size = 0; p.type = ''; p.life = 0; p.maxLife = 0;
+                p.alpha = 1; p.rotation = 0; p.targetY = 0; p.action = '';
+                p.biome = 0; p.resourceId = -1; p.treeType = ''; p.text = '';
             },
             500 // Initial size
         );
@@ -31,6 +40,26 @@ export default class ParticleSystem extends System {
         this.eventBus.on('SPAWN_DUST', this.addDust);
         this.eventBus.on('SPAWN_ZZZ', this.addZzz);
         this.eventBus.on('SPAWN_BLOOD', this.addBlood);
+        this.eventBus.on('SPAWN_DEBRIS', (data) => this.addDebris(data));
+    }
+
+    addDebris({ x, y, count = 8, color = '#5d4037', speed = 3 }) {
+        for (let i = 0; i < count; i++) {
+            const p = this.pool.get();
+            p.x = x; p.y = y;
+            p.vx = (Math.random() - 0.5) * speed;
+            p.vy = (Math.random() - 0.5) * speed;
+            p.vz = -2 - Math.random() * 4; // 위로 튀어오름
+            p.z = -5;
+            p.color = color;
+            p.type = 'DEBRIS';
+            p.size = 2 + Math.random() * 3;
+            p.life = 2.0;
+            p.maxLife = 2.0;
+            p.rotation = Math.random() * Math.PI * 2;
+            
+            this.particles.push(p);
+        }
     }
 
     /**
@@ -178,9 +207,26 @@ export default class ParticleSystem extends System {
                 
                 if (p.type === 'BLOOD') p.vy += 0.1; // 중력 적용
                 if (p.type === 'ZZZ') p.vx = Math.sin(time * 0.005) * 0.5; // 부유 효과
+                if (p.type === 'RAINDROP') p.x += (Math.random() - 0.5) * 0.5; // 빗방울 약간 흔들림
+                if (p.type === 'SNOWFLAKE') p.x += Math.sin(time * 0.002 + p.y) * 0.8; // 눈송이 팔랑거림
+
+                // 🏗️ [Task 84] Debris Physics (포물선 및 바운스)
+                if (p.type === 'DEBRIS') {
+                    p.vz = (p.vz || 0) + 0.25; // 중력 (Z축 시뮬레이션)
+                    p.z = (p.z || 0) + p.vz;
+                    
+                    if (p.z > 0) { // 지면에 닿음
+                        p.z = 0;
+                        p.vz *= -0.5; // 바운스 (에너지 감쇄)
+                        p.vx *= 0.7; // 마찰력
+                        p.vy *= 0.7;
+                    }
+                    
+                    p.rotation = (p.rotation || 0) + (p.vx * 0.1);
+                }
 
                 p.life -= dt;
-                p.alpha = p.life / (p.maxLife || 1);
+                p.alpha = Math.min(1.0, p.life / (p.maxLife || 1));
                 
                 if (p.life <= 0) {
                     this.particles.splice(i, 1);

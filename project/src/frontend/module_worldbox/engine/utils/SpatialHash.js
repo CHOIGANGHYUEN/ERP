@@ -3,6 +3,10 @@ export default class SpatialHash {
         this.cellSize = cellSize;
         this.staticCells = new Map();  // 🌲 고정된 자원용
         this.dynamicCells = new Map(); // 🐕 움직이는 개체용
+        
+        // 🚀 [Task 92] 가비지 생성을 막기 위한 쿼리 버퍼 풀 (Round-Robin)
+        this.queryBuffers = Array.from({ length: 10 }, () => []);
+        this.queryBufferIndex = 0;
     }
 
     /**
@@ -16,7 +20,10 @@ export default class SpatialHash {
      * 동적 개체 데이터만 초기화합니다.
      */
     clearDynamic() {
-        this.dynamicCells.clear();
+        // 🚀 [Expert Optimization] Map.clear() 대신 배열 길이 초기화 (Zero-Allocation)
+        for (const cell of this.dynamicCells.values()) {
+            cell.length = 0;
+        }
     }
 
     /**
@@ -111,7 +118,11 @@ export default class SpatialHash {
 
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
-        const foundIds = [];
+        
+        // 🚀 [Task 92] 가비지 생성을 막기 위한 쿼리 버퍼 풀링 적용
+        this.queryBufferIndex = (this.queryBufferIndex + 1) % 10;
+        const foundIds = this.queryBuffers[this.queryBufferIndex];
+        foundIds.length = 0; // 초기화
 
         for (let oy = -cellRadius; oy <= cellRadius; oy++) {
             const cy = cellY + oy;

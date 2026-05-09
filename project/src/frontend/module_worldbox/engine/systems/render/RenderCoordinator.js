@@ -98,7 +98,7 @@ export default class RenderCoordinator extends System {
         offCtx.save();
         offCtx.imageSmoothingEnabled = false;
         offCtx.scale(camera.zoom, camera.zoom);
-        offCtx.translate(-camera.x, -camera.y);
+        offCtx.translate(-camera.renderX, -camera.renderY);
 
         // --- 레이어별 그리기 작업 ---
 
@@ -123,6 +123,14 @@ export default class RenderCoordinator extends System {
         if (engine.viewFlags.wind) {
             this.renderWindOverlay(offCtx);
         }
+
+        // 🌗 [Day/Night & Lighting Overlay]
+        this.renderGlobalIllumination(offCtx, camera);
+
+        if (engine.viewFlags.debugAI) {
+            this.renderDebugAI(offCtx);
+        }
+
         offCtx.restore();
 
         // [레이어 3] 마을 및 구역 타일 오버레이 (World Space)
@@ -148,10 +156,6 @@ export default class RenderCoordinator extends System {
 
         if (engine.viewFlags.zone || engine.viewFlags.showZones) {
             this.renderZoneView(offCtx);
-        }
-
-        if (engine.viewFlags.debugAI) {
-            this.renderDebugAI(offCtx);
         }
 
         // [레이어 5] 플로팅 텍스트 (World Space or Screen Space)
@@ -644,6 +648,69 @@ export default class RenderCoordinator extends System {
                 }
 
                 ctx.restore();
+            }
+        }
+        ctx.restore();
+    }
+
+    renderGlobalIllumination(ctx, camera) {
+        const time = this.engine.timeSystem;
+        const lighting = this.engine.systemManager?.lightingSystem;
+        if (!time || !lighting) return;
+
+        // 1. 시간대별 환경광(Ambient Light) 계산
+        // 0~24시간. 0=자정, 12=정오
+        let darkness = 0;
+        let ambientColor = 'rgba(0, 0, 20, 0)'; // 낮
+
+        if (time.hours >= 18) {
+            // 저녁 6시부터 어두워지기 시작
+            const progress = Math.min(1.0, (time.hours - 18 + time.minutes / 60) / 3.0);
+            darkness = 0.6 * progress; // 최대 0.6 투명도
+            ambientColor = `rgba(10, 10, 35, ${darkness})`;
+        } else if (time.hours < 6) {
+            // 새벽 6시까지 어두움 유지되다 밝아짐
+            const progress = Math.max(0.0, 1.0 - (time.hours + time.minutes / 60) / 6.0);
+            darkness = 0.6 * progress;
+            ambientColor = `rgba(10, 10, 35, ${darkness})`;
+        }
+
+        if (darkness <= 0.05) return; // 밝을 때는 렌더링 생략 (성능 최적화)
+
+        // 2. 환경광 오버레이 그리기
+        ctx.save();
+        const vw = this.offscreenCanvas.width / camera.zoom;
+        const vh = this.offscreenCanvas.height / camera.zoom;
+        const vx = camera.x;
+        const vy = camera.y;
+
+        // 전체를 어둡게
+        ctx.fillStyle = ambientColor;
+        ctx.fillRect(vx, vy, vw, vh);
+
+        // 3. 광원(Lights) 구멍 내기 (Destination-out)
+        if (lighting.lights.length > 0) {
+            ctx.globalCompositeOperation = 'destination-out';
+            for (const light of lighting.lights) {
+                // 화면 밖 광원 Culling
+                if (light.x + light.radius < vx || light.x - light.radius > vx + vw ||
+                    light.y + light.radius < vy || light.y - light.radius > vy + vh) {
+                    continue;
+                }
+
+                const gradCanvas = lighting.getLightGradient(ctx, light.radius, light.color, light.intensity);
+                ctx.drawImage(gradCanvas, light.x - light.radius, light.y - light.radius);
+            }
+
+            // 부드러운 빛 반사를 위해 lighter 블렌딩 추가
+            ctx.globalCompositeOperation = 'lighter';
+            for (const light of lighting.lights) {
+                if (light.x + light.radius < vx || light.x - light.radius > vx + vw ||
+                    light.y + light.radius < vy || light.y - light.radius > vy + vh) {
+                    continue;
+                }
+                const gradCanvas = lighting.getLightGradient(ctx, light.radius, light.color, light.intensity * 0.5); // 약하게 덧칠
+                ctx.drawImage(gradCanvas, light.x - light.radius, light.y - light.radius);
             }
         }
         ctx.restore();

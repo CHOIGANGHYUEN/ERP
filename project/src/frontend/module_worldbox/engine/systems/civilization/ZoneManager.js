@@ -26,21 +26,41 @@ export default class ZoneManager {
         if (!vs) return;
 
         for (const village of vs.villages.values()) {
+            this._calculateVillageSynergy(village);
             this._processVillageExpansion(village, dt);
         }
+    }
+
+    /** 🏰 [Synergy] 마을 내 건물들의 특수 효과(영토 영향력, 방어력)를 합산합니다. */
+    _calculateVillageSynergy(village) {
+        let totalInfluence = 0;
+        let totalDefense = 0;
+
+        for (const buildingId of village.buildings || []) {
+            const ent = this.engine.entityManager.entities.get(buildingId);
+            const structure = ent?.components.get('Structure');
+            if (structure && structure.isComplete) {
+                totalInfluence += structure.influence || 0;
+                totalDefense += structure.defense || 0;
+            }
+        }
+
+        village.totalInfluence = totalInfluence;
+        village.totalDefense = totalDefense;
     }
 
     /** 📈 [Expansion] 마을의 문화와 인구에 비례하여 영토를 확장합니다. */
     _processVillageExpansion(village, dt) {
         const ns = this.engine.systemManager?.nationSystem;
-        const nation = village.nationId !== -1 ? ns?.getNation(village.nationId) : null;
+        const nation = ns?.nations.get(village.nationId);
 
-        // 확장 강도 계산: 인구 + 국가 문화/기술 보너스
+        // 확장 강도 계산: 인구 + 국가 문화/기술 보너스 + 🏰 건물 영향력
         const popFactor = Math.sqrt(village.members.size) * 0.5;
         const cultureFactor = (nation?.culture || 0) * 0.1;
         const policyFactor = village.cultureRate || 1.0;
+        const buildingFactor = (village.totalInfluence || 0) * 0.2;
 
-        const expansionStrength = (popFactor + cultureFactor) * policyFactor;
+        const expansionStrength = (popFactor + cultureFactor + buildingFactor) * policyFactor;
 
         // 주거 구역과 벌목 구역 각각 확장 시도
         this._attemptExpansion(village.id, village.residentialZoneId, expansionStrength);
@@ -92,11 +112,13 @@ export default class ZoneManager {
                 if (currentOwnerId > 0) {
                     if (currentOwnerId === villageId) continue; // 내 타일이면 패스
 
-                    // 타지마을 타일인 경우: 내 확장 강도가 상대의 방어력(문화/인구)보다 월등히 높아야 탈취 가능
+                    // 타지마을 타일인 경우: 내 확장 강도가 상대의 방어력보다 월등히 높아야 탈취 가능
                     const otherVillage = vs.getVillage(currentOwnerId);
                     if (otherVillage) {
                         const myStrength = strength;
-                        const otherDefense = (Math.sqrt(otherVillage.members.size) * 0.5) + ((ns?.getNation(otherVillage.nationId)?.culture || 0) * 0.1);
+                        const otherDefense = (Math.sqrt(otherVillage.members.size) * 0.5) + 
+                                           ((ns?.getNation(otherVillage.nationId)?.culture || 0) * 0.1) +
+                                           (otherVillage.totalDefense || 0);
 
                         // ⚔️ 탈취 시도 (2배 이상 강력할 때)
                         if (myStrength > otherDefense * 2.0) {

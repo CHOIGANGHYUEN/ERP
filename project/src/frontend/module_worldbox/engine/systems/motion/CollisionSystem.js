@@ -37,4 +37,50 @@ export default class CollisionSystem {
         }
         return { pushX: 0, pushY: 0 };
     }
+
+    /** 🕊️ [Alignment] 주변 개체들과 이동 방향을 맞춥니다. */
+    static resolveAlignment(id, x, y, spatialHash, em, radius = 40) {
+        if (!spatialHash) return { avgVx: 0, avgVy: 0 };
+
+        let avgVx = 0;
+        let avgVy = 0;
+        let count = 0;
+
+        spatialHash.eachInRange(x, y, radius, (otherId) => {
+            if (otherId === id) return;
+            const otherIdx = otherId * 4; // VelocityBuffer index (vx, vy, ax, ay)
+            if (!em.velocityBuffer) return;
+
+            avgVx += em.velocityBuffer[otherIdx];
+            avgVy += em.velocityBuffer[otherIdx + 1];
+            count++;
+        });
+
+        if (count > 0) {
+            return { avgVx: avgVx / count, avgVy: avgVy / count };
+        }
+        return { avgVx: 0, avgVy: 0 };
+    }
+
+    /** 🌌 [Cohesion] 주변 개체들의 중심점으로 모입니다. */
+    static resolveCohesion(id, x, y, spatialHash, em, radius = 50) {
+        if (!spatialHash) return { centerX: x, centerY: y };
+
+        let sumX = 0;
+        let sumY = 0;
+        let count = 0;
+
+        spatialHash.eachInRange(x, y, radius, (otherId) => {
+            if (otherId === id) return;
+            const otherIdx = otherId * 2;
+            sumX += em.transformBuffer[otherIdx];
+            sumY += em.transformBuffer[otherIdx + 1];
+            count++;
+        });
+
+        if (count > 0) {
+            return { centerX: sumX / count, centerY: sumY / count };
+        }
+        return { centerX: x, centerY: y };
+    }
 }

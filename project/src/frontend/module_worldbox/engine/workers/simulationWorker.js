@@ -10,6 +10,7 @@ let lastTime = Date.now();
 let mapWidth = 0;
 let mapHeight = 0;
 let commandQueue = [];
+let pixelUpdateQueue = []; // 🚀 [Task 94] Batch IPC Queue
 
 // 로컬 TypedArray 뷰
 let terrain, biomes, fertility, waterQuality, mineralDensity, occupancy, territory, packed, altitude;
@@ -72,6 +73,12 @@ function tick() {
     
     updateSimulation(scaledDt);
 
+    // 🚀 [Task 94] Flush queued updates to main thread
+    if (pixelUpdateQueue.length > 0) {
+        self.postMessage({ type: 'PIXEL_UPDATE_BATCH', payload: pixelUpdateQueue });
+        pixelUpdateQueue = [];
+    }
+
     // 시뮬레이션 속도에 따라 틱 간격 조절 (CPU 점유율 제어)
     const interval = Math.max(16, 32 / (simParams.spreadSpeed || 1.0));
     setTimeout(tick, interval); 
@@ -88,6 +95,9 @@ function updateSimulation(dt) {
 
     // 3. 🌊 수질 및 흐름 시뮬레이션 (Water & Pollution Flow)
     processWaterSimulation(dt);
+
+    // 4. 🏭 인간 활동 영향 (Human Impact)
+    processHumanImpact(dt);
 }
 
 function processBiomeSpreading(dt) {
@@ -102,7 +112,10 @@ function processBiomeSpreading(dt) {
         if (Atomics.load(biomes, idx) !== DIRT_ID) continue;
 
         const f = Atomics.load(fertility, idx);
-        if (f < 50) continue;
+        const w = Atomics.load(waterQuality, idx);
+        
+        // 🚀 [Expert Logic] 비옥도가 낮거나 수질 오염이 심하면 바이옴 확산 저하
+        if (f < 50 || w > 150) continue;
 
         let hasGrassNeighbor = false;
         if (x > 0 && Atomics.load(biomes, idx - 1) === GRASS_ID) hasGrassNeighbor = true;
@@ -111,11 +124,13 @@ function processBiomeSpreading(dt) {
         else if (y < mapHeight - 1 && Atomics.load(biomes, idx + mapWidth) === GRASS_ID) hasGrassNeighbor = true;
 
         if (hasGrassNeighbor) {
-            const spreadChance = f * 0.0005 * (simParams.spreadSpeed || 1.0);
+            // 수질 오염도에 따른 확산 속도 패널티 (w=0 이면 1.0, w=255 이면 0.2)
+            const pollutionPenalty = 1.0 - (w / 255) * 0.8;
+            const spreadChance = f * 0.0005 * (simParams.spreadSpeed || 1.0) * pollutionPenalty;
             if (Math.random() < spreadChance) {
                 Atomics.store(biomes, idx, GRASS_ID);
                 syncPackedPixel(idx);
-                self.postMessage({ type: 'PIXEL_UPDATE', payload: { x, y, reason: 'biome_spread' } });
+                pixelUpdateQueue.push({ x, y, reason: 'biome_spread' }); // 🚀 [Task 94] Batching
             }
         }
     }
@@ -178,7 +193,7 @@ function processWaterSimulation(dt) {
                     syncPackedPixel(nIdx);
                     
                     if (Math.random() < 0.1) {
-                        self.postMessage({ type: 'PIXEL_UPDATE', payload: { x, y, reason: 'water_flow' } });
+                        pixelUpdateQueue.push({ x, y, reason: 'water_flow' }); // 🚀 [Task 94] Batching
                     }
                 }
             }
@@ -202,22 +217,20 @@ function processCommands() {
                 if (idx >= 0 && idx < mapWidth * mapHeight) {
                     Atomics.store(biomes, idx, payload.biome);
                     syncPackedPixel(idx);
-                    self.postMessage({ type: 'PIXEL_UPDATE', payload: { x, y, reason: 'biome_change' } });
+                    pixelUpdateQueue.push({ x, y, reason: 'biome_change' }); // 🚀 [Task 94] Batching
                 }
             } else if (payload.action === 'CHANGE_BIOME_ALL') {
                 const biomeId = payload.biome;
                 for (let i = 0; i < biomes.length; i++) {
-                    // 육지만 채우기 (5: DIRT, 6: GRASS, 7: JUNGLE, 4: SAND, 8: LOW_MOUNTAIN, 9: HIGH_MOUNTAIN)
                     const t = Atomics.load(terrain, i);
                     if (t >= 4) {
                         Atomics.store(biomes, i, biomeId);
                         syncPackedPixel(i);
                     }
                 }
-                self.postMessage({ type: 'PIXEL_UPDATE', payload: { all: true, reason: 'fill_biome' } });
+                pixelUpdateQueue.push({ all: true, reason: 'fill_biome' }); // 🚀 [Task 94] Batching
             }
         } else if (type === 'APPLY_GOD_POWER') {
-            // ⚡ 신의 권능 처리 (예: 폭탄 투하 시 비옥도 감소 등)
             const { x, y, radius, powerType } = payload;
             const rSq = radius * radius;
             
@@ -241,11 +254,37 @@ function processCommands() {
                         }
                         syncPackedPixel(idx);
                         if (Math.random() < 0.1) {
-                            self.postMessage({ type: 'PIXEL_UPDATE', payload: { x: tx, y: ty, reason: 'god_power' } });
+                            pixelUpdateQueue.push({ x: tx, y: ty, reason: 'god_power' }); // 🚀 [Task 94] Batching
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+function processHumanImpact(dt) {
+    // 🏭 [Expert Logic] 인간/건물 밀집 지역의 환경 부하 시뮬레이션
+    const scanCount = 1500;
+    for (let i = 0; i < scanCount; i++) {
+        const idx = Math.floor(Math.random() * (mapWidth * mapHeight));
+        const occ = Atomics.load(occupancy, idx);
+        
+        if (occ > 0) {
+            // 밀집도에 비례하여 비옥도 감소
+            const f = Atomics.load(fertility, idx);
+            if (f > 0) {
+                const reduction = Math.ceil(occ * 0.5);
+                Atomics.store(fertility, idx, Math.max(0, f - reduction));
+            }
+            
+            // 건물/인간 밀집 시 수질 오염 증가 (강/호수 인접 시)
+            const t = Atomics.load(terrain, idx);
+            if (t <= 3) {
+                Atomics.add(waterQuality, idx, Math.min(5, occ));
+            }
+            
+            syncPackedPixel(idx);
         }
     }
 }

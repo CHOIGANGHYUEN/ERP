@@ -91,7 +91,8 @@ export default class HumanFactory extends IEntityFactory {
             .addComponent('Builder', new Builder())
             .addComponent('Inventory', new Inventory(20))
             .addComponent('GathererComponent', new GathererComponent({ gatherSpeed: 5.0 }))
-            .addComponent('EquipmentSlots', new EquipmentSlots()); // ⚔️ [Task 59] 도구 슬롯
+            .addComponent('EquipmentSlots', new EquipmentSlots()) // ⚔️ [Task 59] 도구 슬롯
+            .withJobController(); 
 
         // 문명 소속 설정 (기본값 -1)
         builder.addComponent('Civilization', { villageId: options.villageId || -1 });

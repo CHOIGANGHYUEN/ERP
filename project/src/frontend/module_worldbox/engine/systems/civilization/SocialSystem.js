@@ -19,7 +19,7 @@ export default class SocialSystem extends System {
         const em = this.entityManager;
 
         // 🚀 [Optimization] 분할 처리 (인원이 많아도 프레임 드랍 방지)
-        const ids = Array.from(em.humanIds);
+        const ids = em.humanIds.items; // 🚀 [Expert Optimization] Raw Array 직접 참조
         const count = ids.length;
         if (count === 0) return;
 

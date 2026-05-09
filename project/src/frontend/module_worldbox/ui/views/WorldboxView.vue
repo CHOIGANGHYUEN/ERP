@@ -42,6 +42,18 @@
 
       <div class="top-bar">
         <h1>Worldbox Simulation</h1>
+        <!-- 🚀 [Expert UI] Time Control Panel -->
+        <div class="time-controls" v-if="isGameStarted">
+          <button 
+            v-for="speed in [1, 2, 3, 5]" 
+            :key="speed" 
+            :class="{ active: currentGameSpeed === speed }"
+            @click="setGameSpeed(speed)"
+            class="speed-btn"
+          >
+            {{ speed }}x
+          </button>
+        </div>
       </div>
       
       <!-- Bottom Tool Menu -->
@@ -138,6 +150,15 @@
         @confirm="handleMapConfirm"
       />
     </Transition>
+
+    <!-- 📂 Hidden File Input for Save Import -->
+    <input 
+      type="file" 
+      ref="saveFileInput" 
+      style="display: none" 
+      accept=".json" 
+      @change="onSaveFileSelected"
+    />
   </div>
 </template>
 
@@ -158,6 +179,7 @@ import JobMonitorPanel from '../components/JobMonitorPanel.vue';
 const worldboxContainer = ref(null);
 const gameCanvas = ref(null);
 const toolTabsContainer = ref(null); // 📜 Mouse wheel scroll reference
+const saveFileInput = ref(null); // 📂 Save file input reference
 const isMenuOpen = ref(false);
 const activeTool = ref('move_hand');
 const showMapSettings = ref(false);
@@ -171,6 +193,7 @@ const totalFertility = ref(0);
 const totalMaxFertility = ref(0);
 const dodStats = ref(null);
 const hoveredTool = ref(null);
+const currentGameSpeed = ref(1);
 
 const engine = ref(null);
 const allTools = ref([]);
@@ -213,7 +236,8 @@ const toolCategories = [
   { name: 'Civilization', icon: '🏘️' },
   { name: 'God Powers', icon: '⚡' },
   { name: 'Interaction', icon: '🤝' },
-  { name: 'View', icon: '👁️' }
+  { name: 'View', icon: '👁️' },
+  { name: 'System', icon: '⚙️' }
 ];
 
 const activeCategory = ref('Landscape');
@@ -237,8 +261,19 @@ watch(activeTool, (newId) => {
 });
 
 const activeToolData = computed(() => {
-  return allTools.value.find(t => t.id === activeTool.value) || null;
+  return allTools.value.find(t => t.id === activeTool.value);
 });
+
+const setGameSpeed = (speed) => {
+  currentGameSpeed.value = speed;
+  if (engine.value) {
+    engine.value.dispatchCommand({
+      type: 'SET_GAME_SPEED',
+      payload: { speed }
+    });
+  }
+};
+
 
 const showBrushSettings = computed(() => {
   const tool = activeToolData.value;
@@ -266,20 +301,41 @@ const updateSimParams = () => {
 
 const selectTool = (tool) => {
   console.log(`🎯 Tool Selected: ${tool.name} (${tool.id}), isBrush: ${tool.isBrush}`);
-  if (tool.isInstant && tool.id.startsWith('view_')) {
-    const panelView = tool.id === 'view_village' || tool.id === 'view_nation' || tool.id === 'view_job_monitor';
-    if (tool.id === 'view_village') {
-      store.showVillageInfo = !store.showVillageInfo;
+  
+  // ⚡ [Expert UI] Instant tools (Save, Load, Toggle, etc.)
+  if (tool.isInstant) {
+    if (tool.execute) {
+      tool.execute({ engine: engine.value });
     }
-    if (tool.id === 'view_nation') {
-      store.showNationInfo = !store.showNationInfo;
+
+    // 🚀 [Time Control Sync] SpeedTool인 경우 전역 상태 업데이트
+    if (tool.speed !== undefined) {
+      currentGameSpeed.value = tool.speed;
     }
-    if (tool.id === 'view_job_monitor') {
-      store.showJobMonitor = !store.showJobMonitor;
+
+    if (tool.id.startsWith('view_')) {
+      const panelView = tool.id === 'view_village' || tool.id === 'view_nation' || tool.id === 'view_job_monitor';
+      if (tool.id === 'view_village') store.showVillageInfo = !store.showVillageInfo;
+      if (tool.id === 'view_nation') store.showNationInfo = !store.showNationInfo;
+      if (tool.id === 'view_job_monitor') store.showJobMonitor = !store.showJobMonitor;
+      
+      // 🚀 [BugFix] tool.execute() 내부에서 이미 toggleView를 호출하므로 여기서 중복 호출 금지 (이중 토글 방지)
+      // 활성화 상태 하이라이트를 위해 activeTool 값 업데이트
+      if (engine.value && !panelView) {
+        const flagName = tool.flagName || tool.id.replace('view_', '');
+        // 약간의 지연을 주어 엔진의 상태 변화가 반영된 후 체크 (또는 수동 동기화)
+        setTimeout(() => {
+          if (engine.value.viewFlags[flagName]) {
+            activeTool.value = tool.id;
+          } else {
+            activeTool.value = 'move_hand';
+          }
+        }, 10);
+      }
     }
-    if (engine.value && !panelView) engine.value.toggleView(tool.id);
     return;
   }
+
   activeTool.value = tool.id;
   if (engine.value) {
     engine.value.setActiveTool(tool);
@@ -402,6 +458,11 @@ const initEngine = (mapSettings = {}) => {
     }
   };
 
+  // 📡 [Persistence] UI Import Trigger
+  engine.value.eventBus.on('UI_TRIGGER_IMPORT', () => {
+    if (saveFileInput.value) saveFileInput.value.click();
+  });
+
   resizeObserver = new ResizeObserver(entries => {
     for (let entry of entries) {
       const { width, height } = entry.contentRect;
@@ -425,6 +486,20 @@ const handleGlobalResize = () => {
 onMounted(() => {
   console.log("🌌 Worldbox View Mounted. Awaiting User Initialization...");
 });
+
+const onSaveFileSelected = async (event) => {
+  const file = event.target.files[0];
+  if (!file || !engine.value) return;
+  
+  try {
+    await engine.value.importSave(file);
+    // Reset input so the same file can be loaded again if needed
+    event.target.value = ''; 
+    isMenuOpen.value = false;
+  } catch (err) {
+    console.error("Failed to import save:", err);
+  }
+};
 
 
 onUnmounted(() => {
@@ -941,6 +1016,40 @@ input[type="range"] {
   letter-spacing: 3px;
   color: #fff;
   margin: 0;
+}
+
+/* ⏳ Time Controls Style */
+.time-controls {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 4px;
+}
+
+.speed-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.speed-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.speed-btn.active {
+  background: #2e7d32;
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(46, 125, 50, 0.4);
 }
 
 /* 🚀 Intro Screen Styles */

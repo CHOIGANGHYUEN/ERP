@@ -41,7 +41,9 @@ export default class AnimalBehaviorSystem extends System {
         let searchCount = 0;
         const SEARCH_LIMIT_PER_FRAME = 5;
 
-        for (const id of em.animalIds) {
+        const items = em.animalIds.items;
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
             const entity = em.entities.get(id);
             if (!entity) continue;
 
@@ -51,10 +53,22 @@ export default class AnimalBehaviorSystem extends System {
             const stats = entity.components.get('BaseStats');
 
             if (state && transform && animal) {
+                // 1. [AI LOD] 가시성 및 거리에 따른 극단적 업데이트 빈도 조절 (200k 스케일 대응)
                 const isVisible = transform.x >= viewX && transform.x <= viewX + viewW &&
                                    transform.y >= viewY && transform.y <= viewY + viewH;
                 
-                const updateModulo = isVisible ? 2 : 10;
+                let updateModulo = 2; // 화면 안: 30 FPS 수준
+                
+                if (!isVisible) {
+                    const centerX = viewX + viewW / 2;
+                    const centerY = viewY + viewH / 2;
+                    const dist = Math.abs(transform.x - centerX) + Math.abs(transform.y - centerY);
+                    const isFar = dist > (viewW + viewH) * 2; 
+                    
+                    // 원거리: 60프레임당 1회 (1 FPS), 근거리 화면 밖: 15프레임당 1회 (4 FPS)
+                    updateModulo = isFar ? 60 : 15;
+                }
+
                 if ((id + frameCount) % updateModulo === 0) {
                     const effectiveDt = dt * updateModulo;
 

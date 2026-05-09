@@ -4,6 +4,7 @@ import { NatureRenders } from '../../objects/renders/NatureRenders.js';
 import { TreeRenderer } from '../../objects/renders/nature/TreeRenderer.js';
 import { BuildRender } from '../../objects/renders/BuildRender.js';
 import { ItemRenderer } from '../../objects/renders/ItemRenderer.js';
+import { textureManager } from './TextureManager.js';
 
 /**
  * 🎨 EntityRenderer
@@ -13,21 +14,9 @@ export default class EntityRenderer {
     constructor(engine) {
         this.engine = engine;
         this.spriteCache = new Map(); 
-        this._initShadowSprite();
     }
 
-    /** 🌑 그림자용 공용 스프라이트 생성 (GC 및 연산 감소) */
-    _initShadowSprite() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 32; canvas.height = 32;
-        const ctx = canvas.getContext('2d');
-        const grad = ctx.createRadialGradient(16, 16, 2, 16, 16, 14);
-        grad.addColorStop(0, 'rgba(0, 0, 0, 0.35)');
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 32, 32);
-        this.shadowSprite = canvas;
-    }
+    // (Shadow sprite is now handled by textureManager)
 
     /** 메인 렌더링 루프 */
     render(ctx, entityManager, particles, time, wind) {
@@ -69,6 +58,76 @@ export default class EntityRenderer {
             const entity = entityManager.entities.get(id);
             if (!entity) continue;
 
+            // 🧭 [Expert Optimization] Velocity Buffer에서 직접 데이터 추출 (Component Access 최소화)
+            const vIdx = id * 4;
+            const vx = entityManager.velocityBuffer[vIdx];
+            const vy = entityManager.velocityBuffer[vIdx + 1];
+
+            if (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1) {
+                // 🔄 [Task 85] Smooth Rotation (Angle Damping)
+                const targetAngle = Math.atan2(vy, vx);
+                const visual = entity.components.get('Visual');
+                let dir8 = 0;
+
+                if (visual) {
+                    const currentRad = (visual.facingAngle || targetAngle);
+                    let diff = targetAngle - currentRad;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    
+                    const turnSpeed = 0.2; // 보간 속도
+                    const newRad = currentRad + diff * turnSpeed;
+                    visual.facingAngle = newRad;
+
+                    let dir = Math.round(((newRad * 180 / Math.PI) + 90) / 45);
+                    dir8 = (dir + 8) % 8;
+                } else {
+                    let dir = Math.round(((targetAngle * 180 / Math.PI) + 90) / 45);
+                    dir8 = (dir + 8) % 8;
+                }
+                
+                const mapping = [6, 7, 0, 1, 2, 3, 4, 5];
+                const humanFacing = mapping[dir8];
+                
+                if (rBuffer[rIdx + 6] !== humanFacing) {
+                    rBuffer[rIdx + 6] = humanFacing;
+                    const flipX = (humanFacing >= 3 && humanFacing <= 5) ? 1 : 0;
+                    rBuffer[rIdx + 3] = flipX;
+
+                    if (visual) {
+                        visual.facing = humanFacing;
+                        visual.flipX = (flipX === 1);
+                    }
+                }
+            }
+
+            // 6. [Task 83] Trail 데이터 업데이트 및 렌더링 (Frustum Culling 적용)
+            const trail = entity.components.get('Trail');
+            if (trail) {
+                // 🚀 [Optimization] 화면 안에 있을 때만 포인트를 추가하고 그림
+                const isVisible = (x > viewX && x < viewX + viewW && y > viewY && y < viewY + viewH);
+                if (isVisible) {
+                    trail.addPoint(x, y);
+
+                    if (trail.points.length > 1) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.strokeStyle = trail.color;
+                        ctx.lineWidth = trail.width;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        
+                        const pts = trail.points;
+                        ctx.moveTo(pts[0].x, pts[0].y);
+                        for (let i = 1; i < pts.length; i++) {
+                            ctx.lineTo(pts[i].x, pts[i].y);
+                        }
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            }
+
             // v는 기존 호환성을 위해 유지 (애니메이션 메타데이터 등)
             const v = entity.components.get('Visual');
             if (!v) continue;
@@ -82,17 +141,32 @@ export default class EntityRenderer {
                 alpha: rBuffer[rIdx + 5] / 255,
                 frame: rBuffer[rIdx + 2],
                 flipX: rBuffer[rIdx + 3] === 1,
-                facing: rBuffer[rIdx + 6]
+                facing: rBuffer[rIdx + 6],
+                type: v.type || '' // 🚀 [Task 91] Batching용 타입 추가
             });
         }
 
-        renderList.sort((a, b) => a.z - b.z);
+        // 🚀 [Task 91] 드로우 콜 배칭 (Batching)
+        // Y좌표(Z-depth)가 거의 같은 객체들은 타입별로 묶어서 렌더링 파이프라인의 상태 변경을 최소화합니다.
+        renderList.sort((a, b) => {
+            const zDiff = a.z - b.z;
+            if (Math.abs(zDiff) < 8) { // 8픽셀 이내면 동일 레이어로 간주
+                if (a.type < b.type) return -1;
+                if (a.type > b.type) return 1;
+                return 0;
+            }
+            return zDiff;
+        });
  
         // 🔒 [Debug] AIPATH 모드일 때 블랙리스트(도달 불가) 타겟 수집
         const blacklistedIds = new Set();
         if (this.engine.viewFlags.debugAI) {
-            for (const ent of entityManager.entities.values()) {
-                const ai = ent.components.get('AIState');
+            const em = this.engine.entityManager;
+            const denseIds = em.denseIds;
+            for (let i = 0; i < denseIds.length; i++) {
+                const id = denseIds[i];
+                const ent = em.entities.get(id);
+                const ai = ent?.components.get('AIState');
                 if (ai && ai.unreachableTargets) {
                     for (const tid of ai.unreachableTargets) blacklistedIds.add(tid);
                 }
@@ -103,6 +177,7 @@ export default class EntityRenderer {
         for (const item of renderList) {
             this.renderShadow(ctx, item, time);
         }
+        textureManager.flush(ctx);
 
         // 2. 🌊 [Water Ripples] 물 위에 있는 개체들을 위한 파동 효과
         for (const item of renderList) {
@@ -127,8 +202,8 @@ export default class EntityRenderer {
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
                 
-                // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 줌이 충분할 때 렌더링
-                const shouldShowAIDebug = this.engine.viewFlags.debugAI && (id === this.engine.selectedId || camera.zoom > 1.2);
+                // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 AIPATH 모드일 때 렌더링
+                const shouldShowAIDebug = this.engine.viewFlags.debugAI;
                 if (shouldShowAIDebug && state) {
                     this.renderAIDebug(ctx, item, state, id);
                 }
@@ -164,7 +239,12 @@ export default class EntityRenderer {
             }
         }
 
-        this.renderParticles(ctx, particles);
+        this.renderParticles(ctx, particles, { x: viewX, y: viewY, w: viewW, h: viewH });
+        
+        // 🚀 [Expert Optimization] 모든 배칭 큐를 비우고 최종 렌더링
+        textureManager.flush(ctx);
+
+        this.lastRenderCount = renderList.length;
     }
 
     /** 🌑 통합 그림자 렌더링 시스템 */
@@ -180,12 +260,13 @@ export default class EntityRenderer {
         const sw = size * 1.6 * breathScale;
         const sh = size * 0.6 * breathScale;
 
-        // 🚀 [Expert Optimization] ellipse/fill 대신 미리 생성된 그림자 스프라이트 사용
-        ctx.drawImage(
-            this.shadowSprite, 
-            Math.floor(x - sw / 2), 
-            Math.floor(y - sh / 2 + 1), 
-            sw, sh
+        // 📦 [Batching Optimization] TextureManager의 큐에 추가
+        textureManager.enqueueDraw(
+            'common_shadow', 
+            Math.floor(x), 
+            Math.floor(y + 1), 
+            sw, sh,
+            { alpha: 1.0 }
         );
     }
 
@@ -344,12 +425,16 @@ export default class EntityRenderer {
         const osc = Math.sin(time * 0.002 + t.x * 0.05) * (size * 0.1);
         const totalSway = (wv.x * 3 + osc) * swayAmount;
 
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
         const shear = totalSway / size;
-        ctx.transform(1, 0, shear, 1, 0, 0);
-        ctx.drawImage(sprite, -sprite.width / 2, -sprite.height + 2);
-        ctx.restore();
+        
+        // 📦 [Batching Optimization] 큐에 추가
+        textureManager.enqueueDraw(
+            sprite, 
+            Math.floor(t.x), 
+            Math.floor(t.y + 2), 
+            sprite.width, sprite.height,
+            { rotation: shear * 0.5 } // Shear를 Rotation으로 근사하여 배칭 지원
+        );
     }
 
     drawBuildingCached(ctx, t, v, structure, time) {
@@ -367,21 +452,27 @@ export default class EntityRenderer {
             BuildRender.render(sCtx, type, { x: 0, y: 0 }, v, structure, 0, this.engine, false);
         }, size * 2.5, size * 2.5);
 
-        ctx.save();
-        ctx.translate(Math.floor(t.x), Math.floor(t.y));
+        // 3. 스프라이트 그리기 (배칭 큐 활용)
+        textureManager.enqueueDraw(
+            sprite,
+            Math.floor(t.x),
+            Math.floor(t.y + 5),
+            sprite.width, sprite.height
+        );
         
-        // 3. 스프라이트 그리기
-        ctx.drawImage(sprite, -sprite.width / 2, -(sprite.height - 5));
-        
-        // 4. 동적 오버레이 및 건설 정보 (캐시하지 않음)
+        // 4. 동적 오버레이 및 건설 정보 (캐시하지 않음 - 즉시 렌더링)
         if (isComplete && (type === 'bonfire' || type === 'house' || type === 'farm')) {
+            ctx.save();
+            ctx.translate(Math.floor(t.x), Math.floor(t.y));
             BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true); // true for overlayOnly
+            ctx.restore();
         } else if (!isComplete) {
+            ctx.save();
+            ctx.translate(Math.floor(t.x), Math.floor(t.y));
             // 건설 중 정보 표시
             BuildRender.renderBlueprintInfo(ctx, { x: 0, y: 0 }, structure);
+            ctx.restore();
         }
-
-        ctx.restore();
     }
 
     renderBuildingDebugInfo(ctx, entityManager) {
@@ -480,10 +571,20 @@ export default class EntityRenderer {
         return canvas;
     }
 
-    renderParticles(ctx, particles) {
-        // 🚀 [Optimization] 파티클 렌더링 시 save/restore 횟수를 최소화하고 rgba 활용
+    renderParticles(ctx, particles, bounds) {
+        const { x: vX, y: vY, w: vW, h: vH } = bounds;
+        const margin = 20;
+
+        // 🚀 [Expert Optimization] Frustum Culling for Particles
         for (let i = 0; i < particles.length; i++) {
             const p = particles[i];
+
+            // 🛑 Viewport Culling: 화면 밖 파티클은 렌더링 스킵
+            if (p.x < vX - margin || p.x > vX + vW + margin || 
+                p.y < vY - margin || p.y > vY + vH + margin) {
+                continue;
+            }
+
             const alpha = p.alpha !== undefined ? p.alpha : 1.0;
             
             if (p.type === 'ZZZ') {
@@ -507,6 +608,13 @@ export default class EntityRenderer {
                     ctx.fill();
                 } else if (p.type === 'BLOOD') {
                     ctx.fillRect(p.x, p.y, p.size, p.size);
+                } else if (p.type === 'DEBRIS') {
+                    // 🏗️ [Task 84] Debris Rendering with Rotation & Z-offset
+                    ctx.save();
+                    ctx.translate(p.x, p.y + (p.z || 0));
+                    ctx.rotate(p.rotation || 0);
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                    ctx.restore();
                 } else {
                     const s = p.size || 1.5;
                     ctx.fillRect(p.x, p.y, s, s);

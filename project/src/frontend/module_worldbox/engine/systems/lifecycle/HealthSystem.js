@@ -13,10 +13,11 @@ export default class HealthSystem extends System {
     update(dt, time) {
         const em = this.entityManager;
         const sBuffer = em.statsBuffer;
-        const animalIds = em.animalIds;
+        const items = em.animalIds.items; // 🚀 [Expert Optimization] Raw Array 참조
         
-        // 🚀 [Expert Optimization] 개별 엔티티 조회가 아닌 ID 셋을 기반으로 버퍼 직접 순회
-        for (const id of animalIds) {
+        // 🚀 [Expert Optimization] 개별 엔티티 조회가 아닌 ID 리스트를 기반으로 버퍼 직접 순회
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
             const idx = id * 8; // [hp, maxHp, hunger, maxHunger, fatigue, maxFatigue, str, def]
             
             let hp = sBuffer[idx];

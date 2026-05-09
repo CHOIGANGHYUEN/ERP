@@ -12,12 +12,14 @@ export default class LivestockSystem extends System {
     }
 
     update(dt, time) {
-        this.productionTick += dt;
-        if (this.productionTick < 10.0) return; // 10초마다 생산 업데이트
-        this.productionTick = 0;
-
-        const animals = this.entityManager.getEntitiesByComponent('Animal');
-        for (const entity of animals) {
+        const em = this.entityManager;
+        const items = em.animalIds.items; // 🚀 [Expert Optimization] Raw Array 직접 참조
+        
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+            
             const animal = entity.components.get('Animal');
             // 가축으로 분류된 동물들 처리 (sheep, cow 등)
             if (animal && (animal.type === 'sheep' || animal.type === 'cow')) {

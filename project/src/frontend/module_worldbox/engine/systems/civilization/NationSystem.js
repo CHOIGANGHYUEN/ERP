@@ -641,8 +641,9 @@ export default class NationSystem extends System {
         const popPower = (village.members?.size || 0) * (defending ? 4.5 : 4);
         const morale = (village.buffs?.morale || 1) * 6;
         const resources = ((village.resources?.stone || 0) + (village.resources?.food || 0) * 0.35) / 35;
+        const buildingDefense = defending ? (village.totalDefense || 0) * 5 : 0;
         const nationBonus = (nation.tech || 0) * 2 + (nation.prestige || 0) / 120;
-        return popPower + warriorBonus + morale + resources + nationBonus;
+        return popPower + warriorBonus + morale + resources + buildingDefense + nationBonus;
     }
 
     _distance(v1, v2) {

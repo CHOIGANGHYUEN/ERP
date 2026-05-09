@@ -104,6 +104,13 @@ export default class MinerState extends BaseJobState {
 
         if (mineTimer >= mineInterval) {
             jobCtrl.setData('mineTimer', 0);
+
+            // 🔨 [Task 82] 채굴 충격 시각화
+            const visual = entity.components.get('Visual');
+            if (visual) {
+                visual.impactTime = performance.now();
+                visual.impactType = 'gather';
+            }
             
             const res = target.components.get('Resource');
             const civ = entity.components.get('Civilization');

@@ -1,4 +1,5 @@
 import Chunk from './Chunk.js';
+import { WaterRenderer } from '../objects/renders/nature/WaterRenderer.js';
 
 /**
  * 🗺️ ChunkManager (청크 관리자)
@@ -169,6 +170,19 @@ export default class ChunkManager {
         for (const chunk of visibleChunks) {
             if (isClose) {
                 chunk.renderLOD1(ctx);
+                
+                // 🌊 [Water Animation Overlay]
+                // 고해상도 모드에서 수역이 있는 청크에 한해 애니메이션 레이어 추가
+                if (chunk.hasWater && !this.engine.viewFlags.NATIONTILE) {
+                    WaterRenderer.renderWater(
+                        ctx, 
+                        chunk.x, 
+                        chunk.y, 
+                        chunk.size, 
+                        chunk.size, 
+                        performance.now()
+                    );
+                }
             } else {
                 chunk.renderLOD0(ctx);
             }

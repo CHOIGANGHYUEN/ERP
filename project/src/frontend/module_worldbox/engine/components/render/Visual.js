@@ -42,6 +42,10 @@ export default class Visual extends Component {
         this.isPooping = false;
         this.isCulled = false;
         this.isSleeping = false;
+        
+        // 💥 Impact & Squash/Stretch Metadata
+        this.impactTime = 0; // 시뮬레이션 절대 시간 기준
+        this.impactType = ''; // 'attack', 'hit', 'gather' 등
     }
 
     /** 🚀 [Expert Optimization] 버퍼 연결 */

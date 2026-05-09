@@ -37,19 +37,33 @@ export default class HumanBehaviorSystem extends System {
         const viewH = (camera.height / camera.zoom) + (margin * 2);
 
         // 👤 [Expert Optimization] animalIds 대신 전용 humanIds 사용하여 순회 비용 최소화
-        for (const id of em.humanIds) {
+        const items = em.humanIds.items;
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
+            
+            // 🚀 [Critical Optimization] Map lookup 이전에 ID만으로 기본 프레임 필터링 (50% 부하 즉시 절감)
+            if ((id + frameCount) % 2 !== 0) continue; 
+
             const entity = em.entities.get(id);
             if (!entity) continue;
-
+            
             const transform = entity.components.get('Transform');
             if (!transform) continue;
 
-            // 1. [AI LOD] 가시성에 따른 업데이트 빈도 조절
+            let appliedUpdateModulo = 2; // 기본적으로 2프레임마다 업데이트
+
             const isVisible = (transform.x > viewX && transform.x < viewX + viewW && 
                                transform.y > viewY && transform.y < viewY + viewH);
             
-            const updateModulo = isVisible ? 2 : 10;
-            if ((id + frameCount) % updateModulo !== 0) continue;
+            if (!isVisible) {
+                // 화면 밖 개체는 거리와 관계없이 더 낮은 주기로 업데이트
+                const centerX = viewX + viewW / 2;
+                const centerY = viewY + viewH / 2;
+                const dist = Math.abs(transform.x - centerX) + Math.abs(transform.y - centerY);
+                const isFar = dist > (viewW + viewH) * 2; 
+                appliedUpdateModulo = isFar ? 60 : 15;
+                if ((id + frameCount) % appliedUpdateModulo !== 0) continue;
+            }
 
             const state = entity.components.get('AIState');
             const stats = entity.components.get('BaseStats');
@@ -65,7 +79,7 @@ export default class HumanBehaviorSystem extends System {
                     civ.role = null;
                 }
 
-                const effectiveDt = dt * updateModulo;
+                const effectiveDt = dt * appliedUpdateModulo;
 
                 // 🧠 [Stable AI Transition] 브레인은 '권장' 상태만 제안함 (직접 주입하지 않음)
                 const suggestedMode = this.humanBrain.decide(entity, state, stats, emotion, inventory, effectiveDt);

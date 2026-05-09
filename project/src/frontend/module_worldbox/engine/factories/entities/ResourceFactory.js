@@ -30,7 +30,12 @@ export default class ResourceFactory extends IEntityFactory {
             case 'iron':
             case 'gold':
             case 'coal':
-                builder.withVisual({ type: 'rock', color: config.color || '#757575', size: 12 })
+                builder.withVisual({ 
+                    type: 'rock', 
+                    subtype: type, // subtype을 명시적으로 전달하여 RockRenderer가 인지하게 함
+                    color: config.color || '#757575', 
+                    size: 12 
+                })
                        .addComponent('Resource', new ResourceNode(type, 100, config.type || 'mineral'));
                 break;
             default:

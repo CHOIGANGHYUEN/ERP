@@ -7,6 +7,7 @@ import FactoryProvider from '../factories/core/FactoryProvider.js';
 import ChunkManager from '../world/ChunkManager.js';
 import StatsMonitor from './StatsMonitor.js';
 import speciesConfig from '../config/species.json'; // 🚀 LOAD SPECIES 
+import Pathfinder from '../utils/Pathfinder.js';
 import resourceConfig from '../config/resource_balance.json'; // 🚀 LOAD RESOURCES
 import buildingsConfig from '../config/buildings.json';
 import techTreeConfig from '../config/tech_tree.json';
@@ -16,6 +17,7 @@ import TimeSystem from '../systems/core/TimeSystem.js';
 import ToolManager from './ToolManager.js';
 import { JobTypes } from '../config/JobTypes.js';
 import { GlobalLogger } from '../utils/Logger.js';
+import SaveLoadSystem from '../systems/lifecycle/SaveLoadSystem.js';
 
 
 
@@ -81,6 +83,10 @@ export default class Engine {
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
         this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: false, showNames: false, village: false, nation: false, influence: false, zone: false };
+        this.gameSpeed = 1.0; // 🚀 시뮬레이션 배속 초기화
+
+        this.saveLoadSystem = new SaveLoadSystem(this); // 💾 Save/Load Logic Init
+        this.isStressTestMode = false; // 🌡️ Stress Test Mode Flag
 
         // 🌉 Global -> EventBus Bridge (AnimalRenders -> ParticleSystem)
         this._onWorldSpawnDust = (e) => {
@@ -257,8 +263,12 @@ export default class Engine {
             this.worker.onmessage = (e) => {
                 const { type, payload } = e.data;
                 if (type === 'PIXEL_UPDATE') {
-                    // 워커에서 발생한 지형 변화(바이옴 확산 등)를 메인 스레드 렌더링 시스템에 통보
                     this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', payload);
+                } else if (type === 'PIXEL_UPDATE_BATCH') {
+                    // 🚀 [Task 94] Batch 처리된 픽셀 업데이트 수신
+                    for (let i = 0; i < payload.length; i++) {
+                        this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', payload[i]);
+                    }
                 }
             };
 
@@ -448,6 +458,10 @@ export default class Engine {
             case 'TOGGLE_VIEW':
                 this.toggleView(`view_${command.payload.flagName}`);
                 break;
+            case 'SET_GAME_SPEED':
+                this.gameSpeed = parseFloat(command.payload.speed) || 1.0;
+                if (this.timeSystem) this.timeSystem.setSpeed(this.gameSpeed);
+                break;
             case 'INSPECT':
                 this.eventBus.emit('INSPECT_REQUEST', command.payload.worldPos);
                 break;
@@ -490,19 +504,68 @@ export default class Engine {
 
     loop(time) {
         if (!this.isRunning) return;
-        const dt = (time - this.lastTime) / 1000;
+        let dt = (time - this.lastTime) / 1000;
+        if (dt > 0.1) dt = 0.1; // 스파이크 방지
         this.lastTime = time;
 
-        this.monitor.update(time);
+        // 🚀 [Time Control] 배속 적용 (1x, 2x, 3x, 5x)
+        const effectiveDt = (this.isStressTestMode ? dt * 5.0 : dt) * (this.gameSpeed || 1.0);
 
-        this.frameCount++; // 🚀 Increment frame counter
-        this.update(dt);
+        this.monitor.update(time);
+        this.camera.update(effectiveDt); // 🎥 카메라 부드러운 이동 보간 및 쉐이크 업데이트
+        this.frameCount++; 
+
+        this.update(effectiveDt);
+
+        // 🌡️ [Stress Test Logic]
+        if (this.isStressTestMode && this.frameCount % 60 === 0) {
+            this._runStressTestLogic();
+        }
 
         // 🚀 [Expert Optimization] 프레임 끝에서 지연된 이벤트들 일괄 처리
         this.eventBus.flush();
 
         this.render();
         requestAnimationFrame((t) => this.loop(t));
+    }
+
+    _runStressTestLogic() {
+        // 🚀 [Task 100] 최종 마스터 릴리즈 스트레스 테스트 (목표치: 200,000 마리)
+        if (this.entityManager.humanIds.size < 200000) {
+            const spawner = this.systemManager.spawner;
+            if (spawner) {
+                // 프레임 드랍을 최소화하면서 빠르게 늘리기 위해 초당 2000마리 스폰
+                for (let i = 0; i < 2000; i++) {
+                    const x = Math.random() * this.mapWidth;
+                    const y = Math.random() * this.mapHeight;
+                    spawner.spawnEntity({ type: 'human', x, y });
+                }
+            }
+        }
+    }
+
+    /** 💾 [Persistence] 게임 내보내기 */
+    exportSave() {
+        this.saveLoadSystem.downloadSaveFile();
+    }
+
+    /** 📂 [Persistence] 게임 불러오기 */
+    async importSave(file) {
+        await this.saveLoadSystem.uploadSaveFile(file);
+    }
+
+    /** 🌡️ [Stress Test] 모드 토글 */
+    toggleStressTest(enabled) {
+        this.isStressTestMode = enabled;
+        GlobalLogger.warn(`🌡️ Stress Test Mode: ${enabled ? 'ENABLED (x5 Speed)' : 'DISABLED'}`);
+        
+        if (!enabled) {
+            // 🧹 스트레스 테스트 종료 시 쌓인 캐시와 대기열 즉시 정리
+            this.renderCoordinator.entityRenderer.spriteCache.clear();
+            import('../objects/renders/AnimalRenders.js').then(m => m.AnimalRenders.clearCache());
+            Pathfinder.invalidateCache();
+            GlobalLogger.info("🧹 [Stress Test] Post-cleanup: Caches cleared.");
+        }
     }
 
     update(dt) {
@@ -513,11 +576,8 @@ export default class Engine {
         this.systemManager.update(dt, time);
 
         // 🗺️ [HPA* Step 23/27] 계층적 길찾기 그래프 업데이트 및 요청 대기열 처리
-        import('../utils/Pathfinder.js').then(module => {
-            const PF = module.default;
-            PF.updateHierarchy(this);
-            PF.processQueue();
-        });
+        Pathfinder.updateHierarchy(this);
+        Pathfinder.processQueue();
 
         // ⏳ 시간 시스템 업데이트 (ms 단위 deltaTime 전달, 엔진 인스턴스 공유)
         this.timeSystem.update(dt * 1000, this);

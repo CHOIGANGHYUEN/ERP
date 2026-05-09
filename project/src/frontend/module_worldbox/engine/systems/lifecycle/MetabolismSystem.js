@@ -32,9 +32,13 @@ export default class MetabolismSystem extends System {
 
         const speciesConfig = this.engine?.speciesConfig || {};
 
-        // 🐕 모든 생명체 대사 처리 (Animals & Humans)
-        for (const id of em.animalIds) {
-            const idx = id * 8;
+        const items = em.animalIds.items; // 🚀 [Expert Optimization] Raw Array 참조
+        const frameCount = this.engine.frameCount || 0;
+
+        // 🚀 [Expert Optimization] 개별 엔티티 조회가 아닌 ID 리스트를 기반으로 버퍼 직접 순회
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
+            const idx = id * 8; // [hp, maxHp, hunger, maxHunger, fatigue, maxFatigue, str, def];
             const fIdx = id * 4;
             const tIdx = id * 2;
 
@@ -46,7 +50,7 @@ export default class MetabolismSystem extends System {
 
             if (!isVisible) {
                 // 화면 밖 개체는 업데이트 타이밍 분산 (Staggered Update)
-                if ((id + this.engine.frameCount) % 10 !== 0) continue;
+                if ((id + frameCount) % 10 !== 0) continue;
                 this._processMetabolismLoop(id, effectiveDt * 10, sBuffer, sfBuffer, idx, fIdx, speciesConfig);
             } else {
                 this._processMetabolismLoop(id, effectiveDt, sBuffer, sfBuffer, idx, fIdx, speciesConfig);
@@ -66,7 +70,7 @@ export default class MetabolismSystem extends System {
         if (!animal) return;
 
         const config = speciesConfig[animal.type] || {};
-        
+
         // ⏳ 1. 허기 및 피로도 감쇄 (DOD Buffer Write)
         const hungerDecay = (config.hungerDecayRate || 0.1) * dt;
         const fatigueIncrease = (config.fatigueIncreaseRate || 0.05) * dt;
@@ -113,7 +117,10 @@ export default class MetabolismSystem extends System {
         let processedCount = 0;
         const maxProcessPerTick = 50;
 
-        for (const id of em.resourceIds) {
+        const items = em.resourceIds.items; // 🚀 [Expert Optimization] Raw Array 참조
+
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
             const entity = em.entities.get(id);
             const resource = entity?.components.get('Resource');
             const transform = entity?.components.get('Transform');
@@ -136,7 +143,7 @@ export default class MetabolismSystem extends System {
         // 배설 로직: 저장된 비옥도가 임계치를 넘으면 배설물 생성
         const ix = Math.floor(transform.x);
         const iy = Math.floor(transform.y);
-        
+
         // 🗺️ 맵 경계 체크 (배설 시 인덱스 오류 방지)
         if (ix < 0 || ix >= this.terrainGen.mapWidth || iy < 0 || iy >= this.terrainGen.mapHeight) return;
 

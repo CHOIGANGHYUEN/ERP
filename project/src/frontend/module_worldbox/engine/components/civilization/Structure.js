@@ -10,5 +10,7 @@ export default class Structure extends Component {
         this.hp = maxHp;
         this.maxHp = maxHp;
         this.villageId = -1;
+        this.influence = 0; // 🏰 영토 확장 기여도
+        this.defense = 0;   // 🛡️ 방어력 기여도
     }
 }

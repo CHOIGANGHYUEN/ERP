@@ -28,7 +28,7 @@ export default class FarmerState extends BaseJobState {
         // 2. 업무 FSM
         switch (jobCtrl.jobState) {
             case 'SEARCHING':
-                this.findFarmWork(entity, jobCtrl);
+                this.findFarmWork(entity, jobCtrl, transform);
                 break;
             case 'MOVING':
                 this.moveToFarm(entity, jobCtrl, transform);
@@ -47,7 +47,7 @@ export default class FarmerState extends BaseJobState {
         return null;
     }
 
-    findFarmWork(entity, jobCtrl) {
+    findFarmWork(entity, jobCtrl, transform) {
         const em = this.system.engine.entityManager;
         const civ = entity.components.get('Civilization');
         if (!civ) return;

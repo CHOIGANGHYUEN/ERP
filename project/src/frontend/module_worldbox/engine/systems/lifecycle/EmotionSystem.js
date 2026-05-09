@@ -10,8 +10,14 @@ export default class EmotionSystem extends System {
     }
 
     update(dt, time) {
-        const entities = this.entityManager.getEntitiesByComponent('Emotion');
-        for (const entity of entities) {
+        const em = this.entityManager;
+        const items = em.humanIds.items; // 🚀 [Expert Optimization] Raw Array 직접 참조
+        
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
+            const entity = em.entities.get(id);
+            if (!entity) continue;
+            
             this.processEmotion(entity, dt);
         }
     }

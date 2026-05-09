@@ -1,5 +1,6 @@
 import State from '../State.js';
 import { JobToolMap } from '../../../../components/resource/EquipmentSlots.js';
+import Pathfinder from '../../../../utils/Pathfinder.js';
 
 /**
  * 🔧 BaseJobState
@@ -49,12 +50,19 @@ export default class BaseJobState extends State {
         const zone = zoneManager.getZone(jobCtrl.zoneId);
         if (!zone) return;
 
-        const { x, y } = zone.center ?? { x: transform.x, y: transform.y };
-        const dx = x - transform.x;
-        const dy = y - transform.y;
-        const d = Math.hypot(dx, dy) || 1;
-        transform.vx = (dx / d) * 60;
-        transform.vy = (dy / d) * 60;
+        const targetPos = zone.center ?? { x: transform.x, y: transform.y };
+        
+        // 🚀 [HPA* Integration] Use Pathfinder for long-distance recovery
+        if (Pathfinder) {
+            Pathfinder.followPath(transform, jobCtrl, targetPos, 60, this.system.engine);
+        } else {
+            // Fallback
+            const dx = targetPos.x - transform.x;
+            const dy = targetPos.y - transform.y;
+            const d = Math.hypot(dx, dy) || 1;
+            transform.vx = (dx / d) * 60;
+            transform.vy = (dy / d) * 60;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

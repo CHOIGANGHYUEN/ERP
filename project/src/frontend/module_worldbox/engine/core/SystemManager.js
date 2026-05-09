@@ -20,6 +20,7 @@ import WindSystem from '../systems/lifecycle/WindSystem.js';
 import InputSystem from '../systems/input/InputSystem.js';
 import UISystem from './UISystem.js';
 import ParticleSystem from '../systems/render/ParticleSystem.js';
+import LightingSystem from '../systems/render/LightingSystem.js';
 import FarmingSystem from '../systems/economy/FarmingSystem.js';
 import LivestockSystem from '../systems/lifecycle/LivestockSystem.js';
 import EmotionSystem from '../systems/lifecycle/EmotionSystem.js';
@@ -80,7 +81,8 @@ export default class SystemManager {
         this.kinematics = new KinematicSystem(engine);
 
         // Phase 4: Render Prep
-        this.spriteManager = new SpriteManager(em, eb);
+        this.spriteManager = new SpriteManager(em, eb, engine);
+        this.lightingSystem = new LightingSystem(em, eb, engine);
         this.particleSystem = new ParticleSystem(em, eb);
         this.godPower = new GodPowerSystem(engine);
 
@@ -157,6 +159,7 @@ export default class SystemManager {
         // [Phase 4] 시각적 표현 & UI
         const t4 = performance.now();
         this.spriteManager.update(dt, time);
+        this.lightingSystem.update(dt, time);
         this.particleSystem.update(dt, time);
         this.godPower.update(dt);
         this.uiSystem.update(dt, time);

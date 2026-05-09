@@ -118,6 +118,15 @@ export default class BuildingFactory extends IEntityFactory {
             this.engine.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x: Math.floor(x), y: Math.floor(y), reason: 'building_placed' });
         }
 
+        if (this.engine.eventBus) {
+            this.engine.eventBus.emit('BUILDING_SPAWNED', {
+                id,
+                type,
+                villageId: options.villageId || -1,
+                isBlueprint: options.isBlueprint || false
+            });
+        }
+
         return id;
     }
 }

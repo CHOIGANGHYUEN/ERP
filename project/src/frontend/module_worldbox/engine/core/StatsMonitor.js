@@ -169,6 +169,12 @@ export default class StatsMonitor {
                         lod: currentLOD,
                         drawCalls: visibleChunks.length
                     },
+                    renderStats: {
+                        drawCalls: visibleChunks.length + (this.engine.renderer?.lastRenderCount || 0),
+                        lightingLights: this.engine.systemManager?.lightingSystem?.lights?.length || 0,
+                        particles: this.engine.particleSystem?.particles?.length || 0,
+                        weatherActive: !!this.engine.systemManager?.environment?.currentWeather
+                    },
                     systemTimings: this.systemTimings,
                     dodStats: {
                         bufferMemoryMB: bufferMemory.toFixed(2),

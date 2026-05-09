@@ -4,13 +4,55 @@ import Visual from '../components/render/Visual.js';
 import { factoryProvider } from '../factories/core/FactoryProvider.js';
 import resourceConfig from '../config/resource_balance.json'; // resource_balance.json 임포트
 
+/**
+ * 🚀 [Expert Optimization] O(1) 접근과 Dense Array 순회를 동시에 지원하는 초고속 Set 대체재
+ */
+class DenseEntitySet {
+    constructor(maxEntities) {
+        this.items = [];
+        this.indices = new Int32Array(maxEntities).fill(-1);
+    }
+    add(id) {
+        if (id >= this.indices.length) this._expand(id);
+        if (this.indices[id] === -1) {
+            this.indices[id] = this.items.length;
+            this.items.push(id);
+        }
+    }
+    delete(id) {
+        if (id >= this.indices.length || this.indices[id] === -1) return false;
+        const index = this.indices[id];
+        const lastItem = this.items[this.items.length - 1];
+        this.items[index] = lastItem;
+        this.indices[lastItem] = index;
+        this.items.pop();
+        this.indices[id] = -1;
+        return true;
+    }
+    has(id) {
+        if (id >= this.indices.length) return false;
+        return this.indices[id] !== -1;
+    }
+    get size() { return this.items.length; }
+    [Symbol.iterator]() { return this.items[Symbol.iterator](); }
+    _expand(id) {
+        const newMax = Math.max(id + 1, Math.floor(this.indices.length * 1.5));
+        const newIndices = new Int32Array(newMax).fill(-1);
+        newIndices.set(this.indices);
+        this.indices = newIndices;
+    }
+}
+
 export default class EntityManager {
     constructor() {
         this.entities = new Map();
-        this.animalIds = new Set();
-        this.humanIds = new Set(); 
-        this.resourceIds = new Set();
-        this.buildingIds = new Set();
+        
+        // 🚀 [Expert Optimization] Set 대신 완벽한 캐시 지역성을 갖춘 DenseEntitySet 사용
+        this.animalIds = new DenseEntitySet(10000);
+        this.humanIds = new DenseEntitySet(10000); 
+        this.resourceIds = new DenseEntitySet(10000);
+        this.buildingIds = new DenseEntitySet(10000);
+        
         this.nextId = 0;
 
         // 🚀 [Expert Optimization] TypedArray 기반 컴포넌트 데이터 캐싱 (DOD)
@@ -30,6 +72,10 @@ export default class EntityManager {
         // 0: modeIndex, 1: bitmask (1: grabbed, 2: dead, 4: hidden, 8: selected)
         this.stateBuffer = new Int32Array(this.maxEntities * 2);
 
+        // 🛠️ [Expert Design] Job Buffer (DOD)
+        // 0: jobTypeIndex, 1: jobStateIndex
+        this.jobBuffer = new Int16Array(this.maxEntities * 2);
+
         // 🎨 [Expert Design] Render Buffer
         // 0: typeIdx, 1: subtypeIdx, 2: frameIdx, 3: flipX, 4: size, 5: alpha(0-255), 6: facing
         this.renderBuffer = new Int32Array(this.maxEntities * 8);
@@ -44,6 +90,10 @@ export default class EntityManager {
         
         // ♻️ [Pool] ID 재사용을 위한 큐
         this.freeIds = [];
+        
+        // 🚀 [Task 95] Defragmentation (Dense Array for Active IDs)
+        // O(1) 연속 메모리 접근을 위해 활성 ID만 꽉 채운 배열
+        this.denseIds = [];
     }
 
     createEntity() {
@@ -62,9 +112,12 @@ export default class EntityManager {
 
         const entity = {
             id,
-            components: new Map()
+            components: new Map(),
+            denseIndex: this.denseIds.length // 🚀 Dense Array 인덱스 저장
         };
         this.entities.set(id, entity);
+        this.denseIds.push(id);
+        
         return id;
     }
 
@@ -82,6 +135,8 @@ export default class EntityManager {
         const newState = new Int32Array(newMax * 2);
         const newRender = new Int32Array(newMax * 8);
         const newAlive = new Uint8Array(newMax);
+        const newTag = new Uint32Array(newMax);
+        const newJob = new Int16Array(newMax * 2);
         
         // 기존 데이터 복사 (TypedArray.set은 매우 빠름)
         newTransform.set(this.transformBuffer);
@@ -92,6 +147,7 @@ export default class EntityManager {
         newRender.set(this.renderBuffer);
         newAlive.set(this.aliveBuffer);
         newTag.set(this.tagBuffer);
+        if (this.jobBuffer) newJob.set(this.jobBuffer);
         
         // 참조 교체
         this.transformBuffer = newTransform;
@@ -102,6 +158,7 @@ export default class EntityManager {
         this.renderBuffer = newRender;
         this.aliveBuffer = newAlive;
         this.tagBuffer = newTag;
+        this.jobBuffer = newJob;
         this.maxEntities = newMax;
 
         // 🚀 [Critical Fix] 기존 모든 컴포넌트들을 새 버퍼에 재연결 (DOD 동기화)
@@ -176,6 +233,15 @@ export default class EntityManager {
         }
         entity.components.clear();
         
+        // 🚀 [Task 95] Defragmentation: Dense Array Swap
+        const idx = entity.denseIndex;
+        const lastId = this.denseIds.pop();
+        if (id !== lastId) {
+            this.denseIds[idx] = lastId;
+            const lastEntity = this.entities.get(lastId);
+            if (lastEntity) lastEntity.denseIndex = idx;
+        }
+        
         this.freeIds.push(id);
         this.entities.delete(id);
 
@@ -214,6 +280,18 @@ export default class EntityManager {
 
             entity.components.set(name, component);
             
+            // 🚀 [Expert Optimization] 카테고리별 고속 순회 셋(DenseEntitySet)에 자동 등록
+            if (name === 'Animal') {
+                this.animalIds.add(entityId);
+            } else if (name === 'Civilization') {
+                this.humanIds.add(entityId);
+                this.animalIds.add(entityId); // 👤 인간도 물리 연산을 위해 animalIds에 함께 등록 (KinematicSystem 통합 관리)
+            } else if (name === 'Resource') {
+                this.resourceIds.add(entityId);
+            } else if (name === 'Building') {
+                this.buildingIds.add(entityId);
+            }
+
             // 🚀 [Expert Optimization] TypedArray 버퍼 연결 (DOD)
             if (name === 'Transform') {
                 if (component.linkBuffer) component.linkBuffer(this.transformBuffer, entityId * 2);
@@ -240,6 +318,8 @@ export default class EntityManager {
                 if (stats && stats.linkBuffer) stats.linkBuffer(this.statsBuffer, entityId * 8, this.statsFloatBuffer, entityId * 4);
             } else if (name === 'AIState') {
                 if (component.linkBuffer) component.linkBuffer(this.stateBuffer, entityId * 2);
+            } else if (name === 'JobController') {
+                if (component.linkBuffer) component.linkBuffer(this.jobBuffer, entityId * 2);
             } else if (name === 'Visual') {
                 if (component.linkBuffer) component.linkBuffer(this.renderBuffer, entityId * 8);
             } else if (name === 'TagBitmask') {

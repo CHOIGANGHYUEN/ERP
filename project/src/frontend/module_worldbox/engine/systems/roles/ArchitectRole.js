@@ -106,35 +106,29 @@ export default class ArchitectRole extends BaseRole {
                 return 'pickup';
             }
 
-            // 🏠 [Priority 2] 마을 창고(Storage)에 재료가 있는지 확인 (완공된 건물만)
-            const storage = Array.from(this.em.buildingIds)
-                .map(id => this.em.entities.get(id))
-                .find(storeEnt => {
-                    const civComp = storeEnt?.components.get('Civilization');
+            // 🏠 [Priority 2] 마을 창고(Storage)에 재료가 있는지 확인 (마을 캐시 데이터 활용)
+            if (village.storageIds && village.storageIds.size > 0) {
+                for (const storeId of village.storageIds) {
+                    const storeEnt = this.em.entities.get(storeId);
+                    const storeComp = storeEnt?.components.get('Storage');
                     const structComp = storeEnt?.components.get('Structure');
 
-                    if (civComp?.villageId !== civ.villageId) return false;
-                    if (structComp && !structComp.isComplete) return false;
-
-                    const storeComp = storeEnt.components.get('Storage');
-                    if (!storeComp) return false;
-
-                    // 🏷️ [Unified Match] 창고에 직접적인 ID 또는 유사 속성 자원이 있는지 확인
-                    const lowerReq = requiredType.toLowerCase();
-                    let found = false;
-                    for (const id of Object.keys(storeComp.items)) {
-                        if (id.toLowerCase().includes(lowerReq)) {
-                            found = true;
-                            break;
+                    if (storeComp && structComp?.isComplete) {
+                        const lowerReq = requiredType.toLowerCase();
+                        let found = false;
+                        for (const id of Object.keys(storeComp.items)) {
+                            if (id.toLowerCase().includes(lowerReq)) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (found) {
+                            state.targetId = storeId;
+                            state.targetResourceType = requiredType;
+                            return 'withdraw';
                         }
                     }
-                    return found;
-                });
-
-            if (storage) {
-                state.targetId = storage.id;
-                state.targetResourceType = requiredType;
-                return 'withdraw';
+                }
             }
 
             // 🪨 [Priority 3] 창고에도 없다면 맵 전체 범위(2400px)까지 드롭 아이템 탐색

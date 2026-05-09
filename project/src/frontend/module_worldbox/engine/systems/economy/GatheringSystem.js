@@ -20,10 +20,39 @@ export default class GatheringSystem extends System {
         this.updateAccumulator = 0;
 
         const em = this.entityManager;
-        for (const id of em.animalIds) {
+        // 🚀 [Optimization] 분할 처리 (인원이 많아도 프레임 드랍 방지)
+        const items = em.animalIds.items; // 🚀 [Expert Optimization] Raw Array 직접 참조
+        const camera = this.engine.camera;
+        const margin = 100;
+        const viewX = camera.x - margin;
+        const viewY = camera.y - margin;
+        const viewW = (camera.width / camera.zoom) + (margin * 2);
+        const viewH = (camera.height / camera.zoom) + (margin * 2);
+        const frameCount = this.engine.frameCount || 0;
+
+        for (let i = 0; i < items.length; i++) {
+            const id = items[i];
             const entity = em.entities.get(id);
             if (!entity) continue;
             
+            const transform = entity.components.get('Transform');
+            if (!transform) continue;
+
+            // 🚀 [Expert Optimization] 가시성 및 거리에 따른 업데이트 빈도 조절
+            const isVisible = transform.x >= viewX && transform.x <= viewX + viewW &&
+                               transform.y >= viewY && transform.y <= viewY + viewH;
+            
+            if (!isVisible) {
+                const centerX = viewX + viewW / 2;
+                const centerY = viewY + viewH / 2;
+                const dist = Math.abs(transform.x - centerX) + Math.abs(transform.y - centerY);
+                const isFar = dist > (viewW + viewH) * 2; 
+                
+                // 원거리: 60프레임당 1회 (1 FPS), 근거리 화면 밖: 15프레임당 1회 (4 FPS)
+                const updateModulo = isFar ? 60 : 15;
+                if ((id + frameCount) % updateModulo !== 0) continue;
+            }
+
             const state = entity.components.get('AIState');
             if (!state || !state.targetId) continue;
 
@@ -34,10 +63,8 @@ export default class GatheringSystem extends System {
             const target = targetId ? em.entities.get(targetId) : null;
             if (!target) continue;
 
-            const transform = entity.components.get('Transform');
             const targetPos = target.components.get('Transform');
-            
-            if (!transform || !targetPos) continue;
+            if (!targetPos) continue;
 
             const distSq = (targetPos.x - transform.x) ** 2 + (targetPos.y - transform.y) ** 2;
 
