@@ -157,9 +157,12 @@ export default class TransporterState extends BaseJobState {
 
         const sPos = sourceEnt.components.get('Transform');
         const reached = Pathfinder.followPath(transform, jobCtrl, sPos, 70, this.system.engine);
-        if (reached) {
+        if (reached === true) {
             jobCtrl.jobState = 'PICKING_UP';
             jobCtrl.setData('waitTimer', 0);
+        } else if (reached === -1) {
+            // 🌊 경로 없음 - 과업 취소
+            this._cancelTask(jobCtrl, entity, civ, this.system.engine.systemManager?.villageSystem);
         }
         return null;
     }
@@ -232,9 +235,12 @@ export default class TransporterState extends BaseJobState {
 
         const dPos = destEnt.components.get('Transform');
         const reached = Pathfinder.followPath(transform, jobCtrl, dPos, 60, this.system.engine);
-        if (reached) {
+        if (reached === true) {
             jobCtrl.jobState = 'DEPOSITING';
             jobCtrl.setData('waitTimer', 0);
+        } else if (reached === -1) {
+            // 창고 도달 불가 - 다른 창고 탐색 유도
+            jobCtrl.setData('destStorageId', null);
         }
         return null;
     }

@@ -19,7 +19,8 @@ export default class WanderState extends State {
         if (!state.wanderTarget) {
             const engine = this.system.engine;
             const terrain = engine.terrainGen;
-            const checkDist = 80 + Math.random() * 150; // 배회 거리 설정 (너무 멀면 잦은 연산 낭비)
+            // 🐾 [Expert Optimization] 배회 거리를 탐색 범위(80~120)에 맞춰 대폭 축소 (기존 80~230 -> 40~100)
+            const checkDist = 40 + Math.random() * 60; 
             
             // 이동 가능한 유효한 목적지 찾기 시도
             let found = false;
@@ -66,7 +67,7 @@ export default class WanderState extends State {
         
         // 🛑 목표에 도착했거나, 길을 찾지 못해 Pathfinder가 목표를 포기(targetId = null)한 경우
         // [Critical Fix] isReached가 -1(에러/경로없음)일 때 true로 판정되는 문제 수정
-        if (isReached === true || state.targetId === null) {
+        if (isReached === true || isReached === -1 || state.targetId === null) {
             state.wanderTarget = null;
             state.targetId = null;
             return 'idle'; // 이동 완료 후 대기(Idle) 상태로 전환

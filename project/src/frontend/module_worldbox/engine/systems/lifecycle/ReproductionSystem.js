@@ -66,22 +66,34 @@ export default class ReproductionSystem extends System {
 
                 // 2. 번식 제약 조건 (허기 + 나이 + [인간 전용: 마을 자원])
                 const isReadyAge = age.growthStage === 'adult';
-                const isFed = stats && stats.hunger >= (config.reproductionThreshold || 80);
+                const isFed = stats && stats.hunger >= (config.reproductionThreshold || 60);
                 
                 let isEnvironmentReady = true;
 
                 if (animal.type === 'human' && blackboard) {
-                    // 🌾 [Population Control] 식량 재고와 주거 수용량 체크
+                    // 🌾 [Population Control] 모든 종류의 식량 재고 합산
                     const storages = blackboard.storages || [];
-                    const totalFood = storages.reduce((sum, s) => sum + (s.items['food'] || 0), 0);
-                    const population = items.length; // 🚀 items.length 사용
+                    const totalFood = storages.reduce((sum, s) => {
+                        let foodInStorage = 0;
+                        for (const [type, count] of Object.entries(s.items)) {
+                            if (type === 'food' || type === 'fruit' || type === 'meat' || type === 'berry' || type === 'bread' || type === 'kelp' || type === 'honey') {
+                                foodInStorage += count;
+                            }
+                        }
+                        return sum + foodInStorage;
+                    }, 0);
+
+                    // 🚀 [Critical Fix] 전역 동물 수가 아니라 해당 마을의 인구수만 체크
+                    const vs = this.engine?.systemManager?.villageSystem;
+                    const village = vs?.getVillage(animal.villageId);
+                    const population = village ? village.members.size : 1;
                     
-                    // 식량이 인당 5개 미만이거나, 인구가 너무 많으면 번식 억제
-                    if (totalFood < population * 5) isEnvironmentReady = false;
+                    // 식량이 인당 3개 미만이면 번식 억제
+                    if (totalFood < population * 3) isEnvironmentReady = false;
                     
-                    // 감정 수치도 영향
-                    if (emotion && emotion.happiness < 50) isEnvironmentReady = false;
+                    if (emotion && emotion.happiness < 40) isEnvironmentReady = false;
                 }
+
 
                 if (!animal.isBaby && isReadyAge && isFed && isEnvironmentReady) {
                     if (animal.reproductionCooldown > 0) {
@@ -89,11 +101,12 @@ export default class ReproductionSystem extends System {
                         continue;
                     }
                     
-                    // 🚀 [Scale Fix] 전역 엔티티 제한을 스트레스 테스트 모드에 맞춰 대폭 상향
+                    // 🚀 [Scale Fix] 전역 엔티티 제한
                     const entityLimit = this.engine.isStressTestMode ? 250000 : 10000;
                     if (em.entities.size > entityLimit) continue;
 
-                    if (Math.random() < 0.05 * dt) {
+                    // 🚀 [Balance] 번식 확률 상향 (0.1 -> 0.15)
+                    if (Math.random() < 0.15 * dt) {
                         stats.hunger -= 40; 
                         if (emotion) emotion.happiness -= 10;
                         animal.reproductionCooldown = 60;
@@ -103,9 +116,17 @@ export default class ReproductionSystem extends System {
                             x: transform.x, y: transform.y, count: 8, type: 'EFFECT', color: '#ff4081'
                         });
                     }
+                } else if (!animal.isBaby && isReadyAge && isEnvironmentReady && !isFed) {
+                    // 🍽️ [Feedback] 번식을 시도했으나 배가 고파서 실패한 경우 (말풍선)
+                    if (Math.random() < 0.02) {
+                        this.eventBus.emit('SPAWN_SPEECH_BUBBLE', {
+                            entityId: id, text: '🍽️?', duration: 2000
+                        });
+                    }
                 } else if (animal.reproductionCooldown > 0) {
                     animal.reproductionCooldown -= dt;
                 }
+
             }
         }
     }

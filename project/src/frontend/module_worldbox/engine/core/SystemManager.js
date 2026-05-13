@@ -26,6 +26,7 @@ import LivestockSystem from '../systems/lifecycle/LivestockSystem.js';
 import EmotionSystem from '../systems/lifecycle/EmotionSystem.js';
 import VillageSystem from '../systems/civilization/VillageSystem.js';
 import ConstructionSystem from '../systems/civilization/ConstructionSystem.js';
+import FenceSystem from '../systems/civilization/FenceSystem.js';
 import ZoneManager from '../systems/civilization/ZoneManager.js';
 import Blackboard from '../systems/behavior/Blackboard.js';
 import TargetManager from '../systems/behavior/TargetManager.js';
@@ -70,6 +71,7 @@ export default class SystemManager {
         this.emotion = new EmotionSystem(em, eb);
         this.villageSystem = new VillageSystem(em, eb, engine);
         this.construction = new ConstructionSystem(em, eb, engine);
+        this.fenceSystem = new FenceSystem(em, eb, engine);
         this.zoneManager = new ZoneManager(engine);
 
         // 🧠 Central Dispatch & Economy
@@ -90,6 +92,22 @@ export default class SystemManager {
         this.uiSystem = new UISystem(em, eb, engine);
     }
 
+    _safeUpdate(systemName, updateFn) {
+        try {
+            updateFn();
+        } catch (e) {
+            // 🛡️ [Stability] 시스템 오류 발생 시 로깅 후 무시하여 메인 루프 보존
+            if (!this._lastErrors) this._lastErrors = new Map();
+            const now = Date.now();
+            const lastErrorTime = this._lastErrors.get(systemName) || 0;
+            
+            if (now - lastErrorTime > 5000) { // 5초에 한 번만 에러 출력 (스팸 방지)
+                console.error(`❌ [SystemManager] Error in ${systemName}:`, e);
+                this._lastErrors.set(systemName, now);
+            }
+        }
+    }
+
     update(dt, time) {
         if (!this.engine) return;
         const frameCount = this.engine.frameCount || 0;
@@ -97,73 +115,75 @@ export default class SystemManager {
 
         const startTotal = performance.now();
 
-        // [Phase 1] 환경 및 입력 업데이트 (Critical - 60Hz)
-        const t1 = performance.now();
-        this.wind.update(time);
-        this.environment.update(dt, time);
-        if (monitor) monitor.setSystemTiming('Environment', performance.now() - t1);
+        // [Phase 1] 환경 및 입력
+        this._safeUpdate('Environment', () => {
+            const t1 = performance.now();
+            this.wind.update(time);
+            this.environment.update(dt, time);
+            if (monitor) monitor.setSystemTiming('Environment', performance.now() - t1);
+        });
 
-        // [Phase 2] AI & Logic (Throttled)
-        const t2 = performance.now();
-        this.combat.update(dt, time);
-        this.deathProcessor.update(dt, time);
-        this.humanBehavior.update(dt, time);
-        this.behavior.update(dt, time);
+        // [Phase 2] AI & Logic
+        this._safeUpdate('AI_Logic', () => {
+            const t2 = performance.now();
+            this.combat.update(dt, time);
+            this.deathProcessor.update(dt, time);
+            this.humanBehavior.update(dt, time);
+            this.behavior.update(dt, time);
 
-        // 🐕 Herding & Motion Logic (20Hz)
-        if (frameCount % 3 === 0) this.herding.update(dt * 3);
+            if (frameCount % 3 === 0) this.herding.update(dt * 3);
 
-        // 🏘️ Civilization & Economy (12Hz) - Staggered
-        if (frameCount % 5 === 0) {
-            const dt5 = dt * 5;
-            this.social.update(dt5, time);
-            this.nationSystem.update(dt5, time);
-            this.gathering.update(dt5, time);
-            this.consumption.update(dt5);
-        }
-        if (frameCount % 5 === 2) {
-            const dt5 = dt * 5;
-            this.farming.update(dt5, time);
-            this.livestock.update(dt5, time);
-            this.villageSystem.update(dt5, time);
-            this.construction.update(dt5, time);
-            this.spawner.update(dt5, time);
-            this.zoneManager.update(dt5); // 🗺️ 영토 확장 체크
-        }
+            if (frameCount % 5 === 0) {
+                const dt5 = dt * 5;
+                this.social.update(dt5, time);
+                this.nationSystem.update(dt5, time);
+                this.gathering.update(dt5, time);
+                this.consumption.update(dt5);
+            }
+            if (frameCount % 5 === 2) {
+                const dt5 = dt * 5;
+                this.farming.update(dt5, time);
+                this.livestock.update(dt5, time);
+                this.villageSystem.update(dt5, time);
+                this.construction.update(dt5, time);
+                this.fenceSystem.update(dt5);
+                this.spawner.update(dt5, time);
+                this.zoneManager.update(dt5);
+            }
+            if (frameCount % 10 === 5) {
+                const dt10 = dt * 10;
+                this.metabolism.update(dt10, time);
+                this.reproduction.update(dt10, time);
+            }
+            if (frameCount % 10 === 8) {
+                const dt10 = dt * 10;
+                this.health.update(dt10, time);
+                this.emotion.update(dt10, time);
+            }
+            if (frameCount % 15 === 12) {
+                this.targetManager.update(dt * 15);
+                this.economyManager.update(dt * 15);
+            }
+            if (monitor) monitor.setSystemTiming('AI_Combat_Civ', performance.now() - t2);
+        });
 
-        // 🧪 Lifecycle & Stats (6Hz) - Staggered
-        if (frameCount % 10 === 5) {
-            const dt10 = dt * 10;
-            this.metabolism.update(dt10, time);
-            this.reproduction.update(dt10, time);
-        }
-        if (frameCount % 10 === 8) {
-            const dt10 = dt * 10;
-            this.health.update(dt10, time);
-            this.emotion.update(dt10, time);
-        }
-
-        // [Phase 2.5] 중앙 관제 (Low Frequency - 4Hz)
-        if (frameCount % 15 === 12) {
-            this.targetManager.update(dt * 15);
-            this.economyManager.update(dt * 15);
-        }
-
-        if (monitor) monitor.setSystemTiming('AI_Combat_Civ', performance.now() - t2);
-
-        // [Phase 3] 이동 및 물리 연산 반영 (Critical - 60Hz)
-        const t3 = performance.now();
-        this.kinematics.update(dt);
-        if (monitor) monitor.setSystemTiming('Kinematics', performance.now() - t3);
+        // [Phase 3] 물리 연산
+        this._safeUpdate('Kinematics', () => {
+            const t3 = performance.now();
+            this.kinematics.update(dt);
+            if (monitor) monitor.setSystemTiming('Kinematics', performance.now() - t3);
+        });
 
         // [Phase 4] 시각적 표현 & UI
-        const t4 = performance.now();
-        this.spriteManager.update(dt, time);
-        this.lightingSystem.update(dt, time);
-        this.particleSystem.update(dt, time);
-        this.godPower.update(dt);
-        this.uiSystem.update(dt, time);
-        if (monitor) monitor.setSystemTiming('Visual_UI', performance.now() - t4);
+        this._safeUpdate('Visual_UI', () => {
+            const t4 = performance.now();
+            this.spriteManager.update(dt, time);
+            this.lightingSystem.update(dt, time);
+            this.particleSystem.update(dt, time);
+            this.godPower.update(dt);
+            this.uiSystem.update(dt, time);
+            if (monitor) monitor.setSystemTiming('Visual_UI', performance.now() - t4);
+        });
 
         if (monitor) monitor.setSystemTiming('Total_Update', performance.now() - startTotal);
     }

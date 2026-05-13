@@ -45,7 +45,7 @@ export default class HunterRole extends BaseRole {
         };
 
         const nearestDroppedId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, 400, droppedMeatCondition, this.engine.spatialHash
+            transform.x, transform.y, 400, droppedMeatCondition, this.engine.spatialHash, 1 // Layer 1: Static
         );
 
         if (nearestDroppedId !== null) {
@@ -66,7 +66,7 @@ export default class HunterRole extends BaseRole {
         };
 
         const nearestId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, 1000, condition, this.engine.spatialHash
+            transform.x, transform.y, 1000, condition, this.engine.spatialHash, 0 // Layer 0: Dynamic
         );
 
         if (nearestId !== null) {

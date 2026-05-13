@@ -1,14 +1,11 @@
-/**
- * 📡 Global Event Bus (Pub/Sub Pattern)
- * 
- * ECS 원칙 절대 준수:
- * 시스템(System) 간, 혹은 시스템과 UI 프레임워크(Vue) 간의 
- * 직접적인 참조(강한 결합)를 끊고 이벤트를 통해서만 통신하도록 돕는 중앙 메세지 큐입니다.
- */
+/* 시스템과 UI 프레임워크(Vue) 간의 직접적인 참조(강한 결합)를 끊고 이벤트를 통해서만 통신하도록 돕는 중앙 메세지 큐입니다.
+*/
+import ObjectPool from '../utils/ObjectPool.js';
+
 export default class EventBus {
     constructor() {
         this.listeners = new Map();
-        
+
         // 🚀 [Expert Optimization] Deferred & Batched Events
         this.deferredEvents = new Map(); // eventName -> dataQueue
 
@@ -17,7 +14,7 @@ export default class EventBus {
             'CACHE_PIXEL_UPDATE': (queue) => {
                 // 'all' 플래그가 하나라도 있으면 전체 갱신으로 갈음
                 for (const d of queue) { if (d.all) return [{ all: true, reason: 'batched_all' }]; }
-                
+
                 // 중복 좌표 제거 (최신 데이터 우선)
                 const unique = new Map();
                 for (const d of queue) {
@@ -36,6 +33,15 @@ export default class EventBus {
                 return queue;
             }
         };
+
+        // 🚀 [Expert Optimization] Event Payload Pooling
+        this.payloadPool = new ObjectPool(
+            () => ({}),
+            (p) => {
+                for (const key in p) delete p[key];
+            },
+            100
+        );
     }
 
     // 이벤트 구독
@@ -59,8 +65,38 @@ export default class EventBus {
 
     // 실시간 이벤트 발행 (동기 실행)
     emit(event, data = null) {
-        if (!this.listeners.has(event)) return;
-        this.listeners.get(event).forEach(callback => callback(data));
+        if (!this.listeners.has(event)) {
+            // 리스너가 없는 경우 풀링된 데이터라면 즉시 반환
+            if (data && data.__isPooled) this.releasePayload(data);
+            return;
+        }
+
+        const listeners = this.listeners.get(event);
+        for (let i = 0; i < listeners.length; i++) {
+            listeners[i](data);
+        }
+
+        // 동기 이벤트 처리 완료 후 풀링된 데이터 반환
+        if (data && data.__isPooled) {
+            this.releasePayload(data);
+        }
+    }
+
+    /**
+     * 📦 [Expert Optimization] 풀링된 페이로드 객체 획득
+     */
+    acquirePayload() {
+        const p = this.payloadPool.get();
+        p.__isPooled = true;
+        return p;
+    }
+
+    /**
+     * 🧹 [Expert Optimization] 페이로드 객체 반환
+     */
+    releasePayload(payload) {
+        if (!payload || !payload.__isPooled) return;
+        this.payloadPool.release(payload);
     }
 
     /** 🚀 [Expert Optimization] 지연 발행 (프레임 끝에서 일괄 처리) */
@@ -77,7 +113,7 @@ export default class EventBus {
 
         for (const [event, queue] of this.deferredEvents) {
             if (queue.length === 0) continue;
-            
+
             const listeners = this.listeners.get(event);
             if (!listeners || listeners.length === 0) {
                 queue.length = 0; // 리스너가 없어도 배열은 재사용 위해 비움
@@ -93,7 +129,7 @@ export default class EventBus {
                     listeners[j](data);
                 }
             }
-            
+
             // 🚀 [Task 96] 배열을 삭제하지 않고 길이를 0으로 초기화하여 풀링(Pooling) 효과 달성
             queue.length = 0;
         }

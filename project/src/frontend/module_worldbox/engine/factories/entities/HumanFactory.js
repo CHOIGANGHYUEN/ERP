@@ -99,7 +99,8 @@ export default class HumanFactory extends IEntityFactory {
 
         // 공간 해시 등록
         if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, false);
+            // EntityManager에서 addComponent 시 _updateSpatialHash가 자동 호출되므로 중복 삽입 방지
+            // this.engine.spatialHash.insert(id, x, y, false);
         }
 
         return id;

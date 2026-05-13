@@ -17,8 +17,8 @@ export default class FarmingSystem extends System {
         this.growthTick = 0;
 
         const em = this.entityManager;
-        // 🚀 [Optimization] buildingIds 인덱스 활용
-        for (const id of em.buildingIds) {
+        // 🚀 [Expert Optimization] 진행 중인 농장만 담긴 activeFarmIds 인덱스 활용 (O(Building) -> O(Farm))
+        for (const id of em.activeFarmIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
 

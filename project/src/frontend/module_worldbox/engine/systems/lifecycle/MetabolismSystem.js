@@ -9,6 +9,7 @@ export default class MetabolismSystem extends System {
         this.terrainGen = terrainGen;
         this.excreteThreshold = 15.0;
         this.updateAccumulator = 0; // 🚀 [Optimization]
+        this.slowTickCount = 0; // 🚀 [Expert AI] 느린 주기 추적
     }
 
     update(dt, time) {
@@ -38,22 +39,32 @@ export default class MetabolismSystem extends System {
         // 🚀 [Expert Optimization] 개별 엔티티 조회가 아닌 ID 리스트를 기반으로 버퍼 직접 순회
         for (let i = 0; i < items.length; i++) {
             const id = items[i];
-            const idx = id * 8; // [hp, maxHp, hunger, maxHunger, fatigue, maxFatigue, str, def];
+            const idx = id * 8;
             const fIdx = id * 4;
             const tIdx = id * 2;
 
             const x = tBuffer[tIdx];
             const y = tBuffer[tIdx + 1];
 
-            // 🚀 [Expert Optimization] 대사 LOD 적용
             const isVisible = camera && (x > viewX && x < viewX + viewW && y > viewY && y < viewY + viewH);
+            
+            // 🚀 [Expert AI] 생명주기 지연 (Metabolism Staggering)
+            // 노화, 허기 등은 3초(180프레임) 주기로 늦춰 업데이트 (ID별 오프셋으로 분산)
+            const isSlowTick = (id + frameCount) % 180 === 0;
 
-            if (!isVisible) {
-                // 화면 밖 개체는 업데이트 타이밍 분산 (Staggered Update)
-                if ((id + frameCount) % 10 !== 0) continue;
-                this._processMetabolismLoop(id, effectiveDt * 10, sBuffer, sfBuffer, idx, fIdx, speciesConfig);
+            if (isVisible) {
+                // 시각적으로 중요한 허기 수치는 10Hz 정도로 처리 (부드러운 바 표시 위해)
+                this._processMetabolismLoop(id, effectiveDt, sBuffer, sfBuffer, idx, fIdx, speciesConfig, false);
+                
+                // 👴 3초마다 한 번씩만 노화 및 배설 로직 처리
+                if (isSlowTick) {
+                    this._processMetabolismLoop(id, effectiveDt * 180, sBuffer, sfBuffer, idx, fIdx, speciesConfig, true);
+                }
             } else {
-                this._processMetabolismLoop(id, effectiveDt, sBuffer, sfBuffer, idx, fIdx, speciesConfig);
+                // 화면 밖은 무조건 3초마다 한 번만 업데이트
+                if (isSlowTick) {
+                    this._processMetabolismLoop(id, effectiveDt * 180, sBuffer, sfBuffer, idx, fIdx, speciesConfig, true);
+                }
             }
         }
 
@@ -61,7 +72,7 @@ export default class MetabolismSystem extends System {
         this._processDecompositions(em, effectiveDt);
     }
 
-    _processMetabolismLoop(id, dt, sBuffer, sfBuffer, idx, fIdx, speciesConfig) {
+    _processMetabolismLoop(id, dt, sBuffer, sfBuffer, idx, fIdx, speciesConfig, isSlowCycle = false) {
         const em = this.entityManager;
         const entity = em.entities.get(id);
         if (!entity) return;
@@ -78,21 +89,30 @@ export default class MetabolismSystem extends System {
         sBuffer[idx + 2] = Math.max(0, sBuffer[idx + 2] - Math.round(hungerDecay)); // currentHunger
         sBuffer[idx + 4] = Math.min(sBuffer[idx + 5] || 100, sBuffer[idx + 4] + Math.round(fatigueIncrease)); // currentFatigue
 
+        if (!isSlowCycle) return; // 아래 노화/배설 등은 느린 주기에서만 수행
+
         // 👴 2. 노화 처리
         const age = entity.components.get('Age');
         if (age) {
-            age.currentAge += dt * 0.0013889;
+            age.currentAge += dt * 0.0013889; // 나이 증가
+            
+            // 🚀 [Critical Fix] 성장 단계 업데이트 (아기 -> 어른 전환)
+            if (typeof age.updateStage === 'function') {
+                age.updateStage(entity);
+            }
+
             if (age.currentAge >= age.maxAge) {
                 sBuffer[idx] = 0; // 자연사
             }
         }
+
 
         // 💀 3. 아사 처리
         if (sBuffer[idx + 2] <= 0) {
             sBuffer[idx] = Math.max(0, sBuffer[idx] - Math.round(dt * 2.0));
         }
 
-        // 🤕 4. 부상 회복 (BaseStats 프록시를 통해 처리 - 타이머 데이터가 컴포넌트에 있으므로)
+        // 🤕 4. 부상 회복
         const stats = entity.components.get('BaseStats');
         if (stats && stats.injurySlowTimer > 0) {
             stats.injurySlowTimer -= dt;
@@ -175,24 +195,18 @@ export default class MetabolismSystem extends System {
         if (x >= 0 && x < width && y >= 0 && y < this.terrainGen.mapHeight) {
             const idx = y * width + x;
 
-            // 배설물의 영양분을 땅으로 환원 (8비트 정수 체계: 0-255)
             const releaseRate = dt * 100.0; // 초당 100 주입 시도
             const amount = Math.min(resource.fertilityValue || 10, releaseRate);
 
-            if (amount > 0) {
-                const current = fb[idx] || 0;
-                // 🚀 [Scale Fix] 최대 255까지 비옥도 누적 가능
-                const next = Math.min(255, current + amount);
+            const current = this.terrainGen.getFertilityAt(x, y);
+            // 🚀 [Scale Fix] 최대 255까지 비옥도 누적 가능
+            const next = Math.min(255, current + amount);
 
-                if (Math.floor(next) > current) {
-                    fb[idx] = Math.floor(next);
-                    this.terrainGen.syncPackedPixel(idx);
-                    if (resource.fertilityValue) resource.fertilityValue -= amount;
-
-                    this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { x, y, reason: 'fertility_change' });
-                } else if (resource.fertilityValue) {
-                    resource.fertilityValue -= amount;
-                }
+            if (Math.floor(next) > current) {
+                this.terrainGen.setFertility(x, y, Math.floor(next));
+                if (resource.fertilityValue) resource.fertilityValue -= amount;
+            } else if (resource.fertilityValue) {
+                resource.fertilityValue -= amount;
             }
 
             // 모든 영양분이 환원되면 배설물 엔티티 제거

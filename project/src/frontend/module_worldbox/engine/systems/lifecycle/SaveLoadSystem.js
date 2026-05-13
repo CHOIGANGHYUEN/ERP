@@ -169,6 +169,14 @@ export default class SaveLoadSystem {
         tg.altitudeBuffer.set(saveData.map.altitude);
 
         // 2. 엔티티 데이터 복구
+        const entityCount = saveData.entities.data.length;
+        const maxIdInSave = saveData.entities.nextId;
+        
+        // 🚀 [Critical Fix] 로드할 데이터 양에 맞춰 버퍼 용량 사전 확보 (Crash 방지)
+        if (em._ensureCapacity) {
+            em._ensureCapacity(Math.max(maxIdInSave, entityCount));
+        }
+
         em.entities.clear();
         em.animalIds.clear();
         em.humanIds.clear();
@@ -178,7 +186,7 @@ export default class SaveLoadSystem {
         em.freeIds = saveData.entities.freeIds || [];
 
         // 🏗️ SpatialHash 초기화
-        const sh = engine.systemManager?.behavior?.spatialHash;
+        const sh = engine.spatialHash || engine.systemManager?.spatialHash;
         if (sh) sh.clear();
 
         em.statsBuffer.set(saveData.entities.buffers.stats);
@@ -228,7 +236,18 @@ export default class SaveLoadSystem {
             // 🗺️ SpatialHash 복구
             const t = entity.components.get('Transform');
             if (sh && t) {
-                sh.insert(entity.id, t.x, t.y, entity.components.has('Resource'));
+                const key = ((Math.floor(t.y / sh.cellSize) + 1000) << 16) | (Math.floor(t.x / sh.cellSize) + 1000);
+                
+                // 레이어 결정 (0: Dynamic, 1: Static, 2: Obstacle)
+                let layer = 0;
+                if (entity.components.has('Building') || entity.components.has('Structure') || entity.components.has('VillageCenter')) {
+                    layer = 2;
+                } else if (entity.components.has('Resource') || entity.components.has('DroppedItem')) {
+                    layer = 1;
+                }
+
+                sh.insertWithKey(entity.id, key, layer);
+                em.cellKeyBuffer[entity.id] = key;
             }
         }
 

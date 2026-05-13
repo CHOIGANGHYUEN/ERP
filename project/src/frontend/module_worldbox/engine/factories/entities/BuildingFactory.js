@@ -98,9 +98,6 @@ export default class BuildingFactory extends IEntityFactory {
             }).addComponent('LightSource', { intensity: 1.0, radius: 100 });
         }
 
-        if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true);
-        }
 
         // 🌱 건물이 설치된 자리는 비옥도를 0으로 만들어 자원(나무 등)이 생성되지 않도록 함
         if (this.engine.terrainGen) {

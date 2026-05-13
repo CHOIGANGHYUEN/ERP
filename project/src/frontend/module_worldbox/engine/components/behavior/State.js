@@ -1,4 +1,5 @@
 import Component from "../../core/Component";
+import Pathfinder from "../../utils/Pathfinder";
 /**
  * 🐾 Animal States
  */
@@ -89,6 +90,23 @@ export default class State extends Component {
         this.pathIndex = 0;
         this.abstractPath = null;
         this.abstractIndex = 0;
+        this._path = null;
+    }
+
+    /** 🧹 [Expert Optimization] 경로 메모리 관리 */
+    get path() {
+        return this._path;
+    }
+
+    set path(newPath) {
+        if (this._path === newPath) return;
+        
+        // 이전 경로가 있다면 풀에 반환
+        if (this._path) {
+            Pathfinder.releasePath(this._path);
+        }
+        
+        this._path = newPath;
     }
 
     reset(options = {}) {
@@ -113,7 +131,13 @@ export default class State extends Component {
         this.targetName = null;
         this.interruptible = options.interruptible !== undefined ? options.interruptible : true;
         this.thinkTimer = 0;
-        this.path = null;
+        
+        // 경로 초기화 및 반환
+        if (this._path) {
+            Pathfinder.releasePath(this._path);
+        }
+        this._path = null;
+
         this.pathIndex = 0;
         this.abstractPath = null;
         this.abstractIndex = 0;

@@ -25,8 +25,10 @@ export default class HerbivoreBrain {
         state.thinkTimer = 0;
 
         // 1. 생존 본능 (포식자 감지 시 최우선 도망) - 인터럽트 허용
-        const predatorId = this.predatorSensor.findNearestPredator(this.entityManager.entities.get(id), state, 120);
+        const searchRadiusPred = 80; // 🚨 [Reduced] 120 -> 80
+        const predatorId = this.predatorSensor.findNearestPredator(this.entityManager.entities.get(id), state, searchRadiusPred);
         if (predatorId) {
+            state.searchRange = searchRadiusPred;
             return { mode: AnimalStates.FLEE, targetId: predatorId };
         }
 
@@ -38,14 +40,16 @@ export default class HerbivoreBrain {
 
         // 3. 허기 관리 (도망 중이 아닐 때만)
         if (state.mode !== AnimalStates.FLEE) {
-            // 💡 [Stability] 배회 중에는 허기가 매우 낮을 때(30 미만)만 행동을 중단하도록 변경
-            const hungerThreshold = (state.mode === AnimalStates.WANDER) ? 30 : 50;
+            // 💡 [Stability] 번식 가능성 확보를 위해 허기 임계치 대폭 상향 (30/50 -> 70)
+            const hungerThreshold = 70;
             
             if (stats.hunger < hungerThreshold) { 
                 const isEatingPlant = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE) && state.targetId;
                 
                 if (!isEatingPlant) {
-                    const plantId = this.findPlantItem(id, state, transform, 400);
+                    const searchRadius = 150; // 🥗 [Reduced] 400 -> 150
+                    state.searchRange = searchRadius;
+                    const plantId = this.findPlantItem(id, state, transform, searchRadius);
                     if (plantId) {
                         return { mode: AnimalStates.FORAGE, targetId: plantId };
                     }

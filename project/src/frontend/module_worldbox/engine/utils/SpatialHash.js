@@ -1,8 +1,9 @@
 export default class SpatialHash {
     constructor(cellSize = 100) {
         this.cellSize = cellSize;
-        this.staticCells = new Map();  // 🌲 고정된 자원용
-        this.dynamicCells = new Map(); // 🐕 움직이는 개체용
+        this.staticCells = new Map();   // 🌲 고정된 자원용 (나무, 풀 등 - 길찾기 영향 X)
+        this.obstacleCells = new Map(); // 🏗️ 고정된 장애물용 (건물, 성벽 등 - 길찾기 영향 O)
+        this.dynamicCells = new Map();  // 🐕 움직이는 개체용
         
         // 🚀 [Task 92] 가비지 생성을 막기 위한 쿼리 버퍼 풀 (Round-Robin)
         this.queryBuffers = Array.from({ length: 10 }, () => []);
@@ -36,17 +37,18 @@ export default class SpatialHash {
 
     /**
      * 엔티티를 등록합니다.
+     * layer: 0 (Dynamic), 1 (Static/Nature), 2 (Obstacle/Building)
      */
-    insert(entityId, x, y, isStatic = false) {
+    insert(entityId, x, y, layer = 0) {
         // 🛡️ [Stability] 유효하지 않은 좌표 차단 (NaN, Infinity 등)
         if (!isFinite(x) || !isFinite(y)) return;
 
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
         
-        // 🚀 [Expert Optimization] 문자열 키 대신 정수 키(Int32) 사용
-        const key = (cellY << 16) | cellX;
-        const targetCells = isStatic ? this.staticCells : this.dynamicCells;
+        // 🚀 [Expert Fix] 음수 좌표 지원을 위해 1000의 오프셋을 부여하여 비트 오염 방지
+        const key = ((cellY + 1000) << 16) | (cellX + 1000);
+        const targetCells = this._getTargetCells(layer);
 
         let cell = targetCells.get(key);
         if (!cell) {
@@ -54,10 +56,7 @@ export default class SpatialHash {
             targetCells.set(key, cell);
         }
         
-        // 중복 삽입 방지 (includes는 O(N)이지만 격자당 개체수가 적어 Map+Set보다 유리할 수 있음)
-        if (!cell.includes(entityId)) {
-            cell.push(entityId);
-        }
+        cell.push(entityId);
     }
 
     /**
@@ -69,7 +68,7 @@ export default class SpatialHash {
 
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
-        const key = (cellY << 16) | cellX;
+        const key = ((cellY + 1000) << 16) | (cellX + 1000);
 
         let cell = this.dynamicCells.get(key);
         if (!cell) {
@@ -80,30 +79,46 @@ export default class SpatialHash {
     }
 
     /**
-     * 엔티티의 위치를 업데이트합니다. (InputSystem 등에서 사용)
-     * 이 클래스는 이전 위치를 저장하지 않으므로, 성능을 위해 단순히 새 위치에 삽입하거나
-     * 필요 시 전체 리프레시를 유도합니다.
+     * [Expert Optimization] 이미 계산된 키를 사용하여 엔티티를 등록합니다.
      */
-    update(entityId, x, y, isStatic = false) {
-        // 기존 위치를 모르므로 안전하게 새 위치에 삽입만 수행
-        // (실제 정밀한 이동은 전용 시스템의 refresh 시점에 처리됨)
-        this.insert(entityId, x, y, isStatic);
+    insertWithKey(entityId, key, layer = 0) {
+        const targetCells = this._getTargetCells(layer);
+        let cell = targetCells.get(key);
+        if (!cell) {
+            cell = [];
+            targetCells.set(key, cell);
+        }
+        cell.push(entityId);
     }
 
     /**
-     * 엔티티를 제거합니다. (정적 개체 파괴 시 필요)
+     * 엔티티를 제거합니다.
      */
-    remove(entityId, x, y, isStatic = true) {
+    remove(entityId, x, y, layer = 1) {
+        if (!isFinite(x) || !isFinite(y)) return;
+        
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
-        const key = (cellY << 16) | cellX;
-        const targetCells = isStatic ? this.staticCells : this.dynamicCells;
+        const key = ((cellY + 1000) << 16) | (cellX + 1000);
+        this.removeFromCell(entityId, key, layer);
+    }
+
+    /**
+     * 특정 셀 키에서 엔티티를 직접 제거합니다.
+     */
+    removeFromCell(entityId, key, layer = 0) {
+        const targetCells = this._getTargetCells(layer);
         const cell = targetCells.get(key);
 
         if (cell) {
             const index = cell.indexOf(entityId);
             if (index !== -1) {
-                cell.splice(index, 1);
+                // 🚀 [Expert Optimization] 순서가 중요하지 않다면 splice(index, 1) 대신 
+                // 마지막 요소를 현재 위치에 덮어쓰고 pop() 하는 것이 O(1)로 훨씬 빠릅니다.
+                const lastId = cell.pop();
+                if (index < cell.length) {
+                    cell[index] = lastId;
+                }
             }
         }
     }
@@ -126,23 +141,13 @@ export default class SpatialHash {
 
         for (let oy = -cellRadius; oy <= cellRadius; oy++) {
             const cy = cellY + oy;
-            const rowOffset = cy << 16;
             for (let ox = -cellRadius; ox <= cellRadius; ox++) {
                 const cx = cellX + ox;
-                const key = rowOffset | cx;
+                const key = ((cy + 1000) << 16) | (cx + 1000);
                 
-                const sCell = this.staticCells.get(key);
-                if (sCell) {
-                    for (let i = 0; i < sCell.length; i++) {
-                        foundIds.push(sCell[i]);
-                    }
-                }
-                const dCell = this.dynamicCells.get(key);
-                if (dCell) {
-                    for (let i = 0; i < dCell.length; i++) {
-                        foundIds.push(dCell[i]);
-                    }
-                }
+                this._pushCellToBuffer(this.staticCells.get(key), foundIds);
+                this._pushCellToBuffer(this.obstacleCells.get(key), foundIds);
+                this._pushCellToBuffer(this.dynamicCells.get(key), foundIds);
             }
         }
         return foundIds;
@@ -161,23 +166,13 @@ export default class SpatialHash {
 
         for (let oy = -cellRadius; oy <= cellRadius; oy++) {
             const cy = cellY + oy;
-            const rowOffset = cy << 16;
             for (let ox = -cellRadius; ox <= cellRadius; ox++) {
                 const cx = cellX + ox;
-                const key = rowOffset | cx;
+                const key = ((cy + 1000) << 16) | (cx + 1000);
                 
-                const sCell = this.staticCells.get(key);
-                if (sCell) {
-                    for (let i = 0; i < sCell.length; i++) {
-                        callback(sCell[i]);
-                    }
-                }
-                const dCell = this.dynamicCells.get(key);
-                if (dCell) {
-                    for (let i = 0; i < dCell.length; i++) {
-                        callback(dCell[i]);
-                    }
-                }
+                this._eachInCell(this.staticCells.get(key), callback);
+                this._eachInCell(this.obstacleCells.get(key), callback);
+                this._eachInCell(this.dynamicCells.get(key), callback);
             }
         }
     }
@@ -187,7 +182,7 @@ export default class SpatialHash {
      * 중심점에서 가까운 격자부터 순차적으로 탐색하며, 콜백이 true를 반환하면 즉시 중단합니다.
      * 근접 탐색(Find Nearest) 시 불필요한 외곽 격자 탐색을 방지하여 성능을 대폭 향상시킵니다.
      */
-    eachInSpiral(x, y, radius, callback) {
+    eachInSpiral(x, y, radius, callback, layer = -1) {
         const cellX = Math.floor(x / this.cellSize);
         const cellY = Math.floor(y / this.cellSize);
         let maxCellRadius = Math.ceil(radius / this.cellSize);
@@ -196,17 +191,17 @@ export default class SpatialHash {
 
         for (let k = 0; k <= maxCellRadius; k++) {
             if (k === 0) {
-                if (this._processCell(cellX, cellY, callback)) return;
+                if (this._processCell(cellX, cellY, callback, layer)) return;
             } else {
                 // Top & Bottom edges
                 for (let ox = -k; ox <= k; ox++) {
-                    if (this._processCell(cellX + ox, cellY - k, callback)) return;
-                    if (this._processCell(cellX + ox, cellY + k, callback)) return;
+                    if (this._processCell(cellX + ox, cellY - k, callback, layer)) return;
+                    if (this._processCell(cellX + ox, cellY + k, callback, layer)) return;
                 }
                 // Left & Right edges (excluding corners already covered)
                 for (let oy = -k + 1; oy <= k - 1; oy++) {
-                    if (this._processCell(cellX - k, cellY + oy, callback)) return;
-                    if (this._processCell(cellX + k, cellY + oy, callback)) return;
+                    if (this._processCell(cellX - k, cellY + oy, callback, layer)) return;
+                    if (this._processCell(cellX + k, cellY + oy, callback, layer)) return;
                 }
             }
         }
@@ -216,22 +211,37 @@ export default class SpatialHash {
      * 격자 내의 엔티티들을 콜백으로 전달합니다.
      * @private
      */
-    _processCell(cx, cy, callback) {
-        const key = (cy << 16) | cx;
+    _processCell(cx, cy, callback, layer = -1) {
+        const key = ((cy + 1000) << 16) | (cx + 1000);
         
-        const sCell = this.staticCells.get(key);
-        if (sCell) {
-            for (let i = 0; i < sCell.length; i++) {
-                if (callback(sCell[i])) return true;
-            }
-        }
-        const dCell = this.dynamicCells.get(key);
-        if (dCell) {
-            for (let i = 0; i < dCell.length; i++) {
-                if (callback(dCell[i])) return true;
-            }
+        if (layer === -1) {
+            if (this._eachInCellBreakable(this.staticCells.get(key), callback)) return true;
+            if (this._eachInCellBreakable(this.obstacleCells.get(key), callback)) return true;
+            if (this._eachInCellBreakable(this.dynamicCells.get(key), callback)) return true;
+        } else {
+            const cells = this._getTargetCells(layer);
+            if (this._eachInCellBreakable(cells.get(key), callback)) return true;
         }
         return false;
+    }
+
+    /**
+     * [Expert Optimization] 장애물 엔티티(건물 등)만 조회합니다. (길찾기 전용)
+     */
+    queryObstaclesRect(x, y, width, height) {
+        const startX = Math.floor(x / this.cellSize);
+        const startY = Math.floor(y / this.cellSize);
+        const endX = Math.floor((x + width) / this.cellSize);
+        const endY = Math.floor((y + height) / this.cellSize);
+        
+        const foundIds = [];
+        for (let cy = startY; cy <= endY; cy++) {
+            for (let cx = startX; cx <= endX; cx++) {
+                const key = ((cy + 1000) << 16) | (cx + 1000);
+                this._pushCellToBuffer(this.obstacleCells.get(key), foundIds);
+            }
+        }
+        return foundIds;
     }
 
     /**
@@ -245,9 +255,8 @@ export default class SpatialHash {
         
         const foundIds = [];
         for (let cy = startY; cy <= endY; cy++) {
-            const rowOffset = cy << 16;
             for (let cx = startX; cx <= endX; cx++) {
-                const key = rowOffset | cx;
+                const key = ((cy + 1000) << 16) | (cx + 1000);
                 
                 const sCell = this.staticCells.get(key);
                 if (sCell) {
@@ -276,23 +285,50 @@ export default class SpatialHash {
         const endY = Math.floor((y + height) / this.cellSize);
         
         for (let cy = startY; cy <= endY; cy++) {
-            const rowOffset = cy << 16;
             for (let cx = startX; cx <= endX; cx++) {
-                const key = rowOffset | cx;
+                const key = ((cy + 1000) << 16) | (cx + 1000);
                 
-                const sCell = this.staticCells.get(key);
-                if (sCell) {
-                    for (let i = 0; i < sCell.length; i++) {
-                        callback(sCell[i]);
-                    }
-                }
-                const dCell = this.dynamicCells.get(key);
-                if (dCell) {
-                    for (let i = 0; i < dCell.length; i++) {
-                        callback(dCell[i]);
-                    }
-                }
+                this._eachInCell(this.staticCells.get(key), callback);
+                this._eachInCell(this.obstacleCells.get(key), callback);
+                this._eachInCell(this.dynamicCells.get(key), callback);
             }
         }
+    }
+
+    _getTargetCells(layer) {
+        if (layer === true) return this.staticCells;
+        if (layer === false) return this.dynamicCells;
+
+        switch (layer) {
+            case 0: return this.dynamicCells;
+            case 1: return this.staticCells;
+            case 2: return this.obstacleCells;
+            default: return this.dynamicCells;
+        }
+    }
+
+    _pushCellToBuffer(cell, buffer) {
+        if (cell) {
+            for (let i = 0; i < cell.length; i++) {
+                buffer.push(cell[i]);
+            }
+        }
+    }
+
+    _eachInCell(cell, callback) {
+        if (cell) {
+            for (let i = 0; i < cell.length; i++) {
+                callback(cell[i]);
+            }
+        }
+    }
+
+    _eachInCellBreakable(cell, callback) {
+        if (cell) {
+            for (let i = 0; i < cell.length; i++) {
+                if (callback(cell[i])) return true;
+            }
+        }
+        return false;
     }
 }

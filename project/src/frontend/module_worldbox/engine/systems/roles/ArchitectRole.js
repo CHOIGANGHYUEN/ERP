@@ -59,7 +59,10 @@ export default class ArchitectRole extends BaseRole {
         const requiredAmount = 1;
 
         // 🏷️ [Unified Match] 인벤토리에 필요한 자원(또는 유사 속성 자원)이 있는지 확인
-        const hasResource = inventory && inventory.has(requiredType, requiredAmount);
+        // 🚀 [Expert Fix] hasFlexible을 사용하여 돌(Stone)-광물(Mineral) 등의 명칭 불일치 해결
+        const hasResource = inventory && requiredType && (typeof inventory.hasFlexible === 'function' ? inventory.hasFlexible(requiredType, requiredAmount) : inventory.has(requiredType, requiredAmount));
+
+
 
         // 3. 자원이 꽉 찼는데 필요한 자원이 아니라면 창고에 비우러 가야 함
         if (inventory && inventory.getTotal() >= inventory.capacity && !hasResource) {
@@ -79,10 +82,19 @@ export default class ArchitectRole extends BaseRole {
                 if (!item) return false;
 
                 const req = requiredType.toLowerCase();
+                const iType = (item.itemType || '').toLowerCase();
                 const iCat = (item.category || '').toLowerCase();
 
-                // 🎯 [Exact Type Match] 사용자의 요구대로 아이템의 속성(Type/Category)이 정확히 일치하는지만 확인
-                const isMatch = (iCat === req);
+                // 🎯 [Flexible Match] 타입명 직접 일치 또는 카테고리 일치 확인
+                let isMatch = (iType === req) || (iCat === req);
+                
+                // 특수 케이스: 돌(stone)은 카테고리가 'mineral'일 수 있음
+                if (!isMatch) {
+                    if (req === 'stone' && (iCat === 'mineral' || iType.includes('stone') || iType.includes('rock'))) isMatch = true;
+                    if (req === 'wood' && (iCat === 'wood' || iType.includes('wood') || iType.includes('log'))) isMatch = true;
+                    if (req === 'iron_ore' && (iCat === 'mineral' || iType.includes('iron') || iType.includes('ore'))) isMatch = true;
+                    if (req === 'food' && (iCat === 'food' || iCat === 'nature' || iType === 'fruit' || iType === 'berry' || iType === 'meat')) isMatch = true;
+                }
 
                 if (isMatch) {
                     // 🏘️ [Ownership] 자국 아이템이거나 무소속 아이템만 수집
@@ -94,6 +106,7 @@ export default class ArchitectRole extends BaseRole {
                 }
                 return false;
             };
+
 
             const veryNearDroppedId = this.em.findNearestEntityWithComponent(
                 transform.x, transform.y, 300, droppedCondition, this.engine.spatialHash

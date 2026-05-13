@@ -29,15 +29,22 @@ export const TreeRenderer = {
         const health = entity?.components?.get('Health');
         const hitShake = (health && health.hitTimer > 0) ? Math.sin(time * 0.08) * 1.5 : 0;
 
-        // 원본 스프라이트는 64x64, 나무의 실제 렌더링 사이즈에 맞춰 스케일링
         const scale = size / 30; // 20 -> 30으로 조정하여 크기 축소
         const drawW = 64 * scale;
         const drawH = 64 * scale;
 
+        // 🌑 [Shadow] 나무 밑동 그림자 (타원형)
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, drawW * 0.4, drawW * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
         ctx.drawImage(
             img,
             -drawW / 2 + sway + hitShake,
-            -drawH + 6 * scale, // 지면 밀착도 조정을 위해 오프셋 수정
+            -drawH + 2 * scale, // 🌳 [Fix] 기둥이 땅에 묻히지 않도록 오프셋 상향 조정
             drawW,
             drawH
         );

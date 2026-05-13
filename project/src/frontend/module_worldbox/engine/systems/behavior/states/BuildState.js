@@ -77,6 +77,10 @@ export default class BuildState extends State {
                 else if (type === 'blacksmith') { requiredType = prog > 40 ? 'iron_ore' : 'stone'; }
                 else if (type === 'watchtower') { requiredType = 'stone'; }
                 else if (type === 'warehouse' || type === 'storage') { requiredType = 'wood'; }
+                else if (type === 'fence') {
+                    const fenceComp = blueprint.components.get('Fence');
+                    requiredType = fenceComp?.material === 'stone' ? 'stone' : 'wood';
+                }
 
                 if (inventory.has(requiredType, 1)) {
                     const builderComp = entity.components.get('Builder');
@@ -88,7 +92,7 @@ export default class BuildState extends State {
                     if (state._buildProgressCounter >= 10) {
                         if (inventory.consume(requiredType, 1)) {
                             structure.progress = Math.min(structure.maxProgress, (structure.progress || 0) + 10);
-                            state._buildProgressCounter -= 10;
+                            state._buildProgressCounter = 0; // Reset counter after consuming
                             
                             // 완공 체크
                             if (structure.progress >= structure.maxProgress) {
@@ -100,11 +104,16 @@ export default class BuildState extends State {
                         }
                     }
                 } else {
+                    // 📢 [User Feedback] 자원 부족 시 말풍선으로 알림
+                    const msg = `🚫 ${requiredType.toUpperCase()}?`;
+                    this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId, text: msg, duration: 2000 });
+
                     // 자원 부족 시 IDLE로 돌아가 Role이 재판단하게 함
                     state.mode = AnimalStates.IDLE;
                     state.targetId = null;
                     return AnimalStates.IDLE;
                 }
+
             }
 
             state.animTimer = (state.animTimer || 0) + dt;

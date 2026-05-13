@@ -17,7 +17,7 @@ export default class ZoneData {
         this.assignedWorkers = new Set();
 
         // 🗺️ [Tile-Based Territory] 구역에 할당된 타일 목록
-        this.territory = new Set(); // Set of packed tile keys: (ty << 16) | tx
+        this.territory = new Set(); // Set of packed tile keys (via GridUtils.pack)
 
         // 📚 [Civilization] 구역 내 문화 및 영향력 수치
         this.culture = 0;
@@ -32,7 +32,7 @@ export default class ZoneData {
     contains(x, y) {
         const tx = Math.floor(x / 16);
         const ty = Math.floor(y / 16);
-        const packedKey = (ty << 16) | tx;
+        const packedKey = GridUtils.pack(tx, ty);
         const legacyKey = `${tx},${ty}`;
 
         if (this.territory.size > 0) {
@@ -51,6 +51,8 @@ export default class ZoneData {
         this.assignedWorkers.delete(entityId);
     }
 }
+
+import GridUtils from '../../utils/GridUtils.js';
 
 /**
  * 🗺️ HPACluster (Hierarchical Cluster)

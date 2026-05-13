@@ -146,6 +146,64 @@ export class BuildTool extends Tool {
     }
 }
 
+export class FenceTool extends Tool {
+    constructor(config) {
+        super(config);
+        this.startPos = null;
+        this.isDragging = false;
+        this.material = config.material || 'wood';
+    }
+
+    onMouseDown(worldPos) {
+        this.startPos = { x: worldPos.x, y: worldPos.y };
+        this.isDragging = true;
+        return null; // 드래그 시작 시점에는 아무것도 하지 않음 (또는 프리뷰 시작)
+    }
+
+    onMouseUp(e, engine) {
+        if (!this.isDragging || !this.startPos) return null;
+        
+        const endPos = engine.inputSystem?.mouseWorld || this.startPos;
+        this.isDragging = false;
+
+        // 시작점부터 끝점까지 일직선으로 울타리 배치
+        const dx = endPos.x - this.startPos.x;
+        const dy = endPos.y - this.startPos.y;
+        const distance = Math.hypot(dx, dy);
+        const steps = Math.max(1, Math.floor(distance / 32)); // 32px 간격
+
+        const actions = [];
+        const placedPositions = new Set();
+
+        for (let i = 0; i <= steps; i++) {
+            const t = steps === 0 ? 0 : i / steps;
+            const x = this.startPos.x + dx * t;
+            const y = this.startPos.y + dy * t;
+            
+            // 32px 그리드 스냅
+            const sx = Math.floor(x / 32) * 32 + 16;
+            const sy = Math.floor(y / 32) * 32 + 16;
+            const posKey = `${sx},${sy}`;
+
+            if (!placedPositions.has(posKey)) {
+                placedPositions.add(posKey);
+                actions.push({ 
+                    type: 'SPAWN_ENTITY', 
+                    payload: { 
+                        category: 'fence', 
+                        type: 'normal', 
+                        x: sx, y: sy, 
+                        options: { isBlueprint: true, material: this.material } 
+                    } 
+                });
+            }
+        }
+
+        this.startPos = null;
+        return { type: 'BATCH_COMMANDS', payload: { actions } };
+    }
+}
+
 export class GodPowerTool extends Tool {
     constructor(config) {
         super(config);
@@ -314,7 +372,8 @@ export const DefaultTools = (engine) => [
     
     // 🏘️ Civilization (Buildings)
     new BuildTool({ id: 'build_house', name: 'Wood House', icon: '🏠', category: 'Civilization', buildingType: 'house', description: '주민들이 거주할 수 있는 통나무 집 청사진을 배치합니다.' }),
-    new BuildTool({ id: 'build_fence', name: 'Fence', icon: '🚧', category: 'Civilization', buildingType: 'fence', description: '영역을 구분하는 울타리를 세웁니다.' }),
+    new FenceTool({ id: 'build_fence', name: 'Fence', icon: '🚧', category: 'Civilization', material: 'wood', description: '드래그하여 영역을 구분하는 울타리를 세웁니다.' }),
+    new FenceTool({ id: 'build_fence_stone', name: 'Stone Wall', icon: '🧱', category: 'Civilization', material: 'stone', description: '드래그하여 튼튼한 돌 성벽을 세웁니다.' }),
     new BuildTool({ id: 'build_gate', name: 'Fence Gate', icon: '🚪', category: 'Civilization', buildingType: 'fence_gate', description: '울타리 사이를 지날 수 있는 문을 설치합니다.' }),
 
     // ⚡ God Powers (신적 권능)

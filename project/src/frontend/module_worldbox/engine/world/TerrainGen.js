@@ -39,8 +39,9 @@ export default class TerrainGen {
     villageColorBuffer = new Uint32Array(2048); 
     nationColorBuffer = new Uint32Array(2048);
 
-    constructor(entityManager) {
-        this.entityManager = entityManager;
+    constructor(engine) {
+        this.engine = engine;
+        this.entityManager = engine?.entityManager;
         // 기본값(흰색/투명 등)으로 초기화
         this.villageColorBuffer = new Uint32Array(new SharedArrayBuffer(2048 * 4));
         this.nationColorBuffer = new Uint32Array(new SharedArrayBuffer(2048 * 4));
@@ -62,6 +63,8 @@ export default class TerrainGen {
             packed: this.packedBuffer.buffer,
             villageColors: this.villageColorBuffer.buffer,
             nationColors: this.nationColorBuffer.buffer,
+            renderBuffer: this.engine.chunkManager.buffer.buffer, // 🎨 렌더 캐시 버퍼 추가
+            colorLUT: this.colorLUT.buffer, // 🎨 컬러 테이블 추가
             mapWidth: this.mapWidth,
             mapHeight: this.mapHeight
         };
@@ -70,8 +73,30 @@ export default class TerrainGen {
     // --- Interface Redirection ---
     // 외부 시스템은 여전히 TerrainGen을 통하지만, 내부적으로는 각 레이어가 처리함
     isValidIndex(idx) { return this.terrain && this.terrain.isValid(idx); }
-    getIndex(x, y) { return Math.floor(y) * this.mapWidth + Math.floor(x); }
+    getIndex(x, y) { 
+        // 🚀 [Expert Fix] NaN, 음수 및 경계 검증 강화 (Wrap-around 버그 방지)
+        if (isNaN(x) || isNaN(y) || x < 0 || y < 0 || x >= this.mapWidth || y >= this.mapHeight) return -1;
+        return (Math.floor(y) * this.mapWidth) + Math.floor(x); 
+    }
     
+    /** 🛡️ [Expert Logic] SharedArrayBuffer 및 Atomics 환경 호환성 레이어 */
+    safeAtomicsStore(buffer, idx, value) {
+        if (buffer && buffer.buffer instanceof SharedArrayBuffer) {
+            Atomics.store(buffer, idx, value);
+        } else if (buffer) {
+            buffer[idx] = value;
+        }
+    }
+
+    safeAtomicsLoad(buffer, idx) {
+        if (buffer && buffer.buffer instanceof SharedArrayBuffer) {
+            return Atomics.load(buffer, idx);
+        } else if (buffer) {
+            return buffer[idx];
+        }
+        return 0;
+    }
+
     isLand(idx) { return this.terrain.isLand(idx); }
     isWater(idx) { return this.terrain.isWater(idx); }
     isMountain(idx) { return this.terrain.isMountain(idx); }
@@ -124,12 +149,19 @@ export default class TerrainGen {
         return this.isValidIndex(idx) ? this.occupancyBuffer[idx] : 0;
     }
 
+    getFertilityAt(x, y) {
+        const idx = this.getIndex(x, y);
+        if (!this.isValidIndex(idx)) return 0;
+        return this.safeAtomicsLoad(this.fertilityBuffer, idx);
+    }
+
     /** 🧪 비옥도 설정 (외부 시스템 연동용) */
     setFertility(x, y, value) {
         const idx = this.getIndex(x, y);
         if (this.isValidIndex(idx)) {
             const v = Math.max(0, Math.min(255, value));
-            Atomics.store(this.fertilityBuffer, idx, v);
+            // 🛡️ [Environment Compatibility] Atomics 폴백 적용
+            this.safeAtomicsStore(this.fertilityBuffer, idx, v);
             this.syncPackedPixel(idx);
         }
     }
@@ -151,14 +183,16 @@ export default class TerrainGen {
     /** 🚀 [Expert Optimization] 개별 버퍼 변경 시 팩킹 버퍼 동기화 */
     syncPackedPixel(idx) {
         if (!this.packedBuffer) return;
-        const t = Atomics.load(this.terrain.buffer, idx);
-        const b = Atomics.load(this.biomes.buffer, idx);
-        const f = Atomics.load(this.fertilityBuffer, idx);
-        const w = Math.max(Atomics.load(this.waterQualityBuffer, idx), Atomics.load(this.mineralDensityBuffer, idx));
+        // 🚀 [Optimization] Avoid safeAtomicsLoad for frequent internal syncs
+        const t = this.terrain.buffer[idx];
+        const b = this.biomes.buffer[idx];
+        const f = this.fertilityBuffer[idx];
+        const w = Math.max(this.waterQualityBuffer[idx], this.mineralDensityBuffer[idx]);
         
         const packedVal = t | (b << 8) | (f << 16) | (w << 24);
-        Atomics.store(this.packedBuffer, idx, packedVal);
+        this.safeAtomicsStore(this.packedBuffer, idx, packedVal);
     }
+
 
     /** ⚡ [Ultra-Fast Optimization] Permutation Table for Perlin Noise */
     _p = new Uint8Array(512);
@@ -195,47 +229,56 @@ export default class TerrainGen {
     }
 
     /** 🎨 [Ultra-Fast] Color LUT 생성 (지형/바이옴/비옥도 조합 캐싱) */
-    colorLUT = new Uint32Array(8 * 16 * 16); 
+    colorLUT = null;
+
     _initColorLUT() {
-        for(let t=0; t<8; t++) {
-            for(let b=0; b<16; b++) {
+        if (this.colorLUT) return;
+        // 8 (terrain) * 16 (biomes) * 16 (fertility) = 2048 entries
+        const buffer = new SharedArrayBuffer(2048 * 4);
+        this.colorLUT = new Uint32Array(buffer);
+        
+        for (let t = 0; t < 8; t++) {
+            let baseR = 0, baseG = 0, baseB = 0;
+            switch(t) {
+                case TERRAIN_TYPES.DEEP_OCEAN: baseR = 10; baseG = 30; baseB = 100; break;
+                case TERRAIN_TYPES.OCEAN: baseR = 30; baseG = 80; baseB = 180; break;
+                case TERRAIN_TYPES.SAND: baseR = 210; baseG = 190; baseB = 130; break;
+                case TERRAIN_TYPES.SOIL: baseR = 120; baseG = 90; baseB = 60; break;
+                case TERRAIN_TYPES.LOW_MOUNTAIN: baseR = 100; baseG = 100; baseB = 100; break;
+                case TERRAIN_TYPES.HIGH_MOUNTAIN: baseR = 180; baseG = 180; baseB = 180; break;
+                default: baseR = 50; baseG = 50; baseB = 50;
+            }
+
+            for (let b = 0; b < 16; b++) {
                 const biome = BIOME_PROPERTIES_MAP.get(b);
-                for(let f=0; f<16; f++) {
-                    const fertility = f * 17; // 0-255
-                    let r = 0, g = 0, bl = 0;
-                    switch(t) {
-                        case 0: r = 10; g = 30; bl = 100; break;
-                        case 1: r = 30; g = 80; bl = 180; break;
-                        case 4: r = 210; g = 190; bl = 130; break;
-                        case 5: r = 120; g = 90; bl = 60; break;
-                        case 6: r = 100; g = 100; bl = 100; break;
-                        case 7: r = 180; g = 180; bl = 180; break;
-                        default: r = 50; g = 50; bl = 50;
+                const isLand = t >= 4;
+
+                for (let fIdx = 0; fIdx < 16; fIdx++) {
+                    const fRatio = (fIdx << 4) / 255;
+                    let r = baseR, g = baseG, bVal = baseB;
+
+                    if (isLand && biome) {
+                        const cLow = biome.colorLow || [120, 100, 80];
+                        const cHigh = biome.colorHigh || [60, 180, 40];
+                        const br = cLow[0] + (cHigh[0] - cLow[0]) * fRatio;
+                        const bg = cLow[1] + (cHigh[1] - cLow[1]) * fRatio;
+                        const bb = cLow[2] + (cHigh[2] - cLow[2]) * fRatio;
+                        r = Math.floor(r * 0.2 + br * 0.8);
+                        g = Math.floor(g * 0.2 + bg * 0.8);
+                        bVal = Math.floor(bVal * 0.2 + bb * 0.8);
                     }
-                    if (t === 4 || t === 5) {
-                        if (biome) {
-                            const fRatio = fertility / 100;
-                            const cLow = biome.colorLow || [120, 100, 80];
-                            const cHigh = biome.colorHigh || [60, 180, 40];
-                            const br = cLow[0] + (cHigh[0] - cLow[0]) * fRatio;
-                            const bg = cLow[1] + (cHigh[1] - cLow[1]) * fRatio;
-                            const bb = cLow[2] + (cHigh[2] - cLow[2]) * fRatio;
-                            r = Math.floor(r * 0.2 + br * 0.8);
-                            g = Math.floor(g * 0.2 + bg * 0.8);
-                            bl = Math.floor(bl * 0.2 + bb * 0.8);
-                        }
-                    }
-                    this.colorLUT[(t << 8) | (b << 4) | f] = (255 << 24) | (bl << 16) | (g << 8) | r;
+                    
+                    // ABGR format for Canvas ImageData
+                    this.colorLUT[(t << 8) | (b << 4) | fIdx] = (255 << 24) | (bVal << 16) | (g << 8) | r;
                 }
             }
         }
     }
 
-    async generateProgressive(mapWidth, mapHeight, engine, onProgress, outStats, waterPixels) {
+    createBuffers(mapWidth, mapHeight) {
         this.mapWidth = mapWidth;
         this.mapHeight = mapHeight;
         
-        // 1. 버퍼 초기화 (SharedArrayBuffer 사용)
         this.terrain = new TerrainLayer(mapWidth, mapHeight);
         this.biomes = new BiomeLayer(mapWidth, mapHeight);
         
@@ -246,6 +289,49 @@ export default class TerrainGen {
         this.territoryBuffer = new Uint16Array(new SharedArrayBuffer(mapWidth * mapHeight * 2));
         this.altitudeBuffer = new Uint8Array(new SharedArrayBuffer(mapWidth * mapHeight));
         this.packedBuffer = new Uint32Array(new SharedArrayBuffer(mapWidth * mapHeight * 4));
+
+        this._initColorLUT();
+    }
+
+    async generateProgressive(mapWidth, mapHeight, engine, onProgress, outStats, waterPixels) {
+        this.mapWidth = mapWidth;
+        this.mapHeight = mapHeight;
+        
+        // 1. 버퍼 초기화 (이미 생성되지 않았다면 수행)
+        if (!this.terrain) {
+            this.createBuffers(mapWidth, mapHeight);
+        }
+
+        // 🚀 [Expert Optimization] 워커가 가용하다면 워커로 위임
+        if (engine.worker) {
+            console.log("⚙️ [TerrainGen] Offloading generation to Worker...");
+            return new Promise((resolve) => {
+                const handleMessage = (e) => {
+                    const { type, payload } = e.data;
+                    if (type === 'TERRAIN_GEN_PROGRESS') {
+                        if (onProgress) onProgress(payload.progress);
+                    } else if (type === 'TERRAIN_GEN_COMPLETE') {
+                        engine.worker.removeEventListener('message', handleMessage);
+                        // 통계 계산 (워커 완료 후 한 번에 수행)
+                        this.collectFinalStats(outStats, waterPixels, engine);
+                        resolve();
+                    }
+                };
+                engine.worker.addEventListener('message', handleMessage);
+                
+                engine.worker.postMessage({
+                    type: 'GENERATE_TERRAIN',
+                    payload: {
+                        width: mapWidth,
+                        height: mapHeight,
+                        seedAlt: Math.random() * 100,
+                        seedHum: Math.random() * 100,
+                        seedTemp: Math.random() * 100,
+                        landmassScale: (engine.options && engine.options.landmassScale) || 100
+                    }
+                });
+            });
+        }
 
         const seedAlt = Math.random() * 100;
         const seedHum = Math.random() * 100;
@@ -352,24 +438,34 @@ export default class TerrainGen {
                     // Fill ChunkManager buffer directly
                     if (step === 1) {
                         cmBuffer[idx] = color;
+                        terrainBuf[idx] = terrainId;
+                        biomeBuf[idx] = biomeId;
+                        fertBuf[idx] = fert;
+                        wqBuf[idx] = wq;
+                        mdBuf[idx] = md;
+                        this.packedBuffer[idx] = terrainId | (biomeId << 8) | (fert << 16) | (envValue << 24);
+                        this.altitudeBuffer[idx] = Math.floor(altitude * 255);
                     } else {
+                        const altInt = Math.floor(altitude * 255);
+                        const packedVal = terrainId | (biomeId << 8) | (fert << 16) | (envValue << 24);
+
                         for (let dy = 0; dy < step && y + dy < mapHeight; dy++) {
-                            const rOff = (y + dy) * mapWidth;
-                            for (let dx = 0; dx < step && x + dx < mapWidth; dx++) {
-                                const nIdx = rOff + (x + dx);
-                                cmBuffer[nIdx] = color;
-                                if (dx === 0 && dy === 0) continue;
-                                
-                                terrainBuf[nIdx] = terrainId;
-                                biomeBuf[nIdx] = biomeId;
-                                fertBuf[nIdx] = fert;
-                                wqBuf[nIdx] = wq;
-                                mdBuf[nIdx] = md;
-                                this.packedBuffer[nIdx] = terrainId | (biomeId << 8) | (fert << 16) | (envValue << 24);
-                            }
+                            const rOff = (y + dy) * mapWidth + x;
+                            const len = Math.min(step, mapWidth - x);
+                            
+                            // 🏎️ [Expert Fill] Row-based bulk assignment
+                            cmBuffer.subarray(rOff, rOff + len).fill(color);
+                            terrainBuf.subarray(rOff, rOff + len).fill(terrainId);
+                            biomeBuf.subarray(rOff, rOff + len).fill(biomeId);
+                            fertBuf.subarray(rOff, rOff + len).fill(fert);
+                            wqBuf.subarray(rOff, rOff + len).fill(wq);
+                            mdBuf.subarray(rOff, rOff + len).fill(md);
+                            this.packedBuffer.subarray(rOff, rOff + len).fill(packedVal);
+                            this.altitudeBuffer.subarray(rOff, rOff + len).fill(altInt);
                         }
                     }
                 }
+
 
                 if (y % batchSize === 0) {
                     if (onProgress) onProgress();
@@ -570,5 +666,32 @@ export default class TerrainGen {
         }
 
         return (r << 16) | (g << 8) | b;
+    }
+
+    /** 📊 [Expert Logic] 워커 완료 후 최종 통계 및 수역 데이터 수집 */
+    collectFinalStats(outStats, waterPixels, engine) {
+        if (!outStats && !waterPixels) return;
+        
+        const mapSize = this.mapWidth * this.mapHeight;
+        const biomeBuf = this.biomes.buffer;
+        const fertBuf = this.fertilityBuffer;
+        
+        const maxFertilityTable = new Uint8Array(256);
+        BIOMES.forEach(b => {
+            maxFertilityTable[b.id] = b.maxFertility || 0;
+        });
+
+        for (let i = 0; i < mapSize; i++) {
+            const bId = this.safeAtomicsLoad(biomeBuf, i);
+            const fert = this.safeAtomicsLoad(fertBuf, i);
+            
+            if (outStats) {
+                outStats.totalFertility += fert;
+                outStats.potentialFertility += maxFertilityTable[bId];
+            }
+            if (waterPixels && bId <= 3) {
+                waterPixels[engine.waterCount++] = i;
+            }
+        }
     }
 }

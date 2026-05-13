@@ -35,15 +35,17 @@ export default class CarnivoreBrain {
         }
 
         // 2. 사냥 및 섭취 본능 (허기 기반)
-        // 💡 [Stability] 배회 중에는 허기가 절반 이하(40)로 떨어졌을 때만 사냥을 시작하도록 문턱 상향
-        const huntThreshold = (state.mode === AnimalStates.WANDER) ? 40 : 60;
+        // 💡 [Stability] 번식 유도를 위해 사냥 임계치 상향 (40/60 -> 75)
+        const huntThreshold = 75;
         
         if (stats.hunger < huntThreshold) { 
             // 🥩 [Scavenging] 
             const isEatingMeat = (state.mode === AnimalStates.EAT || state.mode === AnimalStates.FORAGE) && state.targetId;
             
             if (!isEatingMeat) {
-                const meatId = this.findMeat(id, state, transform, 400);
+                const searchRadius = 200; // 🥩 [Reduced] 400 -> 200
+                state.searchRange = searchRadius;
+                const meatId = this.findMeat(id, state, transform, searchRadius);
                 if (meatId) {
                     return { mode: AnimalStates.FORAGE, targetId: meatId };
                 }
@@ -53,7 +55,9 @@ export default class CarnivoreBrain {
 
             // ⚔️ [Hunting] 떨어진 고기가 없으면 사냥 시도
             if (state.mode !== AnimalStates.HUNT) {
-                const preyId = this.findPrey(id, state, transform, 600);
+                const searchRadius = 300; // ⚔️ [Reduced] 600 -> 300
+                state.searchRange = searchRadius;
+                const preyId = this.findPrey(id, state, transform, searchRadius);
                 if (preyId) {
                     return { mode: AnimalStates.HUNT, targetId: preyId };
                 }

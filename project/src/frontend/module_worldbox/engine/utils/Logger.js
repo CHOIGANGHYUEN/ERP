@@ -37,6 +37,7 @@ class Logger {
     warn(msg) { this.log(msg, 'warn'); }
     error(msg) { this.log(msg, 'error'); }
     success(msg) { this.log(msg, 'success'); }
+    debug(msg) { this.log(msg, 'info'); } // 🐛 [Bug Fix] debug 메서드 누락으로 인한 런타임 에러 방지
 
     clear() {
         this.logs = [];

@@ -87,6 +87,9 @@ export default class ChiefRole extends BaseRole {
             }
         }
 
+        // 🏗️ [Architect Priority] 촌장은 계획만 세우고, 실제 배치는 VillageSystem이 수행합니다.
+        // (중복 생성을 방지하기 위해 여기서 직접 배치하던 로직을 제거함)
+
         // 📊 3. 현재 마을 필요(Needs) 분석
         const needs = this._analyzeVillageNeeds(village, vs, cachedContext);
 
@@ -101,9 +104,14 @@ export default class ChiefRole extends BaseRole {
             if (memberId === entity.id) continue;
 
             const member = this.em.entities.get(memberId);
-            if (!member) continue;
-            const mCiv = member.components.get('Civilization');
-            if (!mCiv) continue;
+            const mCiv = member?.components.get('Civilization');
+            
+            // 🛡️ [Lazy Cleanup] 더 이상 존재하지 않거나, 이 마을 소속이 아닌 주민은 목록에서 즉시 제거
+            // 이를 통해 '직업 전쟁(Job War)' 및 기하급수적 부하 증가를 원천 차단합니다.
+            if (!member || !mCiv || mCiv.villageId !== village.id) {
+                village.members.delete(memberId);
+                continue;
+            }
 
             const shouldReassign = this._checkReassignmentNeeded(mCiv, needs, distribution, quotas, village, member, cachedContext);
 
@@ -117,7 +125,38 @@ export default class ChiefRole extends BaseRole {
             }
         }
 
+        // 👑 [Solo Founder & Help Mode] 
+        // 촌장이 혼자거나 인구가 적을 때, 혹은 너무 할 일이 없을 때 직접 현장 업무를 수행합니다.
+        if (village.members.size <= 2 || Math.random() < 0.1) {
+            const state = entity.components.get('AIState');
+            if (state) {
+                // 1순위: 건설 (마을의 기반 마련)
+                const buildTask = this.claimTask(entity, village, 'build');
+                if (buildTask) {
+                    state.targetId = buildTask.targetId;
+                    return 'build';
+                }
+
+                // 2순위: 식량 수급 (아주 긴급할 때)
+                if (needs.urgency.food > 70) {
+                    const gatherTask = this.claimTask(entity, village, 'gather_food') || this.claimTask(entity, village, 'hunt');
+                    if (gatherTask) {
+                        state.targetId = gatherTask.targetId || null;
+                        return gatherTask.type === 'hunt' ? 'hunt' : 'gather_plant';
+                    }
+                }
+
+                // 3순위: 목재 수급 (건설 자재)
+                if (needs.urgency.wood > 50) {
+                    const woodTask = this.claimTask(entity, village, 'gather_wood');
+                    if (woodTask) return 'gather_wood';
+                }
+            }
+        }
+
+
         return null;
+
     }
 
     /** 📋 마을 할일 목록(TaskBoard)을 현재 상황에 맞춰 갱신합니다. */
@@ -526,6 +565,7 @@ export default class ChiefRole extends BaseRole {
         }
         return Array.from(adjacent.values());
     }
+
 
     _evaluateTile(tx, ty, tileSize) {
         let score = 10;

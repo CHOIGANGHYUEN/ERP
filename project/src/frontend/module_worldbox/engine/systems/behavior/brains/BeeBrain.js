@@ -101,7 +101,9 @@ export default class BeeBrain {
             // 근처의 꿀(꽃) 찾기
             if (animal.nectar < 10) {
                 let targetFlower = null;
-                this.spatialHash.eachInSpiral(transform.x, transform.y, 200, (fid) => {
+                const searchRadius = 80; // 🍯 [Reduced] 200 -> 80
+                state.searchRange = searchRadius;
+                this.spatialHash.eachInSpiral(transform.x, transform.y, searchRadius, (fid) => {
                     const fEnt = em.entities.get(fid);
                     if (!fEnt) return false;
                     const r = fEnt.components.get('Resource');

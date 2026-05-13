@@ -19,6 +19,14 @@ export const ItemRenderer = {
         ctx.rotate(rotate);
         ctx.scale(pulse, pulse);
 
+        // 📦 [Expert AI] 번들 시각화 (Bundle Scatter)
+        const drop = entity?.components?.get('DroppedItem');
+        const amount = drop ? drop.amount : 1;
+        
+        if (amount > 1) {
+            this.drawScatter(ctx, itemType, s, amount, time);
+        }
+
         // ✨ [Glow Effect] 아이템 하단 은은한 오라
         ctx.save();
         const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 1.5);
@@ -58,31 +66,72 @@ export const ItemRenderer = {
         ctx.restore();
         
         // 🏷️ [Connection Fix] resource_balance.json 데이터와 직접 연결
-        this.renderInfoLabel(ctx, itemType, v, entity, engine);
+        this.renderInfoLabel(ctx, itemType, v, entity, engine, amount);
     },
 
-    renderInfoLabel(ctx, itemType, v, entity, engine) {
+    /** 📦 [Expert AI] 번들 아이템 분산 렌더링 (O(1) Entity, O(N) Visual) */
+    drawScatter(ctx, itemType, s, amount, time) {
+        const scatterCount = Math.min(Math.floor(amount / 3) + 1, 6);
+        const radius = s * 0.8;
+        
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        for (let i = 0; i < scatterCount; i++) {
+            const angle = (i / scatterCount) * Math.PI * 2 + (time * 0.001);
+            const ox = Math.cos(angle) * radius;
+            const oy = Math.sin(angle) * radius * 0.6;
+            
+            ctx.save();
+            ctx.translate(ox, oy);
+            ctx.scale(0.6, 0.6);
+            ctx.rotate(Math.sin(time * 0.002 + i) * 0.5);
+            
+            // 타입별 간소화된 그리기 호출 (또는 공통 박스)
+            this._drawSimplifiedItem(ctx, itemType, s);
+            ctx.restore();
+        }
+        ctx.restore();
+    },
+
+    _drawSimplifiedItem(ctx, itemType, s) {
+        const lower = itemType.toLowerCase();
+        if (lower.includes('wood')) {
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(-s*0.5, -s*0.2, s, s*0.4);
+        } else if (lower.includes('food') || lower.includes('meat')) {
+            ctx.fillStyle = '#ff5252';
+            this.fillCircle(ctx, 0, 0, s*0.4);
+        } else if (lower.includes('stone') || lower.includes('mineral')) {
+            ctx.fillStyle = '#9e9e9e';
+            ctx.fillRect(-s*0.3, -s*0.3, s*0.6, s*0.6);
+        } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.fillRect(-s*0.3, -s*0.3, s*0.6, s*0.6);
+        }
+    },
+
+    renderInfoLabel(ctx, itemType, v, entity, engine, amount) {
         const drop = entity?.components?.get('DroppedItem');
         if (!drop) return;
 
         ctx.save();
-        const amount = drop.amount || 1;
         
         // 🏷️ [High Cohesion] 아이템 컴포넌트가 이미 알고 있는 이름을 즉시 사용
         const realName = drop.displayName || itemType;
         
-        // 아주 작게 표시하여 아기자기함 유지
-        ctx.translate(0, -v.size * 1.5 - 2);
-        ctx.font = 'bold 6px Inter, Arial';
+        // 가독성 확보를 위해 폰트 크기 상향 (6px -> 9px)
+        ctx.translate(0, -v.size * 1.8 - 6);
+        ctx.font = 'bold 9px Inter, Arial, sans-serif';
         ctx.textAlign = 'center';
         
-        // 배경 박스 (은은하게)
+        // 배경 박스 (가독성 강화)
         const text = `${realName} x${amount}`;
         const textWidth = ctx.measureText(text).width;
-        ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.roundRect(-textWidth/2 - 2, -6, textWidth + 4, 8, 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.roundRect(-textWidth/2 - 4, -9, textWidth + 8, 12, 3);
         ctx.fill();
 
+        // 텍스트 출력
         ctx.fillStyle = '#ffffff';
         ctx.fillText(text, 0, 0);
         ctx.restore();

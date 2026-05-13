@@ -1,4 +1,5 @@
 import { HPACluster } from '../world/zones/ZoneData.js';
+import ObjectPool from './ObjectPool.js';
 
 /**
  * 🚀 MinHeap for A* Open List
@@ -49,7 +50,7 @@ class MinHeap {
 export default class Pathfinder {
     static pathCountThisFrame = 0;
     static lastFrameTime = 0;
-    static MAX_PATHS_PER_FRAME = 10;
+    static MAX_PATHS_PER_FRAME = 15; // 🚀 10 -> 15로 약간 상향
 
     // 🗺️ [HPA*] 계층적 그래프 데이터
     static clusters = new Map(); // key: "cx,cy"
@@ -58,11 +59,25 @@ export default class Pathfinder {
     static dirtyClusters = new Set(); // 🚀 [Step 23] 재계산이 필요한 구역들
     static pathRequestQueue = [];     // 🚀 [Step 27] 길찾기 요청 대기열
     static pathCache = new Map();     // 🚀 [Step 28] 경로 캐시 (Memoization)
+    static _isRebuildPending = false; // 🚀 지연된 그래프 재계산 플래그
+    static _isWorkerRebuilding = false; // 🚀 워커 재계산 중 플래그
+
+    // 🚀 [Expert Optimization] Object Pools for Pathfinding
+    static pathPointPool = new ObjectPool(
+        () => ({ x: 0, y: 0 }),
+        (p) => { p.x = 0; p.y = 0; },
+        1000
+    );
+    static pathArrayPool = new ObjectPool(
+        () => [],
+        (a) => { a.length = 0; },
+        100
+    );
 
     /**
      * 🧠 A* 기반 그리드 경로 탐색
      */
-    static findPath(sx, sy, ex, ey, engine, gridSize = 10) {
+    static findPath(sx, sy, ex, ey, engine, gridSize = 10, bypassThrottle = false) {
         if (!engine) return [];
         
         // 🚀 [Optimization] 프레임당 연산 횟수 제어
@@ -72,7 +87,7 @@ export default class Pathfinder {
             this.lastFrameTime = now;
         }
         
-        if (this.pathCountThisFrame >= this.MAX_PATHS_PER_FRAME) {
+        if (!bypassThrottle && this.pathCountThisFrame >= this.MAX_PATHS_PER_FRAME) {
             return null; // 이번 프레임은 건너뛰고 다음 프레임에 재시도 유도
         }
         this.pathCountThisFrame++;
@@ -97,7 +112,9 @@ export default class Pathfinder {
         const endKey = getKey(endX, endY);
 
         const obstacles = new Set();
-        const nearbyIds = spatialHash ? spatialHash.queryRect(Math.min(sx, ex) - 50, Math.min(sy, ey) - 50, Math.abs(ex - sx) + 100, Math.abs(ey - sy) + 100) : em.buildingIds;
+        // 🚀 [Expert Optimization] queryObstaclesRect를 사용하여 건물(장애물) 레이어만 조회.
+        // 수만 개의 나무/풀떼기가 있어도 장애물 레이어는 분리되어 있으므로 병목이 발생하지 않음.
+        const nearbyIds = spatialHash ? spatialHash.queryObstaclesRect(Math.min(sx, ex) - 50, Math.min(sy, ey) - 50, Math.abs(ex - sx) + 100, Math.abs(ey - sy) + 100) : em.buildingIds;
 
         for (const bId of nearbyIds) {
             const b = em.entities.get(bId);
@@ -147,7 +164,7 @@ export default class Pathfinder {
         const cameFrom = new Map();
 
         let attempts = 0;
-        const MAX_ATTEMPTS = 10000; // 🚀 [Stability] 멈춤 방지를 위해 탐색 한도 제한
+        const MAX_ATTEMPTS = 2000; // 🚀 [Expert Fix] 메인 스레드 프리징 방지를 위해 10,000 -> 2,000으로 대폭 축소
         const terrainGen = engine.terrainGen;
         
         let closestKey = startKey;
@@ -160,7 +177,7 @@ export default class Pathfinder {
             const currentY = currentKey & 0xFFFF;
 
             if (currentX === endX && currentY === endY) {
-                return this._reconstructPath(cameFrom, currentKey, gridSize, ex, ey);
+                return this._reconstructPath(cameFrom, currentKey, gridSize, ex, ey, sx, sy);
             }
 
             const currentH = h(currentX, currentY, endX, endY);
@@ -210,7 +227,7 @@ export default class Pathfinder {
 
         if (attempts >= MAX_ATTEMPTS) {
             console.warn(`[Pathfinder] Limit reached (${MAX_ATTEMPTS}) for (${ex.toFixed(0)}, ${ey.toFixed(0)}). Moving to closest node.`);
-            return this._reconstructPath(cameFrom, closestKey, gridSize, ex, ey);
+            return this._reconstructPath(cameFrom, closestKey, gridSize, ex, ey, sx, sy);
         }
         return [];
     }
@@ -262,7 +279,7 @@ export default class Pathfinder {
             if (realX >= zoneBounds.minX && realX <= zoneBounds.maxX && realY >= zoneBounds.minY && realY <= zoneBounds.maxY) {
                 const offsetX = (Math.random() - 0.5) * gridSize;
                 const offsetY = (Math.random() - 0.5) * gridSize;
-                return this._reconstructPath(cameFrom, currentKey, gridSize, realX + offsetX, realY + offsetY);
+                return this._reconstructPath(cameFrom, currentKey, gridSize, realX + offsetX, realY + offsetY, sx, sy);
             }
 
             openSetTracker.delete(currentKey);
@@ -305,17 +322,48 @@ export default class Pathfinder {
         return [];
     }
 
-    static _reconstructPath(cameFrom, currentKey, gridSize, ex, ey) {
-        const path = [];
+    static _reconstructPath(cameFrom, currentKey, gridSize, ex, ey, sx, sy) {
+        const path = this.pathArrayPool.get();
         let curr = currentKey;
         while (cameFrom.has(curr)) {
             const cx = (curr >> 16) & 0xFFFF;
             const cy = curr & 0xFFFF;
-            path.unshift({ x: cx * gridSize + gridSize / 2, y: cy * gridSize + gridSize / 2 });
+            
+            const pt = this.pathPointPool.get();
+            pt.x = cx * gridSize + gridSize / 2;
+            pt.y = cy * gridSize + gridSize / 2;
+            path.unshift(pt);
+            
             curr = cameFrom.get(curr);
         }
-        path.push({ x: ex, y: ey });
+        
+        // 🚀 [Expert Fix] 시작 위치를 경로의 첫 번째 포인트로 추가하여 "순간이동(Snapping)" 방지
+        const startPt = this.pathPointPool.get();
+        startPt.x = sx;
+        startPt.y = sy;
+        path.unshift(startPt);
+
+        const endPt = this.pathPointPool.get();
+        endPt.x = ex;
+        endPt.y = ey;
+        path.push(endPt);
+        
         return path;
+    }
+
+    /**
+     * 🧹 [Expert Optimization] 사용이 끝난 경로를 풀에 반환
+     */
+    static releasePath(path) {
+        if (!path || !Array.isArray(path)) return;
+        
+        for (let i = 0; i < path.length; i++) {
+            const pt = path[i];
+            if (pt && typeof pt === 'object') {
+                this.pathPointPool.release(pt);
+            }
+        }
+        this.pathArrayPool.release(path);
     }
 
     /**
@@ -437,7 +485,7 @@ export default class Pathfinder {
             if (nx >= cluster.x && nx < cluster.x + cluster.width && 
                 ny >= cluster.y && ny < cluster.y + cluster.height) {
                 // 구역 내에서 A*로 도달 가능한지 확인
-                const path = this.findPath(x, y, nx, ny, engine, 10);
+                const path = this.findPath(x, y, nx, ny, engine, 10, true);
                 if (path && path.length > 0) nodes.push(key);
             }
         }
@@ -484,7 +532,9 @@ export default class Pathfinder {
             // 거리가 멀면 계층적 길찾기 시도 (예: 300px 이상)
             if (distSq > 90000) {
                 const hPath = this.findHierarchicalPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
-                if (hPath && hPath.fullAbstractPath) {
+                if (hPath === null) return false; // 🚀 [Expert Fix] Throttled인 경우 기존 경로 유지하며 대기
+
+                if (hPath.fullAbstractPath) {
                     state.abstractPath = hPath.fullAbstractPath;
                     state.abstractIndex = 0;
                     state.path = hPath.localPath;
@@ -493,7 +543,10 @@ export default class Pathfinder {
                     state.abstractPath = null;
                 }
             } else {
-                state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                const path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                if (path === null) return false; // 🚀 [Expert Fix] Throttled인 경우 기존 경로 유지하며 대기
+                
+                state.path = path;
                 state.abstractPath = null;
             }
             
@@ -508,7 +561,10 @@ export default class Pathfinder {
                 if (state.abstractPath && state.abstractIndex < state.abstractPath.length - 1) {
                     state.abstractIndex++;
                     const [nextX, nextY] = state.abstractPath[state.abstractIndex].split(',').map(Number);
-                    state.path = this.findPath(transform.x, transform.y, nextX, nextY, engine);
+                    const nextPath = this.findPath(transform.x, transform.y, nextX, nextY, engine);
+                    if (nextPath === null) return false; // Throttled
+
+                    state.path = nextPath;
                     state.pathIndex = 0;
                     if (!state.path || state.path.length === 0) {
                         console.warn(`[Pathfinder] No path found for entity to target. Returning -1.`);
@@ -544,11 +600,17 @@ export default class Pathfinder {
                         if (state.abstractIndex < state.abstractPath.length - 1) {
                             state.abstractIndex++;
                             const [nextX, nextY] = state.abstractPath[state.abstractIndex].split(',').map(Number);
-                            state.path = this.findPath(transform.x, transform.y, nextX, nextY, engine);
+                            const nextPath = this.findPath(transform.x, transform.y, nextX, nextY, engine);
+                            if (nextPath === null) return false; // Throttled
+
+                            state.path = nextPath;
                             state.pathIndex = 0;
                         } else {
                             // 마지막 게이트 도달 시 실제 목적지로의 최종 로컬 경로
-                            state.path = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                            const finalPath = this.findPath(transform.x, transform.y, targetPos.x, targetPos.y, engine);
+                            if (finalPath === null) return false; // Throttled
+
+                            state.path = finalPath;
                             state.pathIndex = 0;
                             state.abstractPath = null;
                         }
@@ -669,6 +731,16 @@ export default class Pathfinder {
         const size = this.clusterSize;
         const cols = Math.ceil(w / size);
         const rows = Math.ceil(h / size);
+        
+        // 🚀 [Expert Optimization] 워커가 활성화되어 있다면 워커에게 위임
+        if (engine.worker) {
+            this._isWorkerRebuilding = true;
+            engine.worker.postMessage({
+                type: 'REBUILD_HPA_GRAPH',
+                payload: { clusterSize: this.clusterSize, mapWidth: w, mapHeight: h }
+            });
+            return;
+        }
 
         for (let cy = 0; cy < rows; cy++) {
             for (let cx = 0; cx < cols; cx++) {
@@ -753,47 +825,58 @@ export default class Pathfinder {
         }
     }
 
-    static _computeIntraEdges(cluster, engine) {
-        const nodes = [];
-        for (const key of this.abstractNodes.keys()) {
-            const [x, y] = key.split(',').map(Number);
-            if (x >= cluster.x && x < cluster.x + cluster.width && y >= cluster.y && y < cluster.y + cluster.height) {
-                nodes.push(key);
-            }
-        }
-        for (let i = 0; i < nodes.length; i++) {
-            for (let j = i + 1; j < nodes.length; j++) {
-                const k1 = nodes[i], k2 = nodes[j];
-                const [x1, y1] = k1.split(',').map(Number), [x2, y2] = k2.split(',').map(Number);
-                const path = this.findPath(x1, y1, x2, y2, engine, 10);
-                if (path && path.length > 0) this._addAbstractEdge(k1, k2, path.length, cluster, cluster);
-            }
-        }
-    }
-
     /**
-     * 🔄 [HPA* Step 23] 지형 변화 시 해당 구역을 더티 마킹
+     * 🚩 [Expert Optimization] 특정 좌표의 지형 변경 시 해당 클러스터를 재계산 대상으로 표시
      */
     static markClusterDirty(x, y) {
         const cx = Math.floor(x / this.clusterSize);
         const cy = Math.floor(y / this.clusterSize);
         const id = `${cx},${cy}`;
         this.dirtyClusters.add(id);
+        this._isRebuildPending = true;
         
         // 🚀 [Step 28] 지형 변경 시 경로 캐시 전체 무효화 (안전성 우선)
         this.invalidateCache();
     }
 
     /**
-     * ⚙️ [HPA* Step 23] 더티 마킹된 구역들의 이동망 재계산
+     * ⚙️ [Expert Optimization] 프레임당 소수의 더러운 클러스터만 점진적으로 재계산 (프리징 방지)
      */
     static updateHierarchy(engine) {
-        if (this.dirtyClusters.size === 0) return;
+        if (!this._isRebuildPending || this.dirtyClusters.size === 0) return;
 
-        // 프레임당 최대 1개의 구역만 재계산 (성능 저하 방지)
-        const iterator = this.dirtyClusters.values();
-        const clusterId = iterator.next().value;
+        // 실제 그래프 재계산 (워커가 있으면 워커에게 위임)
+        if (engine.worker) {
+            if (this._isWorkerRebuilding) return; // 이전 재계산이 끝날 때까지 대기
+            
+            // 🚀 [Expert] 쿨다운 적용: 브러시 툴 연속 드래그 시 증분 업데이트 폭주(프리징) 방지
+            const now = performance.now();
+            if (now - (this._lastRebuildTime || 0) < 500) return; // 500ms 쿨다운
+            this._lastRebuildTime = now;
+
+            this._isWorkerRebuilding = true;
+            const dirtyIds = Array.from(this.dirtyClusters); // 🚀 [Expert] 변경된 구역만 추출
+            this.dirtyClusters.clear(); 
+            this._isRebuildPending = false;
+
+            engine.worker.postMessage({
+                type: 'REBUILD_HPA_GRAPH',
+                payload: { 
+                    clusterSize: this.clusterSize, 
+                    mapWidth: engine.mapWidth, 
+                    mapHeight: engine.mapHeight,
+                    dirtyClusterIds: dirtyIds 
+                }
+            });
+            return;
+        }
+
+        // 워커가 없을 때: 프레임당 최대 1개의 클러스터만 갱신 (매우 보수적인 스로틀링)
+        const it = this.dirtyClusters.values();
+        const clusterId = it.next().value;
         this.dirtyClusters.delete(clusterId);
+
+        if (this.dirtyClusters.size === 0) this._isRebuildPending = false;
 
         const cluster = this.clusters.get(clusterId);
         if (!cluster) return;
@@ -814,5 +897,71 @@ export default class Pathfinder {
 
         // 2. 구역 내 가중치 재계산
         this._computeIntraEdges(cluster, engine);
+        
+        // 경로 캐시 무효화
+        this.invalidateCache();
+    }
+
+    static _computeIntraEdges(cluster, engine) {
+        const nodes = [];
+        for (const key of this.abstractNodes.keys()) {
+            const [x, y] = key.split(',').map(Number);
+            if (x >= cluster.x && x < cluster.x + cluster.width && y >= cluster.y && y < cluster.y + cluster.height) {
+                nodes.push(key);
+            }
+        }
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const k1 = nodes[i], k2 = nodes[j];
+                const [x1, y1] = k1.split(',').map(Number), [x2, y2] = k2.split(',').map(Number);
+                const path = this.findPath(x1, y1, x2, y2, engine, 10, true);
+                if (path && path.length > 0) this._addAbstractEdge(k1, k2, path.length, cluster, cluster);
+            }
+        }
+    }
+
+    /** ⚙️ [Expert AI] 워커에서 재계산된 그래프 데이터를 메인 스레드에 반영 */
+    static applyRebuiltGraph(payload) {
+        const { nodes, clusters, isIncremental } = payload;
+        
+        // 1. 추상 노드 복원/병합
+        if (isIncremental) {
+            // 🚀 [Expert] 증분 업데이트 시, 영향받는 구역 내의 기존 노드들만 선별적으로 제거
+            for (const cId in clusters) {
+                const cluster = this.clusters.get(cId);
+                if (!cluster) continue;
+                
+                for (const nodeKey of this.abstractNodes.keys()) {
+                    const [nx, ny] = nodeKey.split(',').map(Number);
+                    if (nx >= cluster.x && nx < cluster.x + cluster.width && 
+                        ny >= cluster.y && ny < cluster.y + cluster.height) {
+                        this.abstractNodes.delete(nodeKey);
+                    }
+                }
+            }
+        } else {
+            this.abstractNodes.clear();
+        }
+
+        for (const [k, v] of Object.entries(nodes)) {
+            this.abstractNodes.set(k, { neighbors: new Map(v.neighbors) });
+        }
+
+        // 2. 구역 통로 정보 복원/병합
+        for (const [cId, data] of Object.entries(clusters)) {
+            const cluster = this.clusters.get(cId);
+            if (!cluster) continue;
+            
+            cluster.transitions.clear();
+            for (const [nId, trans] of Object.entries(data.transitions)) {
+                cluster.transitions.set(nId, trans);
+            }
+            cluster.isDirty = false;
+        }
+
+        this.invalidateCache();
+        this._isWorkerRebuilding = false;
+        console.log(`🗺️ [Pathfinder] HPA* Graph ${isIncremental ? 'incrementally ' : ''}updated from Worker.`);
     }
 }
+

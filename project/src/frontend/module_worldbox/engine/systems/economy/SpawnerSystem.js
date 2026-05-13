@@ -26,6 +26,11 @@ export default class SpawnerSystem extends System {
 
         this._initListeners();
 
+        // 🚀 [Expert Optimization] 초기화 시점에는 크기를 0으로 설정 (WORLD_READY 시점에 동적 할당)
+        this.treeOccupancyBuffer = new Uint8Array(0);
+        this.treeOccupancyGridW = 0;
+        this.treeOccupancyGridH = 0;
+
         // 🚀 지형 생성이 완전히 완료된 후 초기 세계 생성 실행
         this.eventBus.on('WORLD_READY', () => {
             this.initializeWorld();
@@ -38,15 +43,22 @@ export default class SpawnerSystem extends System {
      */
     initializeWorld() {
         const options = this.engine.options || {};
-        const natureMult = (options.natureDensity || 100) / 100;
-        const mineralMult = (options.mineralDensity || 100) / 100;
-        const animalMult = (options.animalDensity || 100) / 100;
-        const humanCount = options.humanCount !== undefined ? options.humanCount : 10;
+        const natureMult = (options.natureDensity ?? 0) / 100;
+        const mineralMult = (options.mineralDensity ?? 0) / 100;
+        const animalMult = (options.animalDensity ?? 0) / 100;
+        const humanCount = options.humanCount ?? 0;
 
         console.log(`🌌 INITIALIZING WORLD WITH: Nature ${natureMult}x, Mineral ${mineralMult}x, Animal ${animalMult}x, Humans ${humanCount}`);
 
-        const w = this.engine.mapWidth;
-        const h = this.engine.mapHeight;
+        const w = this.terrainGen.mapWidth;
+        const h = this.terrainGen.mapHeight;
+
+        // 🚀 [Expert Optimization] 나무 점유 맵 (Occupancy Map) 동적 초기화 (맵 크기 확정 시점)
+        const gridW = Math.ceil(w / 16);
+        const gridH = Math.ceil(h / 16);
+        this.treeOccupancyBuffer = new Uint8Array(gridW * gridH);
+        this.treeOccupancyGridW = gridW;
+        this.treeOccupancyGridH = gridH;
 
         // 1. 🌿 식물 및 나무 스폰 (비옥도 기반)
         const natureTarget = Math.floor((w * h / 500) * natureMult);
@@ -54,13 +66,15 @@ export default class SpawnerSystem extends System {
             const x = Math.random() * w;
             const y = Math.random() * h;
             const idx = this.terrainGen.getIndex(x, y);
+            if (idx === -1) continue;
+
             const fertility = this.terrainGen.fertilityBuffer[idx] / 100;
-            
+
             if (fertility > 0.3 && !this.terrainGen.isWater(idx)) {
                 const biomeId = this.terrainGen.biomeBuffer[idx];
                 const pool = this.biomeSpawnTable.get(biomeId) || ['grass'];
                 const resId = pool[Math.floor(Math.random() * pool.length)];
-                this.spawnGenericResource(x, y, resId, false);
+                this.spawnGenericResource(x, y, resId, false, true); // 🚀 5번째 인자 true: 초기화 중
             }
         }
 
@@ -100,6 +114,11 @@ export default class SpawnerSystem extends System {
             }
         }
 
+        // 🚀 [Expert Optimization] 모든 스폰이 끝난 후 한 번에 청크 갱신 트리거
+        if (this.engine.chunkManager) {
+            this.engine.chunkManager.markAllDirty();
+        }
+
         GlobalLogger.success(`World generation complete: ${natureTarget} nature nodes, ${humanCount} humans initialized.`);
     }
 
@@ -128,12 +147,12 @@ export default class SpawnerSystem extends System {
     _applyBiomeChange(payload) {
         const idx = this.terrainGen.getIndex(payload.x, payload.y);
         if (this.terrainGen.isValidIndex(idx)) {
-            Atomics.store(this.terrainGen.biomeBuffer, idx, payload.biome);
+            this.terrainGen.safeAtomicsStore(this.terrainGen.biomeBuffer, idx, payload.biome);
             this.terrainGen.syncPackedPixel(idx);
-            this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', { 
-                x: Math.floor(payload.x), 
-                y: Math.floor(payload.y), 
-                reason: 'biome_change' 
+            this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', {
+                x: Math.floor(payload.x),
+                y: Math.floor(payload.y),
+                reason: 'biome_change'
             });
         }
     }
@@ -147,12 +166,15 @@ export default class SpawnerSystem extends System {
      * 🌿 자연적인 자원 증식 로직
      */
     autoSpawnResources() {
+        // 🚀 [Stability Fix] 배치 사이즈를 15로 고정하여 급격한 부하 방지
         const BATCH_SIZE = 15;
+
         for (let i = 0; i < BATCH_SIZE; i++) {
             const x = Math.floor(Math.random() * this.terrainGen.mapWidth);
             const y = Math.floor(Math.random() * this.terrainGen.mapHeight);
             const idx = this.terrainGen.getIndex(x, y);
-            
+            if (idx === -1) continue;
+
             const biomeId = this.terrainGen.biomeBuffer[idx];
             const fertility = this.terrainGen.fertilityBuffer[idx] / 100;
 
@@ -173,7 +195,7 @@ export default class SpawnerSystem extends System {
     /**
      * 📦 범용 자원 생성 (식물, 나무, 광물 등)
      */
-    spawnGenericResource(x, y, resourceId, forceSpawn = false) {
+    spawnGenericResource(x, y, resourceId, forceSpawn = false, isInitializing = false) {
         if (resourceId === 'plant') resourceId = 'grass';
         const config = resourceConfig[resourceId];
         if (!config) return null;
@@ -186,29 +208,76 @@ export default class SpawnerSystem extends System {
         if (!forceSpawn) {
             const isAquatic = ['deep_sea_kelp', 'seaweed', 'lotus', 'waterweed', 'reed'].includes(resourceId);
             const isWater = this.terrainGen.isWater(idx);
-            
+
             // 육상 생물은 물에서, 수상 생물은 육지에서 자라지 못함
             if (isWater !== isAquatic) return null;
             if (envValue < 0.1) return null; // 너무 척박하면 생성 불가
         }
 
         const category = isMineral ? 'resource' : 'nature';
-        const entityId = this.engine.factoryProvider.spawn(category, resourceId, x, y, { 
-            quality: forceSpawn ? 0.8 : envValue 
+
+        // 🚀 [Expert Optimization] 나무 점유 맵을 활용한 O(1) 밀도 체크 (프리징 근본 해결)
+        const gx = Math.floor(x / 16);
+        const gy = Math.floor(y / 16);
+
+        if (config.type === 'tree') {
+            if (!forceSpawn && !isInitializing) {
+                // 🚀 [Expert Optimization] 버퍼가 유효할 때만 밀도 체크 수행
+                if (this.treeOccupancyBuffer.length > 0) {
+                    for (let oy = -1; oy <= 1; oy++) {
+                    const cy = gy + oy;
+                    if (cy < 0 || cy >= this.treeOccupancyGridH) continue;
+
+                    const rowOffset = cy * this.treeOccupancyGridW;
+                    for (let ox = -1; ox <= 1; ox++) {
+                        const cx = gx + ox;
+                        if (cx < 0 || cx >= this.treeOccupancyGridW) continue;
+
+                        if (this.treeOccupancyBuffer[rowOffset + cx] === 1) return null;
+                    }
+                }
+            }
+        }
+    }
+
+        // 🛡️ [Stability] 좌표 유효성 검사 (도구 사용 시 NaN 방지)
+        if (isNaN(x) || isNaN(y)) return null;
+
+        const entityId = this.engine.factoryProvider.spawn(category, resourceId, x, y, {
+            quality: forceSpawn ? 0.8 : envValue,
+            skipDirty: isInitializing // 🚀 초기화 중에는 청크 갱신 생략
         });
 
         if (entityId) {
+            if (config.type === 'tree' && this.treeOccupancyBuffer.length > 0 && 
+                gx >= 0 && gx < this.treeOccupancyGridW && gy >= 0 && gy < this.treeOccupancyGridH) {
+                this.treeOccupancyBuffer[gy * this.treeOccupancyGridW + gx] = 1;
+            }
             this._handleSpecialResourceSpawn(resourceId, x, y, entityId);
         }
 
         return entityId;
     }
 
+    /** 🚀 [Expert Interface] 나무 제거 시 점유 맵 동기화 */
+    clearTreeOccupancy(x, y) {
+        const gx = Math.floor(x / 16);
+        const gy = Math.floor(y / 16);
+        
+        // 🚀 [Expert Fix] 인덱스 경계 이탈 방지
+        if (gx >= 0 && gx < this.treeOccupancyGridW && gy >= 0 && gy < this.treeOccupancyGridH) {
+            const gIdx = gy * this.treeOccupancyGridW + gx;
+            if (gIdx >= 0 && gIdx < this.treeOccupancyBuffer.length) {
+                this.treeOccupancyBuffer[gIdx] = 0;
+            }
+        }
+    }
+
     /** 특수 자원 생성 시 부가 로직 (벌집 등) */
     _handleSpecialResourceSpawn(resourceId, x, y, entityId) {
         if (resourceId.includes('beehive')) {
             this.spawnBee(x, y, 'queen', entityId);
-            for(let i=0; i<3; i++) this.spawnBee(x, y, 'worker', entityId);
+            for (let i = 0; i < 3; i++) this.spawnBee(x, y, 'worker', entityId);
         }
     }
 
@@ -221,7 +290,7 @@ export default class SpawnerSystem extends System {
         if (animal) {
             animal.role = role;
             animal.hiveId = hiveId;
-            
+
             if (hiveId) {
                 const hive = this.entityManager.entities.get(hiveId);
                 const hiveComp = hive?.components.get('Hive');
@@ -244,10 +313,10 @@ export default class SpawnerSystem extends System {
 
         // 카테고리 결정 로직 고도화
         const category = this._determineCategory(type);
-        
-        const newId = this.engine.factoryProvider.spawn(category, type, payload.x, payload.y, { 
+
+        const newId = this.engine.factoryProvider.spawn(category, type, payload.x, payload.y, {
             isBaby: payload.isBaby || false,
-            quality: payload.quality || 1.0 
+            quality: payload.quality || 1.0
         });
 
         // 🍖 [Predation Link] 사냥 직후 보상 생성 시 타겟 자동 지정
@@ -258,6 +327,10 @@ export default class SpawnerSystem extends System {
                 state.targetId = newId;
                 state.failedPathCount = 0;
             }
+        }
+
+        if (newId) {
+            this.eventBus.emit('ENTITY_SPAWNED', { id: newId, type, category, x: payload.x, y: payload.y });
         }
 
         return newId;

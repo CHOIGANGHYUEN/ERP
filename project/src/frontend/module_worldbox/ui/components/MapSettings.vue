@@ -62,7 +62,7 @@
               <label>🌿 NATURE DENSITY</label>
               <span class="value">{{ settings.natureDensity }}%</span>
             </div>
-            <input type="range" min="10" max="200" v-model="settings.natureDensity" />
+            <input type="range" min="0" max="200" v-model="settings.natureDensity" />
             <div class="item-desc">Trees, Grass, and Vegetation</div>
           </div>
 
@@ -71,7 +71,7 @@
               <label>💎 MINERAL RICHNESS</label>
               <span class="value">{{ settings.mineralDensity }}%</span>
             </div>
-            <input type="range" min="10" max="200" v-model="settings.mineralDensity" />
+            <input type="range" min="0" max="200" v-model="settings.mineralDensity" />
             <div class="item-desc">Ores, Stones, and Treasures</div>
           </div>
 
@@ -123,10 +123,10 @@ const settings = reactive({
   customWidth: 2400,
   customHeight: 2400,
   landmassScale: 100,
-  natureDensity: 100,
-  mineralDensity: 100,
-  animalDensity: 100,
-  humanCount: 10
+  natureDensity: 0,
+  mineralDensity: 0,
+  animalDensity: 0,
+  humanCount: 0
 });
 
 const confirmSettings = () => {

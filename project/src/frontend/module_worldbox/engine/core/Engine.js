@@ -58,8 +58,8 @@ export default class Engine {
         this.camera.zoom = Math.max(1.0, fitZoom);
         this.camera.clamp();
 
-        this.terrainGen = new TerrainGen();
-        this.entityManager = new EntityManager(); // EntityManager는 TerrainGen 생성 후 초기화
+        this.entityManager = new EntityManager();
+        this.terrainGen = new TerrainGen(this);
         this.eventBus = new EventBus(); // 📡 Global Event Network 생성
         this.renderer = new EntityRenderer(this);
 
@@ -82,7 +82,8 @@ export default class Engine {
 
         this.isPainting = false;
         this.brushSize = 50; // 🚀 High-res optimized brush size
-        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: false, showNames: false, village: false, nation: false, influence: false, zone: false };
+        this.viewFlags = { wind: false, fertility: false, fertilityValue: false, xray: false, water: false, mineral: false, debugAI: false, debugSelectedAI: false, showNames: false, village: false, nation: false, influence: false, zone: false };
+
         this.gameSpeed = 1.0; // 🚀 시뮬레이션 배속 초기화
 
         this.saveLoadSystem = new SaveLoadSystem(this); // 💾 Save/Load Logic Init
@@ -126,8 +127,8 @@ export default class Engine {
             const buffer = this.terrainGen.biomeBuffer;
 
             for (let i = 0; i < buffer.length; i++) {
-                if (this.terrainGen.isLand(buffer[i])) {
-                    Atomics.store(buffer, i, biomeId);
+                if (this.terrainGen.isLand(i)) {
+                    this.terrainGen.safeAtomicsStore(buffer, i, biomeId);
                     this.terrainGen.syncPackedPixel(i);
                 }
             }
@@ -206,9 +207,17 @@ export default class Engine {
         if (!this.waterPixels) this.waterPixels = new Uint32Array(this.mapWidth * this.mapHeight);
         this.waterCount = 0;
 
+        // 🏗️ [Structural Fix] 워커 초기화 전에 버퍼를 먼저 생성해야 합니다.
+        this.terrainGen.createBuffers(this.mapWidth, this.mapHeight);
+
+        // ⚙️ [Simulation Worker] 백그라운드 워커 사전 초기화
+        this.initSimulationWorker();
+
         // 🚀 [Expert Design] 점진적 지형 생성 시작 (통계 및 수역 데이터 수집 병행)
-        await this.terrainGen.generateProgressive(this.mapWidth, this.mapHeight, this, () => {
+        // 워커가 있으면 워커로 오프로드됩니다.
+        await this.terrainGen.generateProgressive(this.mapWidth, this.mapHeight, this, (progress) => {
             this.preRenderTerrain(false); // 색상 재계산 생략
+            if (this.onGenerationProgress) this.onGenerationProgress(progress);
         }, stats, this.waterPixels);
 
         // 결과 적용
@@ -218,7 +227,9 @@ export default class Engine {
         this.preRenderTerrain();
 
         this.isGenerating = false;
+        if (this.chunkManager) this.chunkManager.initialLoadComplete = true; // 🚀 초기 렌더링 가속 종료
         console.log("🌍 World Initialization Complete. Ready for life.");
+
 
         // 📡 시뮬레이션 준비 완료 알림
         this.eventBus.emit('WORLD_READY');
@@ -229,9 +240,6 @@ export default class Engine {
             Pathfinder.initHierarchy(this);
             this.eventBus.emit('HPA_GRAPH_READY');
         });
-
-        // ⚙️ [Simulation Worker] 백그라운드 워커 초기화
-        this.initSimulationWorker();
 
         // 🏗️ PoC: 테스트용 글로벌 구역 생성
         setTimeout(() => {
@@ -269,6 +277,11 @@ export default class Engine {
                     for (let i = 0; i < payload.length; i++) {
                         this.eventBus.emitDeferred('CACHE_PIXEL_UPDATE', payload[i]);
                     }
+                } else if (type === 'HPA_GRAPH_REBUILT') {
+                    // 🗺️ [Expert AI] 워커에서 재계산된 HPA* 그래프 반영
+                    import('../utils/Pathfinder.js').then(module => {
+                        module.default.applyRebuiltGraph(payload);
+                    });
                 }
             };
 
@@ -330,11 +343,40 @@ export default class Engine {
     }
 
 
+    /** 🧹 [Expert UI] 모든 뷰 필터 플래그 초기화 */
+    clearAllViewFlags() {
+        const flags = this.viewFlags;
+        flags.wind = false;
+        flags.fertility = false;
+        flags.fertilityValue = false;
+        flags.xray = false;
+        flags.water = false;
+        flags.mineral = false;
+        flags.debugAI = false;
+        flags.debugSelectedAI = false;
+        flags.showNames = false;
+        flags.village = false;
+        flags.nation = false;
+        flags.zone = false;
+        flags.VILLAGETILE = false;
+        flags.NATIONTILE = false;
+        flags.influence = false;
+        this.preRenderTerrain();
+    }
+
     setActiveTool(tool) {
+        // [Expert Fix] 새로운 도구가 선택되면 기존 도구의 후처리 수행
         if (this.activeTool && this.activeTool.onMouseUp) {
             const command = this.activeTool.onMouseUp();
-            this.dispatchCommand(command);
+            if (command) this.dispatchCommand(command);
         }
+
+        // [Expert Choice] 상호작용 도구(브러시, 스폰 등)가 선택되면 모든 뷰 필터 초기화
+        // 단, '손(Move)' 도구이거나 뷰 도구 자체일 때는 초기화하지 않음 (개별 toggleView에서 처리)
+        if (tool && tool.id !== 'move_hand' && !tool.id.startsWith('view_')) {
+            this.clearAllViewFlags();
+        }
+
         this.activeTool = tool;
         if (this.toolManager && tool) {
             this.toolManager.setTool(tool.id);
@@ -345,47 +387,50 @@ export default class Engine {
     }
 
     toggleView(id) {
-        if (id === 'view_wind') this.viewFlags.wind = !this.viewFlags.wind;
-        if (id === 'view_fertility') {
-            this.viewFlags.fertility = !this.viewFlags.fertility;
-            this.viewFlags.water = false;
-            this.viewFlags.mineral = false;
-            this.preRenderTerrain();
-        }
-        if (id === 'view_fertility_value') {
-            this.viewFlags.fertilityValue = !this.viewFlags.fertilityValue;
-        }
-        if (id === 'view_water') {
+        // 🚀 [Expert Design] 뷰 필터 키 매핑 (ID -> viewFlags Key)
+        const flagMap = {
+            'view_wind': 'wind',
+            'view_fertility': 'fertility',
+            'view_fertility_value': 'fertilityValue',
+            'view_water': 'water',
+            'view_mineral': 'mineral',
+            'view_xray': 'xray',
+            'view_debug_ai': 'debugAI',
+            'view_debugAI': 'debugAI',
+            'view_debug_selected_ai': 'debugSelectedAI',
+            'view_showNames': 'showNames',
+            'view_village': 'village',
+            'view_nation': 'nation',
+            'view_zone': 'zone'
+        };
 
-            this.viewFlags.water = !this.viewFlags.water;
-            this.viewFlags.fertility = false;
-            this.viewFlags.mineral = false;
-            this.preRenderTerrain();
+        const targetKey = flagMap[id];
+        if (!targetKey) return;
+
+        const currentState = this.viewFlags[targetKey];
+
+        // 🚀 [Expert Design] 모든 뷰 필터 상호 배제 (Mutual Exclusivity)
+        this.clearAllViewFlags();
+
+        // 선택한 필터가 꺼져있었다면 켭니다 (Toggle 동작)
+        if (!currentState) {
+            this.viewFlags[targetKey] = true;
+
+            // 특수 처리 레이어 (영토, 영향력 등)
+            if (targetKey === 'village') this.viewFlags.VILLAGETILE = true;
+            if (targetKey === 'nation') {
+                this.viewFlags.NATIONTILE = true;
+                this.viewFlags.influence = true;
+            }
+
+            // 🎯 뷰 필터가 켜지면 기본 도구를 'Move'로 변경하여 충돌 방지
+            this.setActiveTool(this.toolManager.getTool('move_hand'));
+            GlobalLogger.info(`👁️ View Filter Active: ${targetKey}`);
+        } else {
+            GlobalLogger.info(`👁️ View Filter Disabled: ${targetKey}`);
         }
-        if (id === 'view_mineral') {
-            this.viewFlags.mineral = !this.viewFlags.mineral;
-            this.viewFlags.fertility = false;
-            this.viewFlags.water = false;
-            this.preRenderTerrain();
-        }
-        if (id === 'view_xray') this.viewFlags.xray = !this.viewFlags.xray;
-        if (id === 'view_debug_ai' || id === 'view_debugAI') this.viewFlags.debugAI = !this.viewFlags.debugAI;
-        if (id === 'view_showNames') this.viewFlags.showNames = !this.viewFlags.showNames;
-        if (id === 'view_village') {
-            this.viewFlags.village = !this.viewFlags.village;
-            this.viewFlags.VILLAGETILE = this.viewFlags.village;
-            this.viewFlags.NATIONTILE = false;
-            this.viewFlags.influence = false;
-            this.preRenderTerrain();
-        }
-        if (id === 'view_nation') {
-            this.viewFlags.nation = !this.viewFlags.nation;
-            this.viewFlags.NATIONTILE = this.viewFlags.nation;
-            this.viewFlags.VILLAGETILE = false;
-            this.viewFlags.influence = this.viewFlags.nation;
-            this.preRenderTerrain();
-        }
-        if (id === 'view_zone') this.viewFlags.zone = !this.viewFlags.zone;
+        
+        this.preRenderTerrain();
     }
 
 
@@ -393,6 +438,11 @@ export default class Engine {
     dispatchCommand(command) {
         if (!command) return;
         switch (command.type) {
+            case 'BATCH_COMMANDS':
+                if (command.payload?.actions) {
+                    command.payload.actions.forEach(cmd => this.dispatchCommand(cmd));
+                }
+                break;
             case 'CAMERA_DOWN':
                 this.camera.handleMouseDown(command.event);
                 break;
@@ -407,25 +457,23 @@ export default class Engine {
                 break;
             case 'SPAWN_ENTITY':
                 const methodToType = {
-                    spawnSheep: 'sheep',
-                    spawnHuman: 'human',
-                    spawnCow: 'cow',
-                    spawnWolf: 'wolf',
-                    spawnHyena: 'hyena',
-                    spawnWildDog: 'wild_dog',
-                    spawnTiger: 'tiger',
-                    spawnLion: 'lion',
-                    spawnBear: 'bear',
-                    spawnFox: 'fox',
-                    spawnCrocodile: 'crocodile',
-                    spawnDeer: 'deer',
-                    spawnRabbit: 'rabbit',
-                    spawnHorse: 'horse',
-                    spawnElephant: 'elephant',
-                    spawnGoat: 'goat'
+                    spawnSheep: 'sheep', spawnHuman: 'human', spawnCow: 'cow', spawnWolf: 'wolf',
+                    spawnHyena: 'hyena', spawnWildDog: 'wild_dog', spawnTiger: 'tiger',
+                    spawnLion: 'lion', spawnBear: 'bear', spawnFox: 'fox',
+                    spawnCrocodile: 'crocodile', spawnDeer: 'deer', spawnRabbit: 'rabbit',
+                    spawnHorse: 'horse', spawnElephant: 'elephant', spawnGoat: 'goat'
                 };
-                const type = methodToType[command.payload.method];
-                if (type) this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
+                const type = methodToType[command.payload.method] || command.payload.type;
+                const category = command.payload.category;
+                
+                if (category && type) {
+                    const id = this.factoryProvider.spawn(category, type, command.payload.x, command.payload.y, command.payload.options || {});
+                    if (id) {
+                        this.eventBus.emit('ENTITY_SPAWNED', { id, type, category, x: command.payload.x, y: command.payload.y });
+                    }
+                } else if (type) {
+                    this.eventBus.emit('SPAWN_ENTITY', { type, x: command.payload.x, y: command.payload.y, isBaby: false });
+                }
                 break;
             case 'CHANGE_BIOME':
                 if (this.worker) {

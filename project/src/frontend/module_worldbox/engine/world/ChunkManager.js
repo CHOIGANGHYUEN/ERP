@@ -1,5 +1,6 @@
 import Chunk from './Chunk.js';
 import { WaterRenderer } from '../objects/renders/nature/WaterRenderer.js';
+import Pathfinder from '../utils/Pathfinder.js';
 
 /**
  * 🗺️ ChunkManager (청크 관리자)
@@ -21,10 +22,14 @@ export default class ChunkManager {
         this._initChunks();
 
         // LRU 캐시 관리 (최대 활성 캔버스 수 제한)
-        this.maxActiveCanvases = 128; 
+        this.maxActiveCanvases = 1024; 
         this.canvasLRU = []; // [Chunk, Chunk, ...] - 마지막에 추가된 것이 가장 최신
         this.activeCanvasCount = 0;
         this.dirtyChunks = new Set();
+        
+        // 🚀 [Expert AI] 초기 로딩 중에는 모든 청크를 한꺼번에 업데이트하기 위한 플래그
+        this.initialLoadComplete = false;
+
         
         // 마스터 버퍼 (SharedArrayBuffer 사용)
         this.buffer = new Uint32Array(new SharedArrayBuffer(this.mapWidth * this.mapHeight * 4));
@@ -55,12 +60,16 @@ export default class ChunkManager {
     /** 👁️ 뷰포트 영역 내의 가시 청크 선별 (Culling + Padding) */
     getVisibleChunks(viewport, padding = 1) {
         const visible = [];
+        const zoom = this.engine.camera?.zoom || 1.0;
+        
+        // 🚀 [Expert Fix] 축소 시 외곽 잘림 방지를 위해 패딩 동적 조절
+        const finalPadding = zoom < 0.3 ? padding + 1 : padding;
         
         // 뷰포트 인덱스 범위 계산 (Padding 추가로 스크롤 시 빈 공간 노출 방지)
-        const startCol = Math.max(0, Math.floor(viewport.x / this.chunkSize) - padding);
-        const endCol = Math.min(this.cols - 1, Math.floor((viewport.x + viewport.width) / this.chunkSize) + padding);
-        const startRow = Math.max(0, Math.floor(viewport.y / this.chunkSize) - padding);
-        const endRow = Math.min(this.rows - 1, Math.floor((viewport.y + viewport.height) / this.chunkSize) + padding);
+        const startCol = Math.max(0, Math.floor(viewport.x / this.chunkSize) - finalPadding);
+        const endCol = Math.min(this.cols - 1, Math.floor((viewport.x + viewport.width) / this.chunkSize) + finalPadding);
+        const startRow = Math.max(0, Math.floor(viewport.y / this.chunkSize) - finalPadding);
+        const endRow = Math.min(this.rows - 1, Math.floor((viewport.y + viewport.height) / this.chunkSize) + finalPadding);
 
         for (let r = startRow; r <= endRow; r++) {
             for (let c = startCol; c <= endCol; c++) {
@@ -123,13 +132,10 @@ export default class ChunkManager {
             chunk.markDirty();
             this.dirtyChunks.add(chunk);
             
-            // 🗺️ [HPA* Step 23] 지형 변경 시 해당 구역의 경로망 재계산 트리거
-            import('../utils/Pathfinder.js').then(module => {
-                const Pathfinder = module.default;
-                if (typeof Pathfinder.markClusterDirty === 'function') {
-                    Pathfinder.markClusterDirty(x, y);
-                }
-            });
+            // 🗺️ [Expert Optimization] 동적 임포트 제거 및 즉시 갱신
+            if (Pathfinder && typeof Pathfinder.markClusterDirty === 'function') {
+                Pathfinder.markClusterDirty(x, y);
+            }
         }
     }
 
@@ -150,10 +156,10 @@ export default class ChunkManager {
         const visibleChunks = this.getVisibleChunks(viewport);
         
         // 🚀 [Incremental Update Optimization]
-        // 한 프레임에 너무 많은 청크를 업데이트하면 프레임 드랍이 발생하므로,
-        // 가시 영역 내의 더러운 청크를 프레임당 최대 4개까지만 업데이트합니다.
+        // 초기 로딩 중에는 전체를 한꺼번에 업데이트하고, 이후엔 프레임 드랍 방지를 위해 제한함
         let updatesThisFrame = 0;
-        const MAX_UPDATES_PER_FRAME = 4;
+        const MAX_UPDATES_PER_FRAME = this.initialLoadComplete ? 8 : 512; 
+
 
         for (const chunk of visibleChunks) {
             if (chunk.isDirty && updatesThisFrame < MAX_UPDATES_PER_FRAME) {

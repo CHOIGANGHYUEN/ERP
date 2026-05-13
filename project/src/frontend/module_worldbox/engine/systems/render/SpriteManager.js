@@ -17,15 +17,17 @@ export default class SpriteManager extends System {
         const em = this.entityManager;
         const rBuffer = em.renderBuffer;
         const sBuffer = em.stateBuffer;
+        const vBuffer = em.velocityBuffer;
         const tBuffer = em.transformBuffer;
-        const animalIds = em.animalIds.items; // 🚀 [Expert Optimization] Raw Array 참조
+        const animalIds = em.animalIds.items;
         
         const camera = this.engine.camera;
-        const margin = 100;
-        const viewX = camera.x - margin;
-        const viewY = camera.y - margin;
-        const viewW = (camera.width / camera.zoom) + (margin * 2);
-        const viewH = (camera.height / camera.zoom) + (margin * 2);
+        const margin = 200;
+        const viewX = camera.renderX - margin;
+        const viewY = camera.renderY - margin;
+        const zoom = camera.zoom;
+        const viewW = (camera.width / zoom) + (margin * 2);
+        const viewH = (camera.height / zoom) + (margin * 2);
         const frameCount = this.engine.frameCount || 0;
 
         for (let i = 0; i < animalIds.length; i++) {
@@ -34,32 +36,24 @@ export default class SpriteManager extends System {
             const x = tBuffer[tIdx];
             const y = tBuffer[tIdx + 1];
 
-            // 1. [Sprite LOD] 화면 밖 개체는 애니메이션 업데이트 빈도 차등 적용
+            // 1. [Culling] 화면 흔들림 대응
             const isVisible = (x > viewX && x < viewX + viewW && y > viewY && y < viewY + viewH);
-            let effectiveDt = dt;
-
-            if (!isVisible) {
-                const centerX = viewX + viewW / 2;
-                const centerY = viewY + viewH / 2;
-                const dist = Math.abs(x - centerX) + Math.abs(y - centerY);
-                const isFar = dist > (viewW + viewH) * 1.5;
-
-                // 원거리는 애니메이션 업데이트 생략 (정지 프레임 유지)
-                if (isFar) continue;
-                
-                // 근거리 화면 밖은 5프레임당 1번 업데이트
-                if ((id + frameCount) % 5 !== 0) continue;
-                effectiveDt = dt * 5;
-            }
+            if (!isVisible && (id + frameCount) % 10 !== 0) continue;
 
             const rIdx = id * 8;
             const sIdx = id * 2;
+            const vIdx = id * 4;
 
-            // 2. 현재 상태 인덱스 가져오기
+            // 2. [Expert Fix] 좌우 반전(flipX) 및 방향 업데이트
+            const vx = vBuffer[vIdx];
+            if (Math.abs(vx) > 0.1) {
+                rBuffer[rIdx + 3] = vx < 0 ? 1 : 0; // flipX (1: true, 0: false)
+            }
+
+            // 3. 애니메이션 상태 업데이트
             const modeIdx = sBuffer[sIdx];
             const mode = StateNames[modeIdx] || 'idle';
 
-            // 3. Visual 컴포넌트에서 애니메이션 메타데이터 참조
             const entity = em.entities.get(id);
             const visual = entity?.components.get('Visual');
             if (!visual) continue;
@@ -67,8 +61,8 @@ export default class SpriteManager extends System {
             const anim = visual.animations[mode];
             if (!anim || !anim.frames) continue;
 
-            // 4. 프레임 타이머 업데이트 및 버퍼 쓰기
-            visual.frameTimer += effectiveDt * 1000;
+            // 프레임 타이머 업데이트
+            visual.frameTimer += dt * 1000;
             if (visual.frameTimer >= anim.speed) {
                 visual.frameTimer = 0;
                 

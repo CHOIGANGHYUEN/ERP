@@ -15,6 +15,8 @@ import ItemFactory from '../entities/ItemFactory.js';
 import NatureFactory from '../entities/NatureFactory.js';
 import ResourceFactory from '../entities/ResourceFactory.js';
 import BuildingFactory from '../entities/BuildingFactory.js';
+import FenceFactory from '../entities/FenceFactory.js';
+import Fence from '../../components/civilization/Fence.js';
 
 /**
  * 🏭 FactoryProvider
@@ -41,18 +43,20 @@ class FactoryProvider {
         this.factories.set('item', new ItemFactory(engine));         // 📦 바닥에 떨어진 수집용 아이템
         this.factories.set('nature', new NatureFactory(engine));
         this.factories.set('building', new BuildingFactory(engine));
+        this.factories.set('fence', new FenceFactory(engine));
         this.factories.set('material', new ResourceFactory(engine)); // Alias
     }
 
     _initPools() {
-        this.pools.set('Transform', new ObjectPool(() => new Transform(), (c) => c.reset(), 100));
-        this.pools.set('Velocity', new ObjectPool(() => new Velocity(), (c) => c.reset(), 100));
-        this.pools.set('BaseStats', new ObjectPool(() => new BaseStats(), (c) => c.reset(), 100));
-        this.pools.set('Health', new ObjectPool(() => new Health(), (c) => {}, 100));
-        this.pools.set('Visual', new ObjectPool(() => new Visual(), (c) => {}, 100));
-        this.pools.set('AIState', new ObjectPool(() => new State(), (c) => c.reset(), 100));
-        this.pools.set('Age', new ObjectPool(() => new Age(), (c) => {}, 100));
-        this.pools.set('JobController', new ObjectPool(() => new JobController(), (c) => c.clearJob(), 100));
+        this.pools.set('Transform', new ObjectPool(() => new Transform(), (c) => c.reset?.(), 100));
+        this.pools.set('Velocity', new ObjectPool(() => new Velocity(), (c) => c.reset?.(), 100));
+        this.pools.set('BaseStats', new ObjectPool(() => new BaseStats(), (c) => c.reset?.(), 100));
+        this.pools.set('Health', new ObjectPool(() => new Health(), (c) => c.reset?.(), 100));
+        this.pools.set('Visual', new ObjectPool(() => new Visual(), (c) => c.reset?.(), 100));
+        this.pools.set('AIState', new ObjectPool(() => new State(), (c) => c.reset?.(), 100));
+        this.pools.set('Age', new ObjectPool(() => new Age(), (c) => c.reset?.(), 100));
+        this.pools.set('JobController', new ObjectPool(() => new JobController(), (c) => c.clearJob?.(), 100));
+        this.pools.set('Fence', new ObjectPool(() => new Fence(), (c) => c.reset?.(), 500)); // 울타리는 개수가 많으므로 풀 크기 상향
     }
 
     /** 🚀 [Expert Interface] 중앙 스폰 브릿지 */

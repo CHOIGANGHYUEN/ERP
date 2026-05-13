@@ -58,16 +58,17 @@ export default class HumanBrain {
             return AnimalStates.FLEE;
         }
 
-        // 2. 극한 생존 욕구 (허기, 피로)
-        const jobSuffix = civ?.jobType ? ` (${civ.jobType})` : '';
-        if (stats.hunger < 30) {
+        // 2. 생존 욕구 (허기, 피로)
+        // 🚀 [Expert AI] 번식 조건을 상시 충족하기 위해 허기 임계치 상향 (30 -> 75)
+        if (stats.hunger < 75) {
             const foodId = this._findFoodTarget(entity, state, stats);
             if (foodId) {
                 state.targetId = foodId;
-                GlobalLogger.info(`🍎 SURVIVAL: Citizen ${entity.id}${jobSuffix} is searching for food (Hunger: ${Math.floor(stats.hunger)}%).`);
                 return AnimalStates.FORAGE;
             }
         }
+
+
         if (stats.fatigue > 90) {
             GlobalLogger.info(`😴 FATIGUE: Citizen ${entity.id}${jobSuffix} is exhausted and seeking rest.`);
             return AnimalStates.SLEEP;
@@ -103,6 +104,7 @@ export default class HumanBrain {
             const pickupId = this._getBestPickupTarget(entity, state);
             if (pickupId) {
                 state.targetId = pickupId;
+                // state.searchRange는 _getBestPickupTarget 내부에서 갱신됨
                 return AnimalStates.PICKUP;
             }
         }
@@ -116,7 +118,8 @@ export default class HumanBrain {
         const animal = entity.components.get('Animal');
         if (!transform || !animal) return null;
 
-        const searchRadius = 500 + (100 - stats.hunger) * 3;
+        const searchRadius = 250 + (100 - stats.hunger) * 1.5; // 🍎 [Reduced] (500+3x -> 250+1.5x)
+        state.searchRange = searchRadius;
         return this.foodSensor.findFood(stats, transform.x, transform.y, searchRadius, state);
     }
 
@@ -126,7 +129,8 @@ export default class HumanBrain {
         const stats = entity.components.get('BaseStats');
         if (!transform) return null;
 
-        const searchRadius = 400; // 수집 범위 상향
+        const searchRadius = 200; // 📦 [Reduced] 400 -> 200
+        state.searchRange = searchRadius;
         let bestTargetId = null;
         let bestScore = -1;
 

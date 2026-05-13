@@ -34,6 +34,19 @@ export default class GridUtils {
         return points;
     }
 
+    /** 📦 [Expert Logic] 음수 좌표 대응이 가능한 안전한 키 팩킹 (1000 오프셋) */
+    static pack(x, y) {
+        return ((y + 1000) << 16) | (x + 1000);
+    }
+
+    /** 📦 [Expert Logic] 팩킹된 키에서 좌표 복원 */
+    static unpack(key) {
+        return {
+            x: (key & 0xFFFF) - 1000,
+            y: (key >> 16) - 1000
+        };
+    }
+
     /**
      * 🌊 Flood Fill (BFS) 알고리즘을 이용해 연결된 영역의 좌표들을 반환합니다.
      */
@@ -41,7 +54,7 @@ export default class GridUtils {
         const points = [];
         const visited = new Set();
         const queue = [{ x: startX, y: startY }];
-        const startKey = (startY << 16) | startX;
+        const startKey = this.pack(startX, startY);
         visited.add(startKey);
 
         const targetValue = checkFn(startX, startY);
@@ -59,7 +72,7 @@ export default class GridUtils {
             for (const n of neighbors) {
                 if (n.x < 0 || n.x >= mapWidth || n.y < 0 || n.y >= mapHeight) continue;
                 
-                const key = (n.y << 16) | n.x;
+                const key = this.pack(n.x, n.y);
                 if (!visited.has(key) && checkFn(n.x, n.y) === targetValue) {
                     visited.add(key);
                     queue.push(n);

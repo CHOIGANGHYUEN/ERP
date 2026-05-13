@@ -28,7 +28,12 @@ export default class FarmerState extends BaseJobState {
         // 2. 업무 FSM
         switch (jobCtrl.jobState) {
             case 'SEARCHING':
-                this.findFarmWork(entity, jobCtrl, transform);
+                // 🚀 [Optimization] 매 프레임 검색하는 대신 1초 간격으로 검색 수행
+                jobCtrl.setData('searchTimer', (jobCtrl.getData('searchTimer') || 0) + dt);
+                if (jobCtrl.getData('searchTimer') >= 1.0) {
+                    this.findFarmWork(entity, jobCtrl, transform);
+                    jobCtrl.setData('searchTimer', 0);
+                }
                 break;
             case 'MOVING':
                 this.moveToFarm(entity, jobCtrl, transform);
@@ -56,8 +61,13 @@ export default class FarmerState extends BaseJobState {
         let bestTarget = null;
         let priority = -1;
 
-        // 🚀 [Expert Optimization] buildingIds 인덱스 활용하여 농장 검색
-        for (const id of em.buildingIds) {
+        // 🚀 [Expert Optimization] 모든 건물을 순회하는 대신 'activeFarmIds' 고속 인덱스만 순회
+        const aiState = entity.components.get('AIState');
+
+        for (const id of em.activeFarmIds) {
+            // 🚫 블랙리스트 체크 (AIState 중앙 관리 시스템 활용)
+            if (aiState && aiState.isBlacklisted && aiState.isBlacklisted(id)) continue;
+
             const farmEnt = em.entities.get(id);
             if (!farmEnt) continue;
 
@@ -125,7 +135,16 @@ export default class FarmerState extends BaseJobState {
             }
             jobCtrl.setData('workTimer', 0);
         } else {
-            Pathfinder.followPath(transform, jobCtrl, tPos, 50, this.system.engine);
+            const moveStatus = Pathfinder.followPath(transform, jobCtrl, tPos, 50, this.system.engine);
+            if (moveStatus === -1) {
+                // 🚫 [Pathing Safety] 도달 불가능한 농장 블랙리스트 추가 (60초간)
+                const aiState = entity.components.get('AIState');
+                if (aiState) aiState.addToBlacklist(jobCtrl.targetId, 60);
+                
+                jobCtrl.targetId = null;
+                jobCtrl.jobState = 'SEARCHING';
+                if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '❓', duration: 1500 });
+            }
         }
     }
 

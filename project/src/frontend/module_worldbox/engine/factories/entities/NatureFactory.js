@@ -34,10 +34,6 @@ export default class NatureFactory extends IEntityFactory {
         const maxHp = config.maxHp || 50;
         builder.addComponent('Health', new Health(maxHp));
 
-        if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true); // Static
-        }
-
         return id;
     }
 

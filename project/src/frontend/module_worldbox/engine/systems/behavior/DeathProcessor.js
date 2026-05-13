@@ -14,15 +14,18 @@ export default class DeathProcessor extends System {
         
         // 🏥 [Expert Optimization] entities Map 대신 denseIds와 StatsBuffer(DOD) 직접 참조
         // 20만 마리 전수 검사 시 Map Iterator 및 Component Lookup 오버헤드를 원천 제거합니다.
-        for (let i = 0; i < em.denseIds.length; i++) {
+        // 🛡️ [Stability Fix] Reverse loop to prevent index issues when removing entities
+        for (let i = em.denseIds.length - 1; i >= 0; i--) {
             const id = em.denseIds[i];
             
-            // StatsBuffer에서 HP(0번 인덱스) 직접 확인
+            // Check HP in StatsBuffer
             if (statsBuffer[id * 8] <= 0) {
                 const entity = em.entities.get(id);
                 if (!entity) continue;
 
-                // 🛑 [Safety] 나무가 쓰러지는 중(isFalling)이면 DeathProcessor가 가로채서 삭제하지 않도록 보호
+                // 🛡️ [Bug Fix] Skip entities without Health/BaseStats (e.g. items)
+                if (!entity.components.has('Health') && !entity.components.has('BaseStats')) continue;
+                
                 const res = entity.components.get('Resource');
                 if (res && res.isFalling) continue;
 
@@ -30,8 +33,12 @@ export default class DeathProcessor extends System {
             }
         }
 
+
         // ⏳ [Item Decay] 드랍된 아이템의 소멸 처리
-        for (const id of em.resourceIds) {
+        // 🛡️ [Stability Fix] 역방향 루프로 삭제 시 인덱스 꼬임 방지
+        const resourceIds = em.resourceIds.items;
+        for (let i = resourceIds.length - 1; i >= 0; i--) {
+            const id = resourceIds[i];
             const entity = em.entities.get(id);
             const drop = entity?.components.get('DroppedItem');
             if (drop) {
@@ -49,6 +56,7 @@ export default class DeathProcessor extends System {
                 }
             }
         }
+
     }
 
     processDeath(entity, dt) {
@@ -88,8 +96,8 @@ export default class DeathProcessor extends System {
             if (this.engine.terrainGen.isValidIndex(idx)) {
                 const fertilityBuffer = this.engine.terrainGen.fertilityBuffer;
                 if (fertilityBuffer) {
-                    fertilityBuffer[idx] = Math.min(255, fertilityBuffer[idx] + 50);
-                    this.engine.terrainGen.syncPackedPixel(idx);
+                    const currentFert = this.engine.terrainGen.getFertilityAt(x, y);
+                    this.engine.terrainGen.setFertility(x, y, Math.min(255, currentFert + 50));
                     if (this.engine.chunkManager) this.engine.chunkManager.markDirty(x, y);
                 }
             }
@@ -261,12 +269,36 @@ export default class DeathProcessor extends System {
      * 🚀 [Expert Optimization] 소멸되는 개체를 공간 해시에서 즉시 제거
      */
     cleanupSpatialHash(entity, transform) {
-        if (!transform || !this.engine.systemManager) return;
+        if (!this.engine.systemManager) return;
         const behavior = this.engine.systemManager.behavior;
-        if (behavior && behavior.spatialHash) {
-            // Animal은 매 프레임 dynamic이 clear되므로 수동 제거는 주로 리소스용
+        const spatialHash = behavior?.spatialHash || this.engine.spatialHash;
+        
+        if (spatialHash) {
+            const id = entity.id;
+            const em = this.entityManager;
+            
+            // 🚀 [Expert Optimization] Incremental Hash를 위해 cellKeyBuffer 우선 사용
+            const key = em.cellKeyBuffer ? em.cellKeyBuffer[id] : -1;
             const isResource = entity.components.has('Resource');
-            behavior.spatialHash.remove(entity.id, transform.x, transform.y, isResource);
+
+            if (key !== -1) {
+                spatialHash.removeFromCell(id, key, isResource);
+                if (em.cellKeyBuffer) em.cellKeyBuffer[id] = -1;
+            } else if (transform) {
+                // 키를 모르는 경우 좌표 기반 제거
+                spatialHash.remove(id, transform.x, transform.y, isResource);
+            }
+
+            // 🚀 [Expert Optimization] 나무 점유 맵 동기화
+            if (isResource && transform) {
+                const res = entity.components.get('Resource');
+                if (res && res.type.includes('tree')) {
+                    const spawner = this.engine.systemManager?.spawner;
+                    if (spawner) {
+                        spawner.clearTreeOccupancy(transform.x, transform.y);
+                    }
+                }
+            }
         }
     }
 }

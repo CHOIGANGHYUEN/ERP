@@ -58,7 +58,7 @@ export default class LoggerRole extends BaseRole {
         };
 
         const nearestDroppedWoodId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, 400, droppedWoodCondition, this.engine.spatialHash
+            transform.x, transform.y, 400, droppedWoodCondition, this.engine.spatialHash, 1 // Layer 1: Static/Nature
         );
 
         if (nearestDroppedWoodId !== null) {
@@ -88,7 +88,7 @@ export default class LoggerRole extends BaseRole {
         };
 
         const nearestTreeId = this.em.findNearestEntityWithComponent(
-            transform.x, transform.y, 1000, treeCondition, this.engine.spatialHash
+            transform.x, transform.y, 1000, treeCondition, this.engine.spatialHash, 1 // Layer 1: Static/Nature
         );
 
         if (nearestTreeId !== null) {

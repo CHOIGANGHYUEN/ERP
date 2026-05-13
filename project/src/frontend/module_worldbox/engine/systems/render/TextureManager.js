@@ -81,6 +81,10 @@ export default class TextureManager {
                 const alpha = options.alpha !== undefined ? options.alpha : 1.0;
                 const flipX = options.flipX || false;
                 const rotation = options.rotation || 0;
+                
+                // 🎯 [Expert Design] Pivot 지원 (0.5가 중앙, 1.0이 끝)
+                const pivotX = options.pivotX !== undefined ? options.pivotX : 0.5;
+                const pivotY = options.pivotY !== undefined ? options.pivotY : 0.5;
 
                 const hasTransform = flipX || rotation !== 0;
 
@@ -91,11 +95,12 @@ export default class TextureManager {
                     ctx.translate(x, y);
                     if (flipX) ctx.scale(-1, 1);
                     if (rotation !== 0) ctx.rotate(rotation);
-                    ctx.drawImage(texture, -w / 2, -h / 2, w, h);
+                    // 피벗 적용하여 그리기
+                    ctx.drawImage(texture, -w * pivotX, -h * pivotY, w, h);
                     ctx.restore();
                 } else {
-                    // 단순 렌더링은 트랜스폼 없이 수행 (성능 이점)
-                    ctx.drawImage(texture, x - w / 2, y - h / 2, w, h);
+                    // 단순 렌더링도 피벗 적용
+                    ctx.drawImage(texture, x - (w * pivotX), y - (h * pivotY), w, h);
                 }
 
                 if (alpha < 1.0) ctx.globalAlpha = 1.0;

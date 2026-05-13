@@ -18,9 +18,8 @@ export default class KinematicSystem {
         const spatialHash = this.engine.spatialHash;
         const fc = frameCount || 0;
 
-        // 🚀 [Expert Optimization] 물리 연산 시작 직전에 동적 해시를 초기화합니다.
-        // 이를 통해 AI 시스템(이전 단계)들은 전 프레임의 위치 정보를 안전하게 참조할 수 있습니다.
-        if (spatialHash) spatialHash.clearDynamic();
+        // 🚀 [Expert Optimization] 더 이상 매 프레임 동적 해시를 지우지 않습니다. (Incremental Update)
+        // if (spatialHash) spatialHash.clearDynamic();
 
         // 🚀 [Optimization] 카메라 가시 영역 계산 (LOD 및 Spatial Hash 등록용)
         const margin = 300; // AI 탐색 범위를 고려하여 충분히 확보 (기존 100 -> 300)
@@ -79,7 +78,18 @@ export default class KinematicSystem {
                     if (isFinite(nextX) && isFinite(nextY)) {
                         tBuffer[tIdx] = nextX;
                         tBuffer[tIdx + 1] = nextY;
-                        if (spatialHash) spatialHash.insertDynamic(id, nextX, nextY);
+                        
+                        // 🧭 [Incremental Spatial Update]
+                        if (spatialHash) {
+                            const cellSize = spatialHash.cellSize;
+                            const newKey = ((Math.floor(nextY / cellSize) + 1000) << 16) | (Math.floor(nextX / cellSize) + 1000);
+                            const oldKey = em.cellKeyBuffer[id];
+                            if (newKey !== oldKey) {
+                                if (oldKey !== -1) spatialHash.removeFromCell(id, oldKey, 0); // 0: Dynamic Layer
+                                spatialHash.insertWithKey(id, newKey, 0);
+                                em.cellKeyBuffer[id] = newKey;
+                            }
+                        }
                     }
                     continue; 
                 }
@@ -148,18 +158,21 @@ export default class KinematicSystem {
             const finalX = Math.max(0, Math.min(limitX, nextX));
             const finalY = Math.max(0, Math.min(limitY, nextY));
 
+            // 🚀 [Expert AI] 마이크로 지터링 방지: 속도가 매우 낮으면 0으로 클램핑
+            if (vx * vx + vy * vy < 0.0025) { // speed < 0.05
+                vBuffer[vIdx] = 0;
+                vBuffer[vIdx + 1] = 0;
+            }
+
             // 6. 결과 버퍼에 쓰기
             tBuffer[tIdx] = finalX;
             tBuffer[tIdx + 1] = finalY;
 
-            if (finalX <= 0 || finalX >= mw - 1) vBuffer[vIdx] = 0;
-            if (finalY <= 0 || finalY >= mh - 1) vBuffer[vIdx + 1] = 0;
+            if (finalX <= 0 || finalX >= (mw - 1)) vBuffer[vIdx] = 0;
+            if (finalY <= 0 || finalY >= (mh - 1)) vBuffer[vIdx + 1] = 0;
 
             // 6. 🧭 방향 데이터 갱신 (DOD Render Buffer Write)
             if (isVisible) {
-                // 🚀 [Expert Optimization] 가시 영역 내 개체만 방향 갱신 및 해시 등록
-                if (spatialHash) spatialHash.insert(id, finalX, finalY);
-
                 const speedSq = vx * vx + vy * vy;
                 if (speedSq > 2.25) { // speed > 1.5
                     const rIdx = id * 8;
@@ -171,9 +184,16 @@ export default class KinematicSystem {
                 }
             }
 
-            // 7. 🚀 [Optimization] 공간 해시 갱신
+            // 7. 🚀 [Optimization] 공간 해시 증분 갱신 (Incremental Update)
             if (spatialHash) {
-                spatialHash.insertDynamic(id, finalX, finalY);
+                const cellSize = spatialHash.cellSize;
+                const newKey = ((Math.floor(finalY / cellSize) + 1000) << 16) | (Math.floor(finalX / cellSize) + 1000);
+                const oldKey = em.cellKeyBuffer[id];
+                if (newKey !== oldKey) {
+                    if (oldKey !== -1) spatialHash.removeFromCell(id, oldKey, 0); // 0: Dynamic Layer
+                    spatialHash.insertWithKey(id, newKey, 0);
+                    em.cellKeyBuffer[id] = newKey;
+                }
             }
         }
     }

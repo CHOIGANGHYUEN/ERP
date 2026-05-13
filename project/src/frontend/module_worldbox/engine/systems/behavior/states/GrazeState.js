@@ -63,10 +63,14 @@ export default class GrazeState {
 
             state.attackCooldown = (state.attackCooldown || 0) - dt;
             if (state.attackCooldown <= 0) {
-                // 풀을 뜯어 데미지 입힘
+                // 풀을 뜯어 데미지 입힘 (10 데미지)
                 const damage = 10;
                 const isDead = health.takeDamage(damage);
                 
+                // 📊 BaseStats 동기화 (자원의 HP 버퍼 업데이트)
+                const targetStats = target.components.get('BaseStats');
+                if (targetStats) targetStats.takeDamage(damage);
+
                 const targetVisual = target.components.get('Visual');
                 GlobalLogger.info(`${animal.type.toUpperCase()} is grazing on ${targetVisual?.type || 'resource'}.`);
                 
@@ -75,30 +79,21 @@ export default class GrazeState {
                     this.bs.eventBus.emit('SPAWN_EFFECT_PARTICLES', {
                         x: targetTransform.x, y: targetTransform.y, count: 3, type: 'EFFECT', color: '#4caf50'
                     });
-                }
-
-                if (health) {
-                    const isDead = health.takeDamage(damage);
-
-                    // 📊 BaseStats 동기화
-                    const stats = target.components.get('BaseStats');
-                    if (stats) stats.takeDamage(damage);
-
+                    
                     // 🚀 [Expert Feedback] 플로팅 데미지 텍스트 생성
-                    if (this.bs.eventBus) {
-                        this.bs.eventBus.emit('SPAWN_FLOATING_TEXT', {
-                            x: targetTransform.x, y: targetTransform.y - 5,
-                            text: `-${Math.round(damage)}`,
-                            color: '#ff4d4d',
-                            options: { size: 14, vy: -1.5 }
-                        });
-                    }
-
-                    if (isDead) {
-                        state.targetId = null;
-                        return AnimalStates.IDLE;
-                    }
+                    this.bs.eventBus.emit('SPAWN_FLOATING_TEXT', {
+                        x: targetTransform.x, y: targetTransform.y - 5,
+                        text: `-${Math.round(damage)}`,
+                        color: '#ff4d4d',
+                        options: { size: 14, vy: -1.5 }
+                    });
                 }
+
+                if (isDead) {
+                    state.targetId = null;
+                    return AnimalStates.IDLE;
+                }
+                
                 state.attackCooldown = 0.8; // 0.8초 쿨타임
             }
         } else {

@@ -3,6 +3,7 @@ import { AnimalRenders } from '../../objects/renders/AnimalRenders.js';
 import { NatureRenders } from '../../objects/renders/NatureRenders.js';
 import { TreeRenderer } from '../../objects/renders/nature/TreeRenderer.js';
 import { BuildRender } from '../../objects/renders/BuildRender.js';
+import FenceRenderer from '../../objects/renders/building/FenceRenderer.js';
 import { ItemRenderer } from '../../objects/renders/ItemRenderer.js';
 import { textureManager } from './TextureManager.js';
 
@@ -14,6 +15,12 @@ export default class EntityRenderer {
     constructor(engine) {
         this.engine = engine;
         this.spriteCache = new Map(); 
+
+        // 👻 [Step 15] 실루엣 렌더링용 오프스크린 버퍼
+        this.silhouetteCanvas = document.createElement('canvas');
+        this.silhouetteCanvas.width = 64;
+        this.silhouetteCanvas.height = 64;
+        this.silhouetteCtx = this.silhouetteCanvas.getContext('2d');
     }
 
     // (Shadow sprite is now handled by textureManager)
@@ -132,17 +139,21 @@ export default class EntityRenderer {
             const v = entity.components.get('Visual');
             if (!v) continue;
 
+            const isAnimal = entity.components.has('Animal') || 
+                             ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee', 'tiger', 'lion', 'bear', 'fox', 'crocodile', 'deer', 'rabbit', 'horse', 'elephant', 'goat'].includes(v.type);
+
             renderList.push({ 
                 id, 
                 entity, 
                 x, y, 
                 z: y, 
-                size: rBuffer[rIdx + 4],
+                size: Math.min(64, rBuffer[rIdx + 4]), 
                 alpha: rBuffer[rIdx + 5] / 255,
                 frame: rBuffer[rIdx + 2],
                 flipX: rBuffer[rIdx + 3] === 1,
                 facing: rBuffer[rIdx + 6],
-                type: v.type || '' // 🚀 [Task 91] Batching용 타입 추가
+                type: v.type || '',
+                isAnimal // 🚀 [Expert Fix] 실루엣 패스에서 사용하기 위해 플래그 추가
             });
         }
 
@@ -158,20 +169,7 @@ export default class EntityRenderer {
             return zDiff;
         });
  
-        // 🔒 [Debug] AIPATH 모드일 때 블랙리스트(도달 불가) 타겟 수집
-        const blacklistedIds = new Set();
-        if (this.engine.viewFlags.debugAI) {
-            const em = this.engine.entityManager;
-            const denseIds = em.denseIds;
-            for (let i = 0; i < denseIds.length; i++) {
-                const id = denseIds[i];
-                const ent = em.entities.get(id);
-                const ai = ent?.components.get('AIState');
-                if (ai && ai.unreachableTargets) {
-                    for (const tid of ai.unreachableTargets) blacklistedIds.add(tid);
-                }
-            }
-        }
+        // (Blacklisted IDs logic moved to RenderCoordinator for performance)
 
         // 1. 🌑 [Unified Shadows] 모든 개체의 그림자를 먼저 렌더링 (Z-Order 최하단)
         for (const item of renderList) {
@@ -186,7 +184,7 @@ export default class EntityRenderer {
 
         // 3. 🎨 [Main Entities] 실제 개체 렌더링
         for (const item of renderList) {
-            const { id, entity, x, y, size, alpha } = item;
+            const { id, entity, x, y, size, alpha, isAnimal } = item;
             const state = entity.components.get('AIState');
             const v = entity.components.get('Visual');
 
@@ -194,19 +192,22 @@ export default class EntityRenderer {
                 this.renderSelectionCircle(ctx, x, y);
             }
 
-            const isHighDetail = camera.zoom > 1.5;
+            const camera = this.engine.camera;
+            const zoom = camera.zoom;
+            const isFar = zoom < 0.4; 
+            const isHighDetail = zoom > 1.5;
             const type = v.type;
-            const isAnimal = entity.components.has('Animal') || 
-                             ['animal', 'human', 'sheep', 'cow', 'wolf', 'hyena', 'wild_dog', 'bee'].includes(type);
+
+            // 🚀 [Expert LOD] 아주 멀리 있을 때는 단순한 점으로 렌더링
+            if (isFar) {
+                this.renderSimplifiedEntity(entity, ctx, type);
+                continue;
+            }
 
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
-                
-                // 🧠 [Performance Optimization] AI 디버그 정보는 선택된 개체이거나 AIPATH 모드일 때 렌더링
-                const shouldShowAIDebug = this.engine.viewFlags.debugAI;
-                if (shouldShowAIDebug && state) {
-                    this.renderAIDebug(ctx, item, state, id);
-                }
+            } else if (type === 'fence') {
+                FenceRenderer.draw(ctx, entity, time);
             } else {
                 this.renderResource(entity, ctx, time, wind);
             }
@@ -217,14 +218,7 @@ export default class EntityRenderer {
                 this.renderHealthBar(ctx, health, x, y, size);
             }
 
-            // 🔒 [Debug] 블랙리스트 타겟 표시
-            if (this.engine.viewFlags.debugAI && blacklistedIds.has(id)) {
-                ctx.save();
-                ctx.font = '12px serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('🔒', x, y - size - 15);
-                ctx.restore();
-            }
+            // (Blacklist display moved to RenderCoordinator)
 
             // 💕 [Reproduction] 번식 중 하트 아이콘 표시
             const social = entity.components.get('Social');
@@ -244,6 +238,10 @@ export default class EntityRenderer {
         // 🚀 [Expert Optimization] 모든 배칭 큐를 비우고 최종 렌더링
         textureManager.flush(ctx);
 
+        // 👻 [Step 15] Silhouette X-Ray Pass (Top-most)
+        // 나무나 건물 뒤에 가려진 개체를 하얀 실루엣으로 표시하여 시인성 확보
+        this.renderSilhouettes(ctx, renderList, time);
+
         this.lastRenderCount = renderList.length;
     }
 
@@ -257,16 +255,18 @@ export default class EntityRenderer {
             breathScale = 1.0 + Math.sin(time * 0.003) * 0.05;
         }
 
-        const sw = size * 1.6 * breathScale;
-        const sh = size * 0.6 * breathScale;
+        // 🚀 [Expert Design] 최소 그림자 크기 확보 (작은 아이템도 보이도록)
+        const baseSize = Math.max(8, size);
+        const sw = baseSize * 1.8 * breathScale;
+        const sh = baseSize * 0.7 * breathScale;
 
         // 📦 [Batching Optimization] TextureManager의 큐에 추가
         textureManager.enqueueDraw(
             'common_shadow', 
             Math.floor(x), 
-            Math.floor(y + 1), 
+            Math.floor(y + 2), // 💡 본체와 겹치지 않게 약간 아래로 오프셋
             sw, sh,
-            { alpha: 1.0 }
+            { alpha: 0.4 } // 그림자 농도 최적화
         );
     }
 
@@ -326,18 +326,10 @@ export default class EntityRenderer {
             ItemRenderer.render(ctx, itemType || 'unknown', v, time, entity, this.engine);
         } else if (type === 'building') {
             const structure = entity.components.get('Structure');
-            // 건물의 경우 내부에서 좌표를 다시 잡으므로 restore 후 호출
+            // 🚀 [Expert Fix] 중복 호출 제거: drawBuildingCached 내부에서 모든 것을 처리
             ctx.restore(); 
             this.drawBuildingCached(ctx, t, v, structure, time);
-            
-            const storage = entity.components.get('Storage');
-            if (storage && structure && structure.isComplete) {
-                ctx.save();
-                ctx.translate(Math.floor(t.x), Math.floor(t.y));
-                this.renderStorageResources(ctx, storage, v.size || 40);
-                ctx.restore();
-            }
-            return; // Already restored
+            return; 
         } else {
             NatureRenders.render(ctx, type, t, v, time, wind, entity);
         }
@@ -416,6 +408,12 @@ export default class EntityRenderer {
         }
 
         const key = `tree_${size}_${color}_${isWithered}_${v.subtype || 'normal'}_${isXRay}`;
+        
+        // 🎯 [Step 15] 기존의 나무 투명화(X-Ray) 로직 제거
+        // 매 프레임 모든 나무가 SpatialHash를 쿼리하던 병목을 제거하고,
+        // 대신 개체 렌더링 시 실루엣을 그리는 방식으로 전환하여 성능과 시각적 안정성 확보
+        let drawAlpha = 1.0;
+
         const sprite = this.getSprite(key, (sCtx) => {
             TreeRenderer.draw(sCtx, t, v, size, isWithered, time, wind, isXRay, entity);
         }, size * 4, size * 5);
@@ -431,9 +429,14 @@ export default class EntityRenderer {
         textureManager.enqueueDraw(
             sprite, 
             Math.floor(t.x), 
-            Math.floor(t.y + 2), 
+            Math.floor(t.y), 
             sprite.width, sprite.height,
-            { rotation: shear * 0.5 } // Shear를 Rotation으로 근사하여 배칭 지원
+            { 
+                rotation: shear * 0.5,
+                pivotX: 0.5,
+                pivotY: 0.9,
+                alpha: drawAlpha // 🛡️ [Expert Fix] 배칭 시스템에 알파값 명시적 전달
+            } 
         );
     }
 
@@ -456,23 +459,28 @@ export default class EntityRenderer {
         textureManager.enqueueDraw(
             sprite,
             Math.floor(t.x),
-            Math.floor(t.y + 5),
-            sprite.width, sprite.height
+            Math.floor(t.y),
+            sprite.width, sprite.height,
+            {
+                pivotX: 0.5,
+                pivotY: 0.85 // 건물의 바닥면 정렬
+            }
         );
         
         // 4. 동적 오버레이 및 건설 정보 (캐시하지 않음 - 즉시 렌더링)
-        if (isComplete && (type === 'bonfire' || type === 'house' || type === 'farm')) {
-            ctx.save();
-            ctx.translate(Math.floor(t.x), Math.floor(t.y));
-            BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true); // true for overlayOnly
-            ctx.restore();
-        } else if (!isComplete) {
-            ctx.save();
-            ctx.translate(Math.floor(t.x), Math.floor(t.y));
-            // 건설 중 정보 표시
+        ctx.save();
+        ctx.translate(Math.floor(t.x), Math.floor(t.y));
+        
+        if (isComplete) {
+            // 연기, 불꽃 등 오버레이 (overlayOnly=true)
+            if (type === 'bonfire' || type === 'house' || type === 'farm') {
+                BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true);
+            }
+        } else {
+            // 건설 정보 라벨 및 청사진 가이드 (Body는 이미 배칭 큐에서 그려짐)
             BuildRender.renderBlueprintInfo(ctx, { x: 0, y: 0 }, structure);
-            ctx.restore();
         }
+        ctx.restore();
     }
 
     renderBuildingDebugInfo(ctx, entityManager) {
@@ -523,6 +531,30 @@ export default class EntityRenderer {
         }
     }
 
+    /** 🎨 아주 멀리 있을 때의 초간략 렌더링 (Pixel Dot) */
+    renderSimplifiedEntity(entity, ctx, type) {
+        const t = entity.components.get('Transform');
+        if (!t) return;
+
+        const x = Math.floor(t.x);
+        const y = Math.floor(t.y);
+
+        // 유형별 대표 색상 선정
+        let color = '#ffffff';
+        if (type === 'human') color = '#ffdbac';
+        else if (type === 'tree') color = '#2e7d32';
+        else if (type === 'building') color = '#9e9e9e';
+        else if (type === 'item') color = '#ffeb3b';
+        else if (type.includes('wolf') || type.includes('bear')) color = '#5d4037';
+
+        ctx.fillStyle = color;
+        // 🚀 [Expert Fix] 화면상에서 항상 최소 2px로 보이도록 줌에 맞춰 역산
+        // (worldSize * zoom = screenSize) => (worldSize = screenSize / zoom)
+        const zoom = this.engine.camera.zoom;
+        const dotSize = Math.min(20, 2 / zoom); // 최대 20px 캡 (거인 방지)
+        ctx.fillRect(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
+    }
+
     renderAnimal(entity, ctx, time, isHighDetail) {
         const health = entity.components.get('Health');
         const t = entity.components.get('Transform');
@@ -543,6 +575,7 @@ export default class EntityRenderer {
         ctx.restore();
     }
 
+    /** 🏥 [Health Integration] HP바 표시 */
     renderHealthBar(ctx, health, x, y, size) {
         const barW = Math.max(20, size * 1.5);
         const barH = 3;
@@ -557,6 +590,109 @@ export default class EntityRenderer {
         const hpWidth = (health.currentHp / health.maxHp) * barW;
         ctx.fillStyle = (health.currentHp / health.maxHp > 0.3) ? '#4caf50' : '#f44336';
         ctx.fillRect(bx, by, hpWidth, barH);
+    }
+
+    /** 👻 [Step 15] 실루엣 렌더링 시스템 (가려진 개체 시각화) */
+    renderSilhouettes(ctx, renderList, time) {
+        const em = this.engine.entityManager;
+        const sh = this.engine.spatialHash;
+        const zoom = this.engine.camera?.zoom || 1.0;
+
+        // 줌이 너무 낮으면 실루엣을 그리지 않음 (성능 및 시각적 노이즈 방지)
+        if (zoom < 0.5) return;
+
+        for (const item of renderList) {
+            const { entity, isAnimal, x, y } = item;
+            if (!isAnimal) continue;
+
+            const animal = entity.components.get('Animal');
+            // 벌(Bee)이나 새 같은 소형/비행 동물은 실루엣 트리거에서 제외 (Requested)
+            if (animal?.type === 'bee' || animal?.type === 'bird') continue;
+
+            // 주변에 나보다 앞에 있는(Y가 큰) 나무나 건물이 있는지 확인
+            // 🚀 [Expert Accuracy] 탐색 범위를 넓혀 주변 대상을 찾되, 실제 판정은 엄격하게 수행
+            const nearby = sh.query(x, y + 10, 40); 
+            let isObscured = false;
+
+            for (const nid of nearby) {
+                if (nid === entity.id) continue;
+                const other = em.entities.get(nid);
+                if (!other) continue;
+
+                const otherV = other.components.get('Visual');
+                const otherT = other.components.get('Transform');
+                
+                // 🌲 [Occlusion Logic - Precise]
+                if (otherT && (otherV?.type === 'tree' || otherV?.type === 'building')) {
+                    const dy = otherT.y - y;
+                    const dx = Math.abs(otherT.x - x);
+
+                    // 1. 수직 거리(Depth): 개체가 나무/건물 뒤에 있어야 함 (5px ~ 80px)
+                    // 너무 멀면(>80px) 나무 꼭대기보다 한참 위이므로 가려지지 않은 것으로 간주
+                    const isBehind = dy > 5 && dy < 80;
+
+                    // 2. 수평 거리(Width): 나무/건물의 가로 폭 안에 겹쳐야 함
+                    // 개체의 크기와 나무의 크기를 고려하여 정밀 판정
+                    const isOverlapped = dx < 25; 
+
+                    if (isBehind && isOverlapped) {
+                        isObscured = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isObscured) {
+                this.drawSilhouette(ctx, entity, time);
+            }
+        }
+    }
+
+    /** 👤 개체의 하얀색 실루엣을 그립니다. */
+    drawSilhouette(ctx, entity, time) {
+        const transform = entity.components.get('Transform');
+        const visual = entity.components.get('Visual');
+        const state = entity.components.get('AIState');
+        const animal = entity.components.get('Animal');
+        if (!transform || !visual || !state) return;
+
+        const mode = state.mode;
+        const type = visual.type;
+
+        // ⚡ 스프라이트 캐시 및 프레임 계산
+        let speedMult = 0.008;
+        if (mode === AnimalStates.RUN || mode === AnimalStates.HUNT) speedMult = 0.015;
+        const frameIdx = time * speedMult;
+        const options = { role: animal?.role, entity: entity, nectar: animal?.nectar };
+
+        // 🎨 [Silhouette Effect] 하얀색 실루엣 생성 (형태에 맞춰 정밀하게)
+        // 🚀 [Expert Fix] 메인 캔버스에 직접 합성하면 배경까지 하얗게 변하므로 별도 버퍼 사용
+        const sCtx = this.silhouetteCtx;
+        sCtx.clearRect(0, 0, 64, 64);
+        sCtx.save();
+        sCtx.translate(32, 44); // 버퍼 내 중앙 정렬
+        if (visual.flipX) sCtx.scale(-1, 1);
+        
+        // 애니메이션 모션 적용
+        AnimalRenders.applyAdvancedStateMotion(sCtx, type, mode, time, entity);
+        
+        const sprite = AnimalRenders.getSprite(type, mode, frameIdx, visual.color, options);
+        sCtx.drawImage(sprite, -24, -36, 48, 48);
+
+        // 하얀색으로 덮기 (형태 보존)
+        sCtx.globalCompositeOperation = 'source-atop';
+        sCtx.fillStyle = '#ffffff';
+        sCtx.fillRect(-24, -36, 48, 48);
+        sCtx.restore();
+
+        // 메인 캔버스에 결과물 출력
+        ctx.save();
+        ctx.translate(transform.x, transform.y);
+        ctx.globalAlpha = 0.7; // 실루엣 투명도
+        const displaySize = visual.size * 22;
+        const s = displaySize / 32;
+        ctx.drawImage(this.silhouetteCanvas, -32 * s, -44 * s, 64 * s, 64 * s);
+        ctx.restore();
     }
 
     getSprite(key, drawFn, width, height) {
@@ -632,90 +768,6 @@ export default class EntityRenderer {
         ctx.lineWidth = 2;
         ctx.arc(x, y, 10, 0, Math.PI * 2); 
         ctx.stroke();
-        ctx.restore();
-    }
-
-    renderAIDebug(ctx, item, state, id) {
-        const { x, y } = item;
-        const entity = this.engine.entityManager.entities.get(id);
-        const animalComp = entity?.components.get('Animal');
-        const isHuman = animalComp?.type === 'human';
-        
-        ctx.save();
-        ctx.fillStyle = isHuman ? '#00f2ff' : 'rgba(255, 255, 255, 0.9)';
-        ctx.font = 'bold 8px Inter, Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(state.mode.toUpperCase(), x, y - 12);
-
-        const target = state.targetId ? this.engine.entityManager.entities.get(state.targetId) : null;
-        let targetPos = target ? target.components.get('Transform') : state.fleePos;
-
-        // 대상 엔티티가 없더라도(wander_pos 등) 경로가 있다면 경로의 마지막 점을 타겟으로 삼아 렌더링
-        if (!targetPos && state.path && state.path.length > 0) {
-            targetPos = state.path[state.path.length - 1];
-        }
-
-        if (targetPos) {
-            ctx.beginPath();
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.7)' : 'rgba(255, 255, 255, 0.5)';
-            ctx.setLineDash([4, 2]);
-            ctx.moveTo(x, y);
-
-            if (state.path && Array.isArray(state.path) && state.path.length > 0) {
-                for (let i = (state.pathIndex || 0); i < state.path.length; i++) {
-                    const wp = state.path[i];
-                    if (wp && typeof wp.x === 'number' && typeof wp.y === 'number') {
-                        ctx.lineTo(wp.x, wp.y);
-                    }
-                }
-            } else {
-                ctx.lineTo(targetPos.x, targetPos.y);
-            }
-            ctx.stroke();
-            
-            // 🎯 타겟 명칭 표시
-            if (targetPos && state.targetName) {
-                ctx.fillStyle = isHuman ? '#00f2ff' : '#ffffff';
-                ctx.fillText(state.targetName, targetPos.x, targetPos.y - 10);
-            }
-
-            if (state.path && state.path.length > 0) {
-                ctx.setLineDash([]);
-                ctx.fillStyle = isHuman ? '#00f2ff' : '#ffffff';
-                for (let i = (state.pathIndex || 0); i < state.path.length; i++) {
-                    const wp = state.path[i];
-                    ctx.beginPath();
-                    ctx.arc(wp.x, wp.y, 1.5, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-        } else if (state.wanderAngle !== undefined) {
-            const len = 15;
-            const tx = x + Math.cos(state.wanderAngle) * len;
-            const ty = y + Math.sin(state.wanderAngle) * len;
-            ctx.beginPath();
-            ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)';
-            ctx.moveTo(x, y);
-            ctx.lineTo(tx, ty);
-            const head = 4;
-            ctx.lineTo(tx - head * Math.cos(state.wanderAngle - 0.5), ty - head * Math.sin(state.wanderAngle - 0.5));
-            ctx.moveTo(tx, ty);
-            ctx.lineTo(tx - head * Math.cos(state.wanderAngle + 0.5), ty - head * Math.sin(state.wanderAngle + 0.5));
-            ctx.stroke();
-        }
-
-        // 🔍 [Search Range Visualization]
-        if (state.searchRange > 0 && !state.targetId) {
-            const pulse = (Math.sin(this.engine.time * 0.005) + 1) * 0.5;
-            ctx.beginPath();
-            ctx.arc(x, y, state.searchRange, 0, Math.PI * 2);
-            ctx.strokeStyle = isHuman ? `rgba(0, 242, 255, ${0.1 + pulse * 0.1})` : `rgba(255, 255, 255, ${0.05 + pulse * 0.05})`;
-            ctx.setLineDash([10, 5]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-
         ctx.restore();
     }
 }

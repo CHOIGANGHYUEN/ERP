@@ -33,6 +33,10 @@ class DenseEntitySet {
         if (id >= this.indices.length) return false;
         return this.indices[id] !== -1;
     }
+    clear() {
+        this.items = [];
+        this.indices.fill(-1);
+    }
     get size() { return this.items.length; }
     [Symbol.iterator]() { return this.items[Symbol.iterator](); }
     _expand(id) {
@@ -52,6 +56,9 @@ export default class EntityManager {
         this.humanIds = new DenseEntitySet(10000); 
         this.resourceIds = new DenseEntitySet(10000);
         this.buildingIds = new DenseEntitySet(10000);
+        this.activeFarmIds = new DenseEntitySet(5000); // 🚀 [Expert AI] 진행 중인 농장 인덱스
+        this.villageCenterIds = new DenseEntitySet(500); // 🚀 [Expert AI] 마을 중심점 인덱스
+        this.emissiveIds = new DenseEntitySet(1000); // 💡 [Expert Optimization] 발광 개체 전용 인덱스
         
         this.nextId = 0;
 
@@ -87,6 +94,10 @@ export default class EntityManager {
         // 🏷️ [Expert Design] Tag Buffer (Bitmask)
         // 0: tagMask
         this.tagBuffer = new Uint32Array(this.maxEntities);
+
+        // 🗺️ [Expert Design] Spatial Cell Key Buffer (DOD)
+        // 0: cellKey (Int32)
+        this.cellKeyBuffer = new Int32Array(this.maxEntities).fill(-1);
         
         // ♻️ [Pool] ID 재사용을 위한 큐
         this.freeIds = [];
@@ -103,8 +114,9 @@ export default class EntityManager {
             id = this.freeIds.pop();
         } else {
             id = this.nextId++;
+            // 🚀 [Expert Optimization] 버퍼 용량 초과 시 동적 확장
             if (id >= this.maxEntities) {
-                this._expandBuffers();
+                this._ensureBufferCapacity(id);
             }
         }
 
@@ -137,6 +149,7 @@ export default class EntityManager {
         const newAlive = new Uint8Array(newMax);
         const newTag = new Uint32Array(newMax);
         const newJob = new Int16Array(newMax * 2);
+        const newCellKey = new Int32Array(newMax).fill(-1);
         
         // 기존 데이터 복사 (TypedArray.set은 매우 빠름)
         newTransform.set(this.transformBuffer);
@@ -148,6 +161,7 @@ export default class EntityManager {
         newAlive.set(this.aliveBuffer);
         newTag.set(this.tagBuffer);
         if (this.jobBuffer) newJob.set(this.jobBuffer);
+        newCellKey.set(this.cellKeyBuffer);
         
         // 참조 교체
         this.transformBuffer = newTransform;
@@ -159,6 +173,7 @@ export default class EntityManager {
         this.aliveBuffer = newAlive;
         this.tagBuffer = newTag;
         this.jobBuffer = newJob;
+        this.cellKeyBuffer = newCellKey;
         this.maxEntities = newMax;
 
         // 🚀 [Critical Fix] 기존 모든 컴포넌트들을 새 버퍼에 재연결 (DOD 동기화)
@@ -223,6 +238,9 @@ export default class EntityManager {
         this.humanIds.delete(id); // 👤 인간 인덱스 제거
         this.resourceIds.delete(id);
         this.buildingIds.delete(id);
+        this.activeFarmIds.delete(id); // 🚀 [Cleanup]
+        this.villageCenterIds.delete(id); // 🚀 [Cleanup]
+        this.emissiveIds.delete(id); // 💡 [Cleanup]
 
         // 2. 🧬 [Lifecycle] Alive 플래그 OFF 및 버퍼 초기화 (선택 사항)
         this.aliveBuffer[id] = 0;
@@ -243,9 +261,22 @@ export default class EntityManager {
         }
         
         this.freeIds.push(id);
+        
+        // 🚀 [Critical Fix] 공간 해시에서 즉시 제거 (유령 개체 방지)
+        if (this.spatialHash && this.cellKeyBuffer) {
+            const cellKey = this.cellKeyBuffer[id];
+            if (cellKey !== undefined && cellKey !== -1) {
+                // 🐛 BUG FIX: remove(id, cellKey) 는 인자 불일치로 동작하지 않았음. removeFromCell 사용 및 모든 레이어 시도.
+                this.spatialHash.removeFromCell(id, cellKey, 0);
+                this.spatialHash.removeFromCell(id, cellKey, 1);
+                this.spatialHash.removeFromCell(id, cellKey, 2);
+            }
+            this.cellKeyBuffer[id] = -1;
+        }
+
         this.entities.delete(id);
 
-        // 4. 📢 이벤트 발행 (DeathProcessor 등이 수신)
+        // 4. 📢 이벤트 발행
         if (this.eventBus) {
             this.eventBus.emit('ENTITY_REMOVED', { id, entity });
         }
@@ -284,12 +315,22 @@ export default class EntityManager {
             if (name === 'Animal') {
                 this.animalIds.add(entityId);
             } else if (name === 'Civilization') {
+                const jobCtrl = entity.components.get('JobController');
+                if (jobCtrl) {
+                    this.humanIds.add(entityId);
+                    this.animalIds.add(entityId);
+                }
+            } else if (name === 'JobController') {
                 this.humanIds.add(entityId);
-                this.animalIds.add(entityId); // 👤 인간도 물리 연산을 위해 animalIds에 함께 등록 (KinematicSystem 통합 관리)
+                this.animalIds.add(entityId);
             } else if (name === 'Resource') {
                 this.resourceIds.add(entityId);
             } else if (name === 'Building') {
                 this.buildingIds.add(entityId);
+            } else if (name === 'Farm') {
+                this.activeFarmIds.add(entityId);
+            } else if (name === 'VillageCenter') {
+                this.villageCenterIds.add(entityId);
             }
 
             // 🚀 [Expert Optimization] TypedArray 버퍼 연결 (DOD)
@@ -300,7 +341,7 @@ export default class EntityManager {
                 
                 // 🚀 [Expert Design] 정적 개체(건물, 자원)는 공간 해시에 즉시 등록
                 if (this.spatialHash && (this.buildingIds.has(entityId) || this.resourceIds.has(entityId))) {
-                    this.spatialHash.insert(entityId, component.x, component.y, true);
+                    this._updateSpatialHash(entityId, component.x, component.y, true);
                 }
             } else if (name === 'Velocity') {
                 if (component.linkBuffer) component.linkBuffer(this.velocityBuffer, entityId * 4);
@@ -329,19 +370,27 @@ export default class EntityManager {
             if (name === 'Animal') {
                 this.animalIds.add(entityId);
                 if (component.type === 'human') this.humanIds.add(entityId);
+                
+                const transform = entity.components.get('Transform');
+                if (transform && this.spatialHash) {
+                    this._updateSpatialHash(entityId, transform.x, transform.y, false, name);
+                }
             }
             if (name === 'Resource' || name === 'DroppedItem') {
                 this.resourceIds.add(entityId);
                 const transform = entity.components.get('Transform');
                 if (transform && this.spatialHash) {
-                    this.spatialHash.insert(entityId, transform.x, transform.y, true);
+                    this._updateSpatialHash(entityId, transform.x, transform.y, true, name);
                 }
             }
-            if (name === 'Building' || name === 'Structure') {
+            if (name === 'Building' || name === 'Structure' || name === 'VillageCenter') {
                 this.buildingIds.add(entityId);
+                if (name === 'Farm') this.activeFarmIds.add(entityId);
+                if (name === 'VillageCenter') this.villageCenterIds.add(entityId);
+
                 const transform = entity.components.get('Transform');
                 if (transform && this.spatialHash) {
-                    this.spatialHash.insert(entityId, transform.x, transform.y, true);
+                    this._updateSpatialHash(entityId, transform.x, transform.y, true, name);
                 }
             }
         }
@@ -383,7 +432,7 @@ export default class EntityManager {
         return Array.from(this.entities.values()).filter(e => e.components.has(componentName));
     }
 
-    findNearestEntityWithComponent(x, y, radius, condition, spatialHash = null) {
+    findNearestEntityWithComponent(x, y, radius, condition, spatialHash = null, layer = -1) {
         let nearestId = null;
         let minDistSq = radius * radius;
 
@@ -412,10 +461,8 @@ export default class EntityManager {
                     if (minDistSq < 1600) return true; // 40px 이내면 즉시 확정
                 }
                 
-                // 만약 이미 찾은 대상이 현재 격자(shell)의 최소 가능 거리보다 가깝다면 중단 검토 가능
-                // (eachInSpiral이 shell 단위로 돌기 때문에 shell이 커질수록 distSq의 최소값도 커짐)
                 return false;
-            });
+            }, layer);
         } else {
             // Fallback for non-spatial searches
             for (const [id, entity] of this.entities) {
@@ -433,5 +480,26 @@ export default class EntityManager {
         }
 
         return nearestId;
+    }
+
+    /** 🚀 [Expert Optimization] 공간 해시 증분 업데이트 및 중복 삽입 방지 */
+    _updateSpatialHash(entityId, x, y, isStatic) {
+        if (!this.spatialHash) return;
+
+        const cellSize = this.spatialHash.cellSize || 100;
+        const key = ((Math.floor(y / cellSize) + 1000) << 16) | (Math.floor(x / cellSize) + 1000);
+        
+        const oldKey = this.cellKeyBuffer[entityId];
+        
+        // 🚀 [Expert Optimization] 이미 해당 위치에 등록되어 있다면 스킵
+        if (oldKey === key) return;
+
+        // 기존 셀에서 제거 (동적 개체거나, 정적 개체가 이동한 경우)
+        if (oldKey !== -1) {
+            this.spatialHash.removeFromCell(entityId, oldKey, isStatic);
+        }
+
+        this.spatialHash.insertWithKey(entityId, key, isStatic);
+        this.cellKeyBuffer[entityId] = key;
     }
 }

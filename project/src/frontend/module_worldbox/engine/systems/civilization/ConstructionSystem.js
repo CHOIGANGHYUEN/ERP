@@ -189,17 +189,33 @@ export default class ConstructionSystem extends System {
     /** 마을 중심 근처에서 건물 배치 가능한 위치를 찾습니다. */
     _findBuildingSpot(village) {
         const tg = this.engine.terrainGen;
-        for (let attempt = 0; attempt < 20; attempt++) {
+        const cx = village.centerX || village.x || 0;
+        const cy = village.centerY || village.y || 0;
+
+        for (let attempt = 0; attempt < 25; attempt++) {
             const angle = Math.random() * Math.PI * 2;
-            const dist = 50 + Math.random() * 80;
-            const x = Math.floor(village.x + Math.cos(angle) * dist);
-            const y = Math.floor(village.y + Math.sin(angle) * dist);
+            const dist = 40 + Math.random() * 100;
+            const x = Math.floor(cx + Math.cos(angle) * dist);
+            const y = Math.floor(cy + Math.sin(angle) * dist);
+            
+            if (x < 50 || x > this.engine.mapWidth - 50 || y < 50 || y > this.engine.mapHeight - 50) continue;
+            
             if (!tg) return { x, y };
             const idx = tg.getIndex(x, y);
             if (!tg.isWater(idx) && tg.getOccupancy(x, y) === 0) {
-                return { x, y };
+                // 건물끼리 너무 붙지 않게 체크
+                let tooClose = false;
+                const nearby = this.engine.spatialHash?.query(x, y, 35) || [];
+                for (const nid of nearby) {
+                    if (this.entityManager.entities.get(nid)?.components.has('Building')) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (!tooClose) return { x, y };
             }
         }
         return null;
     }
+
 }

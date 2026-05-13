@@ -27,8 +27,42 @@ export default class Inventory extends Component {
      * 표준화된 ID(Type)로 자원 존재 여부 확인
      */
     has(type, amount) {
-        return (this.items[type] || 0) >= amount;
+        if (!type) return false;
+        return (this.items[type] || 0) >= (amount || 0);
     }
+
+    /**
+     * 🚀 [Expert AI] 유연한 자원 존재 여부 확인 (카테고리 및 유사어 포함)
+     */
+    hasFlexible(type, amount) {
+        if (!type) return false;
+        const req = type.toLowerCase();
+        const amt = amount || 0;
+        
+        // 1. 직접 타입 일치 확인
+        if ((this.items[type] || 0) >= amt) return true;
+
+        // 2. 유사 속성/카테고리 확인
+        for (const [iType, count] of Object.entries(this.items)) {
+            if (count < amt) continue;
+            
+            const lowerType = iType.toLowerCase();
+            if (lowerType === req) return true;
+
+            // 돌(stone) 매칭: mineral, rock 등
+            if (req === 'stone' && (lowerType.includes('stone') || lowerType.includes('rock') || lowerType.includes('mineral'))) return true;
+            // 나무(wood) 매칭: log, timber 등
+            if (req === 'wood' && (lowerType.includes('wood') || lowerType.includes('log') || lowerType.includes('timber'))) return true;
+            // 철(iron) 매칭: ore, metal 등
+            if (req === 'iron_ore' && (lowerType.includes('iron') || lowerType.includes('ore') || lowerType.includes('metal'))) return true;
+            // 식량(food) 매칭
+            if (req === 'food' && (lowerType === 'fruit' || lowerType === 'meat' || lowerType === 'berry' || lowerType === 'bread')) return true;
+        }
+
+        return false;
+    }
+
+
 
     /**
      * 표준화된 ID(Type)로 자원 소모

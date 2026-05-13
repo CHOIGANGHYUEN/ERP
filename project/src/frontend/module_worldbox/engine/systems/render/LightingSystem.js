@@ -25,70 +25,59 @@ export default class LightingSystem extends System {
         if (!em) return;
 
         const camera = this.engine.camera;
-        const margin = 150;
-        const viewX = camera.x - margin;
-        const viewY = camera.y - margin;
-        const viewW = (camera.width / camera.zoom) + (margin * 2);
-        const viewH = (camera.height / camera.zoom) + (margin * 2);
+        const margin = 200; // 🚀 [Optimization] 마진 최적화
+        
+        // 🎯 [Expert Fix] 흔들림 보정된 renderX/Y 사용
+        const viewX = camera.renderX - margin;
+        const viewY = camera.renderY - margin;
+        const zoom = camera.zoom;
+        const viewW = (camera.width / zoom) + (margin * 2);
+        const viewH = (camera.height / zoom) + (margin * 2);
 
-        // 1. 🏗️ 건축물 광원 (캠프파이어, 화로 등)
+        // 1. 🏗️ 건축물 광원 (캠프파이어 등)
         const buildingItems = em.buildingIds.items;
         for (let i = 0, len = buildingItems.length; i < len; i++) {
             const id = buildingItems[i];
             const entity = em.entities.get(id);
-            if (!entity) continue;
-            
+            const t = entity?.components.get('Transform');
+            if (!t) continue;
+
+            // 🚀 [Culling]
+            if (t.x < viewX || t.x > viewX + viewW || t.y < viewY || t.y > viewY + viewH) continue;
+
             const struct = entity.components.get('Structure');
             if (struct && struct.isComplete) {
-                const t = entity.components.get('Transform');
-                if (!t) continue;
-
-                // 🚀 [Culling] 화면 밖 광원은 목록에서 제외
-                if (t.x < viewX || t.x > viewX + viewW || t.y < viewY || t.y > viewY + viewH) continue;
-
                 if (struct.type === 'campfire') {
-                    // 불규칙하게 깜빡이는 불빛 효과 (Flicker)
                     const flicker = Math.sin(time * 0.01 + id) * 0.1 + 0.9;
-                    this.lights.push({
-                        x: t.x,
-                        y: t.y,
-                        radius: 120 * flicker,
-                        intensity: 0.8 * flicker,
-                        color: 'rgba(255, 150, 50, 0.5)' // 따뜻한 주황색
-                    });
+                    this.lights.push({ x: t.x, y: t.y, radius: 120 * flicker, intensity: 0.8 * flicker, color: 'rgba(255, 150, 50, 0.5)' });
                 } else if (struct.type === 'furnace' || struct.type === 'smithy') {
                     const flicker = Math.sin(time * 0.005 + id) * 0.05 + 0.95;
-                    this.lights.push({
-                        x: t.x,
-                        y: t.y,
-                        radius: 150 * flicker,
-                        intensity: 0.7 * flicker,
-                        color: 'rgba(255, 100, 30, 0.4)' // 뜨거운 붉은빛
-                    });
+                    this.lights.push({ x: t.x, y: t.y, radius: 150 * flicker, intensity: 0.7 * flicker, color: 'rgba(255, 100, 30, 0.4)' });
                 }
             }
         }
 
-        // 2. 🦊 동적 발광체 (DOD RenderBuffer 기반 검색 권장하나 현재는 Visual 필터링)
-        const denseIds = em.denseIds;
-        for (let i = 0; i < denseIds.length; i++) {
-            const id = denseIds[i];
+        // 2. 🦊 [Expert Optimization] 발광 개체 인덱스 활용 (Fireball 등)
+        // 기존 O(N) 전수 조사에서 O(Lights)로 대폭 개선
+        const emissiveItems = em.emissiveIds.items;
+        for (let i = 0, len = emissiveItems.length; i < len; i++) {
+            const id = emissiveItems[i];
             const entity = em.entities.get(id);
-            const visual = entity?.components.get('Visual');
-            if (visual && visual.subtype === 'fireball') {
-                const t = entity.components.get('Transform');
-                if (t) {
-                    // 🚀 [Culling]
-                    if (t.x < viewX || t.x > viewX + viewW || t.y < viewY || t.y > viewY + viewH) continue;
+            const t = entity?.components.get('Transform');
+            if (!t) continue;
 
-                    this.lights.push({
-                        x: t.x,
-                        y: t.y,
-                        radius: 80,
-                        intensity: 1.0,
-                        color: 'rgba(255, 50, 0, 0.6)'
-                    });
-                }
+            // 🚀 [Culling]
+            if (t.x < viewX || t.x > viewX + viewW || t.y < viewY || t.y > viewY + viewH) continue;
+
+            const visual = entity.components.get('Visual');
+            if (visual && (visual.subtype === 'fireball' || visual.subtype === 'projectile_fire')) {
+                this.lights.push({
+                    x: t.x,
+                    y: t.y,
+                    radius: 80,
+                    intensity: 1.0,
+                    color: 'rgba(255, 50, 0, 0.6)'
+                });
             }
         }
     }

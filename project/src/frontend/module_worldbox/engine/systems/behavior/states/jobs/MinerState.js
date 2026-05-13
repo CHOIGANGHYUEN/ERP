@@ -28,7 +28,12 @@ export default class MinerState extends BaseJobState {
         // 2. 업무 FSM
         switch (jobCtrl.jobState) {
             case 'SEARCHING':
-                this.findMinerals(entity, jobCtrl);
+                // 🚀 [Optimization] 매 프레임 검색하는 대신 1.5초 간격으로 검색 수행
+                jobCtrl.setData('searchTimer', (jobCtrl.getData('searchTimer') || 0) + dt);
+                if (jobCtrl.getData('searchTimer') >= 1.5) {
+                    this.findMinerals(entity, jobCtrl);
+                    jobCtrl.setData('searchTimer', 0);
+                }
                 break;
             case 'MOVING':
                 this.moveToMineral(entity, jobCtrl, transform);
@@ -86,7 +91,16 @@ export default class MinerState extends BaseJobState {
             transform.vx = 0;
             transform.vy = 0;
         } else {
-            Pathfinder.followPath(transform, jobCtrl, tPos, 50, this.system.engine);
+            const moveStatus = Pathfinder.followPath(transform, jobCtrl, tPos, 50, this.system.engine);
+            if (moveStatus === -1) {
+                // 🚫 [Pathing Safety] 도달 불가능한 광석 블랙리스트 추가 (60초간)
+                const aiState = entity.components.get('AIState');
+                if (aiState) aiState.addToBlacklist(jobCtrl.targetId, 60);
+                
+                jobCtrl.targetId = null;
+                jobCtrl.jobState = 'SEARCHING';
+                if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '❓', duration: 1500 });
+            }
         }
     }
 

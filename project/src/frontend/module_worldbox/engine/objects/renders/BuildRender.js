@@ -181,29 +181,31 @@ export const BuildRender = {
             ctx.strokeRect(-2, -s * 0.35, 5, s * 0.7);
         }
 
-        // 3. 불꽃 (Multi-layered Dynamic Flames)
-        const flameBaseH = s * 0.8;
-        const flicker = Math.sin(animTime * 2) * 0.1 + Math.sin(animTime * 0.7) * 0.05;
-        const flameH = flameBaseH * (1.0 + flicker);
+        if (overlayOnly) {
+            // 3. 불꽃 (Multi-layered Dynamic Flames)
+            const flameBaseH = s * 0.8;
+            const flicker = Math.sin(animTime * 2) * 0.1 + Math.sin(animTime * 0.7) * 0.05;
+            const flameH = flameBaseH * (1.0 + flicker);
 
-        // Outer Flame
-        ctx.fillStyle = '#ff5722';
-        this._drawFlameShape(ctx, s * 0.3, flameH);
-        // Middle Flame
-        ctx.fillStyle = '#ff9800';
-        this._drawFlameShape(ctx, s * 0.2, flameH * 0.7);
-        // Inner Core
-        ctx.fillStyle = '#ffeb3b';
-        this._drawFlameShape(ctx, s * 0.1, flameH * 0.4);
+            // Outer Flame
+            ctx.fillStyle = '#ff5722';
+            this._drawFlameShape(ctx, s * 0.3, flameH);
+            // Middle Flame
+            ctx.fillStyle = '#ff9800';
+            this._drawFlameShape(ctx, s * 0.2, flameH * 0.7);
+            // Inner Core
+            ctx.fillStyle = '#ffeb3b';
+            this._drawFlameShape(ctx, s * 0.1, flameH * 0.4);
 
-        // 4. 불꽃 튀는 효과 (Embers)
-        ctx.fillStyle = '#fff176';
-        for (let i = 0; i < 3; i++) {
-            const pTime = (animTime * 0.5 + i) % 3;
-            const px = Math.sin(pTime * 4) * (s * 0.3);
-            const py = - (pTime * 20);
-            const pSize = Math.max(0, 2 - pTime);
-            ctx.fillRect(px, py, pSize, pSize);
+            // 4. 불꽃 튀는 효과 (Embers)
+            ctx.fillStyle = '#fff176';
+            for (let i = 0; i < 3; i++) {
+                const pTime = (animTime * 0.5 + i) % 3;
+                const px = Math.sin(pTime * 4) * (s * 0.3);
+                const py = - (pTime * 20);
+                const pSize = Math.max(0, 2 - pTime);
+                ctx.fillRect(px, py, pSize, pSize);
+            }
         }
     },
 
@@ -291,17 +293,19 @@ export const BuildRender = {
             ctx.fillRect(s * 0.2, -s * 0.35, 6, 6);
         }
 
-        // 연기 파티클 (Dynamic Overlay)
-        const cx = s * 0.25, cy = -s * 0.8;
-        ctx.fillStyle = 'rgba(150, 150, 150, 0.4)';
-        for (let i = 0; i < 3; i++) {
-            const pTime = (animTime * 0.3 + i * 0.5) % 2;
-            const px = cx + Math.sin(pTime * 3) * 5;
-            const py = cy - (pTime * 15);
-            const pSize = 4 + pTime * 4;
-            ctx.beginPath();
-            ctx.arc(px, py, pSize, 0, Math.PI * 2);
-            ctx.fill();
+        if (overlayOnly) {
+            // 연기 파티클 (Dynamic Overlay)
+            const cx = s * 0.25, cy = -s * 0.8;
+            ctx.fillStyle = 'rgba(150, 150, 150, 0.4)';
+            for (let i = 0; i < 3; i++) {
+                const pTime = (animTime * 0.3 + i * 0.5) % 2;
+                const px = cx + Math.sin(pTime * 3) * 5;
+                const py = cy - (pTime * 15);
+                const pSize = 4 + pTime * 4;
+                ctx.beginPath();
+                ctx.arc(px, py, pSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     },
 
@@ -331,27 +335,29 @@ export const BuildRender = {
             ctx.strokeRect(-s * 0.52, -s * 0.42, s * 1.04, s * 0.84);
         }
 
-        // 3. 8x8 작물 격자 (64개)
-        const rows = 8, cols = 8;
-        const stepX = (s * 0.85) / cols;
-        const stepY = (s * 0.75) / rows;
+        if (overlayOnly) {
+            // 3. 8x8 작물 격자 (64개)
+            const rows = 8, cols = 8;
+            const stepX = (s * 0.85) / cols;
+            const stepY = (s * 0.75) / rows;
 
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                const px = -s * 0.4 + c * stepX;
-                const py = -s * 0.35 + r * stepY;
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const px = -s * 0.4 + c * stepX;
+                    const py = -s * 0.35 + r * stepY;
 
-                // 개별 작물 흔들림 (랜덤 오프셋 부여)
-                const sway = Math.sin(animTime + (r * 0.5) + (c * 0.3)) * 2.0;
+                    // 개별 작물 흔들림 (랜덤 오프셋 부여)
+                    const sway = Math.sin(animTime + (r * 0.5) + (c * 0.3)) * 2.0;
 
-                // 작물 색상 (녹색에서 황금색으로 약간의 변이)
-                const colorVar = (r + c) % 2 === 0 ? '#4caf50' : '#8bc34a';
-                const headColor = (r + c) % 3 === 0 ? '#cddc39' : '#fbc02d';
+                    // 작물 색상 (녹색에서 황금색으로 약간의 변이)
+                    const colorVar = (r + c) % 2 === 0 ? '#4caf50' : '#8bc34a';
+                    const headColor = (r + c) % 3 === 0 ? '#cddc39' : '#fbc02d';
 
-                ctx.fillStyle = colorVar;
-                ctx.fillRect(px + sway * 0.1, py - 4, 1.5, 5);
-                ctx.fillStyle = headColor;
-                ctx.fillRect(px + sway * 0.2, py - 6, 2, 2.5);
+                    ctx.fillStyle = colorVar;
+                    ctx.fillRect(px + sway * 0.1, py - 4, 1.5, 5);
+                    ctx.fillStyle = headColor;
+                    ctx.fillRect(px + sway * 0.2, py - 6, 2, 2.5);
+                }
             }
         }
     },

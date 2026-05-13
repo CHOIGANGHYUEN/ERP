@@ -188,10 +188,18 @@
         </div>
       </template>
 
-      <!-- 💀 KILL BUTTON (God Power) -->
+      <!-- 💀 ACTIONS (AI Path, Kill) -->
       <div class="divider"></div>
       <div class="action-section">
-        <button class="kill-btn" @click="handleKill">
+        <button 
+          class="debug-path-btn" 
+          @click="togglePathView"
+          :class="{ 'active': isPathViewActive }"
+          title="Toggle individual AI path visualization"
+        >
+          <span class="icon">🛣️</span> AI PATH
+        </button>
+        <button class="kill-btn" @click="handleKill" title="Eliminate this entity from the world">
           <span class="kill-icon">💀</span> ELIMINATE
         </button>
       </div>
@@ -250,6 +258,17 @@ const closePanel = () => {
 const handleKill = () => {
   if (entity.value && confirm(`Are you sure you want to eliminate ${entity.value.name}?`)) {
     store.killEntity(entity.value.id);
+  }
+};
+const isPathViewActive = computed(() => {
+  return window.gameEngine?.viewFlags?.debugSelectedAI || false;
+});
+const togglePathView = () => {
+  if (window.gameEngine) {
+    window.gameEngine.dispatchCommand({ 
+      type: 'TOGGLE_VIEW', 
+      payload: { flagName: 'debug_selected_ai' } 
+    });
   }
 };
 
@@ -606,10 +625,44 @@ const getItemEmoji = (type) => {
   margin-top: 10px;
   display: flex;
   justify-content: center;
+  gap: 8px;
+}
+
+.kill-btn:active {
+  transform: translateY(0);
+}
+
+.debug-path-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.debug-path-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.debug-path-btn.active {
+  background: rgba(0, 242, 255, 0.15);
+  border-color: rgba(0, 242, 255, 0.4);
+  color: #00f2ff;
+  box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
 }
 
 .kill-btn {
-  width: 100%;
+  flex: 1.5;
   background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
   border: 1px solid rgba(255,255,255,0.1);
   color: white;

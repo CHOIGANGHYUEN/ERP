@@ -43,9 +43,6 @@ export default class ResourceFactory extends IEntityFactory {
                        .addComponent('Resource', new ResourceNode(type, 100, config.type || 'resource'));
         }
 
-        if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true);
-        }
 
         return id;
     }

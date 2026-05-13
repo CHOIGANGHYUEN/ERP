@@ -94,6 +94,16 @@ export default class RenderCoordinator extends System {
         offCtx.fillStyle = '#000';
         offCtx.fillRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
 
+        // 🚀 [Expert Optimization] 해상도 캡핑에 따른 내부 스케일 보정
+        // 실제 화면 크기와 오프스크린 버퍼 크기 사이의 비율을 계산하여 모든 좌표를 맞춤
+        const internalScaleX = this.offscreenCanvas.width / Math.max(1, engine.width || 1);
+        const internalScaleY = this.offscreenCanvas.height / Math.max(1, engine.height || 1);
+
+        // 🛡️ [Stability Fix] 비정상적인 스케일(거인 현상) 방지
+        const safeScaleX = Math.min(4.0, internalScaleX);
+        const safeScaleY = Math.min(4.0, internalScaleY);
+        offCtx.scale(safeScaleX, safeScaleY);
+
         // 3. 🚀 카메라 트랜스폼 적용 (줌/이동)
         offCtx.save();
         offCtx.imageSmoothingEnabled = false;
@@ -127,7 +137,7 @@ export default class RenderCoordinator extends System {
         // 🌗 [Day/Night & Lighting Overlay]
         this.renderGlobalIllumination(offCtx, camera);
 
-        if (engine.viewFlags.debugAI) {
+        if (engine.viewFlags.debugAI || engine.viewFlags.debugSelectedAI) {
             this.renderDebugAI(offCtx);
         }
 
@@ -382,7 +392,13 @@ export default class RenderCoordinator extends System {
             const screenY = (village.centerY - camera.y) * camera.zoom;
 
             ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.drawImage(cached.canvas, screenX - cached.width / 2, screenY - cached.height - 25);
+
+            // 🚀 [Expert Fix] 거인 현상 방지: 멀리 축소하면 이름표도 부드럽게 축소
+            const labelScale = Math.max(0.4, Math.min(1.0, camera.zoom * 2));
+            const dw = cached.width * labelScale;
+            const dh = cached.height * labelScale;
+
+            ctx.drawImage(cached.canvas, screenX - dw / 2, screenY - dh - (25 * labelScale), dw, dh);
 
             // Marker
             const loyaltyColor = loyalty > 70 ? '#4caf50' : (loyalty > 30 ? '#ffeb3b' : '#ff5252');
@@ -765,68 +781,136 @@ export default class RenderCoordinator extends System {
         ctx.restore();
     }
 
-    /** 🧠 [AI Debug View] 개체별 AI 경로 및 타겟 시각화 */
+    /** 🧠 [AI Debug View] 개체별 AI 경로 및 탐색 범위 시각화 (Z-Order 최상단) */
     renderDebugAI(ctx) {
         const engine = this.engine;
-        const camera = engine.camera;
-        const margin = 50;
-        const viewX = camera.x - margin;
-        const viewY = camera.y - margin;
-        const viewW = (camera.width / camera.zoom) + (margin * 2);
-        const viewH = (camera.height / camera.zoom) + (margin * 2);
+        const flags = engine.viewFlags;
+        const time = performance.now();
+        const em = engine.entityManager;
 
-        const visibleIds = engine.spatialHash?.queryRect(viewX, viewY, viewW, viewH) || [];
-
-        ctx.save();
-        ctx.lineWidth = 1.5;
-
-        for (const id of visibleIds) {
-            const entity = engine.entityManager.entities.get(id);
-            if (!entity) continue;
-
-            const state = entity.components.get('AIState');
-            const transform = entity.components.get('Transform');
-            if (!state || !transform) continue;
-
-            const x = transform.x;
-            const y = transform.y;
-
-            // Task-based colors
-            let pathColor = '#ffffff';
-            const mode = state.mode;
-            if (mode.includes('gather')) pathColor = '#81c784';
-            else if (mode.includes('hunt') || mode === 'attack') pathColor = '#ff5252';
-            else if (mode === 'build') pathColor = '#ffca28';
-            else if (mode === 'wander') pathColor = '#b0bec5';
-
-            // 1. Draw Target Line
-            const target = state.targetId ? engine.entityManager.entities.get(state.targetId) : null;
-            let targetPos = target ? target.components.get('Transform') : null;
-
-            if (targetPos) {
-                ctx.beginPath();
-                ctx.strokeStyle = pathColor + '66';
-                ctx.setLineDash([5, 5]);
-                ctx.moveTo(x, y);
-                ctx.lineTo(targetPos.x, targetPos.y);
-                ctx.stroke();
+        try {
+            // 🚀 [Expert Design] 1. 개별 선택 모드 (Selected Only)
+            if (flags.debugSelectedAI && engine.selectedId !== null) {
+                const entity = em.entities.get(engine.selectedId);
+                if (entity) {
+                    this._drawEntityAIInfo(ctx, entity, time);
+                }
+                return;
             }
 
-            // 2. Draw HPA* Path
-            if (state.path && state.path.length > 0) {
+            // 🌍 [Expert Design] 2. 글로벌 디버그 모드 (Visible All)
+            if (flags.debugAI) {
+                const camera = engine.camera;
+                const margin = 100;
+                const viewX = camera.x - margin;
+                const viewY = camera.y - margin;
+                const viewW = (camera.width / camera.zoom) + margin * 2;
+                const viewH = (camera.height / camera.zoom) + margin * 2;
+
+                const visibleIds = engine.spatialHash.queryRect(viewX, viewY, viewW, viewH);
+                for (const id of visibleIds) {
+                    const entity = em.entities.get(id);
+                    if (entity && entity.components.has('AIState')) {
+                        this._drawEntityAIInfo(ctx, entity, time);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Critical error in AI debug rendering:", e);
+        }
+    }
+
+
+    /** 🎨 개체 하나의 AI 정보를 실제로 그리는 내부 메서드 */
+    _drawEntityAIInfo(ctx, entity, time) {
+        const em = this.engine.entityManager;
+        const state = entity.components.get('AIState');
+        const transform = entity.components.get('Transform');
+        if (!state || !transform) return;
+
+        ctx.save();
+        const { x, y } = transform;
+        const animalComp = entity.components.get('Animal');
+        const isHuman = animalComp?.type === 'human';
+        const themeColor = isHuman ? '#00f2ff' : '#ffffff';
+        const themeRgb = isHuman ? '0, 242, 255' : '255, 255, 255';
+
+        // 1. 🏷️ 행동 모드 텍스트
+        ctx.fillStyle = themeColor;
+        ctx.font = 'bold 9px Inter, Arial';
+        ctx.textAlign = 'center';
+        const modeText = (state.mode || 'Normal').toUpperCase();
+        ctx.fillText(modeText, x, y - 15);
+
+        // 🔍 [Expert Effects] 2. 탐색 범위 시각화
+        let effectiveRange = state.searchRange;
+        if (effectiveRange <= 0 && animalComp) {
+            const type = animalComp.type;
+            if (type === 'human') effectiveRange = 80;
+            else if (animalComp.diet === 'carnivore') effectiveRange = 60;
+            else if (animalComp.diet === 'herbivore') effectiveRange = 40;
+            else if (type === 'bee') effectiveRange = 15;
+            else effectiveRange = 50;
+        } else if (effectiveRange > 300) {
+            effectiveRange = 300;
+        }
+
+        if (effectiveRange > 0) {
+            const isSearching = !state.targetId;
+            ctx.beginPath();
+            ctx.arc(x, y, effectiveRange, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${themeRgb}, ${isSearching ? 0.12 : 0.04})`;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.setLineDash([8, 4]);
+            ctx.lineDashOffset = -time * 0.05;
+            ctx.arc(x, y, effectiveRange, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(${themeRgb}, ${isSearching ? 0.4 : 0.15})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            if (isSearching) {
+                const pulse = (time * 0.001) % 1.0;
                 ctx.beginPath();
-                ctx.strokeStyle = pathColor;
                 ctx.setLineDash([]);
-                ctx.moveTo(x, y);
-                for (let i = state.pathIndex || 0; i < state.path.length; i++) {
+                ctx.arc(x, y, effectiveRange * pulse, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(${themeRgb}, ${0.5 * (1 - pulse)})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // 3. 🎯 타겟 라인 및 경로
+        const target = state.targetId ? em.entities.get(state.targetId) : null;
+        let targetPos = target ? target.components.get('Transform') : null;
+
+        if (!targetPos && state.path && state.path.length > 0) {
+            targetPos = state.path[state.path.length - 1];
+        }
+
+        if (targetPos) {
+            ctx.beginPath();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = isHuman ? 'rgba(0, 242, 255, 0.7)' : 'rgba(255, 255, 255, 0.5)';
+            ctx.setLineDash([5, 5]);
+            ctx.lineDashOffset = -time * 0.01;
+            ctx.moveTo(x, y);
+
+            if (state.path && state.path.length > 0) {
+                for (let i = (state.pathIndex || 0); i < state.path.length; i++) {
                     const wp = state.path[i];
                     ctx.lineTo(wp.x, wp.y);
                 }
-                ctx.stroke();
+            } else {
+                ctx.lineTo(targetPos.x, targetPos.y);
+            }
+            ctx.stroke();
 
-                // Draw Waypoints
-                ctx.fillStyle = pathColor;
-                for (let i = state.pathIndex || 0; i < state.path.length; i++) {
+            if (state.path && state.path.length > 0) {
+                ctx.setLineDash([]);
+                ctx.fillStyle = themeColor;
+                for (let i = (state.pathIndex || 0); i < state.path.length; i++) {
                     const wp = state.path[i];
                     ctx.beginPath();
                     ctx.arc(wp.x, wp.y, 1.5, 0, Math.PI * 2);
@@ -834,80 +918,100 @@ export default class RenderCoordinator extends System {
                 }
             }
 
-            // 3. Draw Abstract Path (HPA* Hierarchical)
-            if (state.abstractPath && state.abstractPath.length > 0) {
+            const rawName = state.targetName || (target ? (target.components.get('Visual')?.type || 'Target') : null);
+            if (targetPos && rawName) {
+                const targetName = String(rawName).toUpperCase();
+                ctx.fillStyle = themeColor;
+                ctx.font = 'bold 10px Inter';
+                ctx.textAlign = 'center';
+                ctx.fillText(targetName, targetPos.x, targetPos.y - 12);
+
+                const crossSize = 5 + Math.sin(time * 0.01) * 2;
                 ctx.beginPath();
-                ctx.strokeStyle = '#4fc3f7';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([2, 2]);
-                ctx.moveTo(x, y);
-                for (let i = state.abstractIndex || 0; i < state.abstractPath.length; i++) {
-                    const node = state.abstractPath[i];
-                    ctx.lineTo(node.x, node.y);
-                }
+                ctx.setLineDash([]);
+                ctx.moveTo(targetPos.x - crossSize, targetPos.y);
+                ctx.lineTo(targetPos.x + crossSize, targetPos.y);
+                ctx.moveTo(targetPos.x, targetPos.y - crossSize);
+                ctx.lineTo(targetPos.x, targetPos.y + crossSize);
+                ctx.strokeStyle = themeColor;
                 ctx.stroke();
             }
         }
-        ctx.restore();
-    }
 
-    /** 🚀 [Expert Design] 플로팅 텍스트 생성 (데미지, 상태창 등) */
-    spawnFloatingText(x, y, text, color = '#ffffff', options = {}) {
-        const t = this.textPool.get();
-        t.x = x;
-        t.y = y;
-        t.text = text;
-        t.color = color;
-        t.vx = options.vx || (Math.random() - 0.5) * 0.5;
-        t.vy = options.vy || -1.5;
-        t.life = options.life || 1.2;
-        t.maxLife = t.life;
-        t.size = options.size || 14;
-        t.alpha = 1.0;
-        t.isScreenSpace = options.isScreenSpace || false;
-
-        this.floatingTexts.push(t);
-    }
-
-    /** 🚀 [Expert Design] 플로팅 텍스트 업데이트 및 렌더링 */
-    updateAndRenderFloatingTexts(ctx, time) {
-        const dt = 0.016; // 대략적인 deltaTime (추후 엔진 dt 연동 고려)
-
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
-            const t = this.floatingTexts[i];
-
-            // 위치 업데이트
-            t.x += t.vx;
-            t.y += t.vy;
-            t.vy += 0.05; // 약간의 중력 효과 또는 감속
-
-            // 수명 및 알파 업데이트
-            t.life -= dt;
-            t.alpha = Math.max(0, t.life / t.maxLife);
-
-            if (t.life <= 0) {
-                this.floatingTexts.splice(i, 1);
-                this.textPool.release(t);
-                continue;
+        // 4. 🔀 추상 경로 (HPA* Hierarchical)
+        if (state.abstractPath && state.abstractPath.length > 0) {
+            ctx.beginPath();
+            ctx.strokeStyle = '#4fc3f7';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 2]);
+            ctx.moveTo(x, y);
+            for (let i = state.abstractIndex || 0; i < state.abstractPath.length; i++) {
+                const node = state.abstractPath[i];
+                ctx.lineTo(node.x, node.y);
             }
-
-            // 그리기
-            ctx.globalAlpha = t.alpha;
-            ctx.font = `bold ${t.size}px "Courier New", monospace`;
-
-            // 텍스트 외곽선 (가독성 향상)
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.lineWidth = 3;
-            ctx.strokeText(t.text, t.x, t.y);
-
-            ctx.fillStyle = t.color;
-            ctx.fillText(t.text, t.x, t.y);
+            ctx.stroke();
         }
 
         ctx.restore();
     }
+
+/** 🚀 [Expert Design] 플로팅 텍스트 생성 (데미지, 상태창 등) */
+spawnFloatingText(x, y, text, color = '#ffffff', options = {}) {
+    const t = this.textPool.get();
+    t.x = x;
+    t.y = y;
+    t.text = text;
+    t.color = color;
+    t.vx = options.vx || (Math.random() - 0.5) * 0.5;
+    t.vy = options.vy || -1.5;
+    t.life = options.life || 1.2;
+    t.maxLife = t.life;
+    t.size = options.size || 14;
+    t.alpha = 1.0;
+    t.isScreenSpace = options.isScreenSpace || false;
+
+    this.floatingTexts.push(t);
+}
+
+/** 🚀 [Expert Design] 플로팅 텍스트 업데이트 및 렌더링 */
+updateAndRenderFloatingTexts(ctx, time) {
+    const dt = 0.016; // 대략적인 deltaTime (추후 엔진 dt 연동 고려)
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+        const t = this.floatingTexts[i];
+
+        // 위치 업데이트
+        t.x += t.vx;
+        t.y += t.vy;
+        t.vy += 0.05; // 약간의 중력 효과 또는 감속
+
+        // 수명 및 알파 업데이트
+        t.life -= dt;
+        t.alpha = Math.max(0, t.life / t.maxLife);
+
+        if (t.life <= 0) {
+            this.floatingTexts.splice(i, 1);
+            this.textPool.release(t);
+            continue;
+        }
+
+        // 그리기
+        ctx.globalAlpha = t.alpha;
+        ctx.font = `bold ${t.size}px "Courier New", monospace`;
+
+        // 텍스트 외곽선 (가독성 향상)
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(t.text, t.x, t.y);
+
+        ctx.fillStyle = t.color;
+        ctx.fillText(t.text, t.x, t.y);
+    }
+
+    ctx.restore();
+}
 }

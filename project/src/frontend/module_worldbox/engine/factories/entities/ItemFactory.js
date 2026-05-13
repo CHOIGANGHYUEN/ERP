@@ -45,18 +45,7 @@ export default class ItemFactory extends IEntityFactory {
 
         // 🏷️ [Final Identification] 설정 우선, 없으면 타입 기반 추론, 그마저도 없으면 'resource'
         const displayName = config?.name || type || 'Unknown Item';
-        
-        let category = config?.type;
-        if (!category) {
-            if (lowerType.includes('wood') || lowerType.includes('tree') || lowerType.includes('log')) category = 'wood';
-            else if (lowerType.includes('grass') || lowerType.includes('pasture') || lowerType.includes('hay')) category = 'grass';
-            else if (lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('shrub') || lowerType.includes('leaf')) category = 'plant';
-            else if (lowerType.includes('meat')) category = 'food';
-            else if (lowerType.includes('food') || lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('bread')) category = 'food';
-            else if (lowerType.includes('stone') || lowerType.includes('rock') || lowerType.includes('ore') || lowerType.includes('mineral')) category = 'mineral';
-            else category = 'resource';
-        }
-        
+        const category = this._getItemCategory(type, config);
         const finalDecayTime = config?.decayTime || options.decayTime || 600;
 
         builder.withTransform(x, y)
@@ -75,10 +64,6 @@ export default class ItemFactory extends IEntityFactory {
             return null;
         }
 
-        // 🚀 [Optimization] 공간 해시에 즉시 등록 (God Power 등으로 이동할 수 있으므로 Static으로 등록하여 매 프레임 초기화 방지)
-        if (this.engine.spatialHash) {
-            this.engine.spatialHash.insert(id, x, y, true);
-        }
 
         return Number(id);
     }
@@ -90,20 +75,25 @@ export default class ItemFactory extends IEntityFactory {
 
         const MAX_STACK = 30; // 📦 [User Request] 한 곳에 너무 몰리지 않도록 최대 스택 제한
 
-        // 1. 🔍 주변 아이템 검색 (병합 최적화)
+        // 1. 🔍 주변 아이템 검색 (카테고리 기반 병합 최적화)
         if (this.engine.spatialHash) {
-            const nearbyIds = this.engine.spatialHash.query(jX, jY, 8); // 탐색 반경 축소 (20 -> 8) 하여 과도한 뭉침 방지
+            // 🚀 [Expert AI] itemType이 아닌 'category' 기반으로 병합하여 경제 흐름 압축
+            const category = this._getItemCategory(itemType);
+            const nearbyIds = this.engine.spatialHash.query(jX, jY, 15); 
             for (const id of nearbyIds) {
                 const ent = this.engine.entityManager.entities.get(id);
                 const drop = ent?.components.get('DroppedItem');
 
-                // 같은 타입, 같은 마을 소속이고 아직 최대 스택에 도달하지 않은 아이템만 병합
-                if (drop && drop.itemType === itemType && drop.villageId === villageId && drop.amount < MAX_STACK) {
+                // 🏷️ [Batching Rule] 동일 카테고리, 동일 마을 소속이면 묶음(Bundle)으로 통합
+                if (drop && drop.category === category && drop.villageId === villageId && drop.amount < MAX_STACK) {
                     // 병합 성공!
                     drop.merge(amount);
 
                     const visual = ent.components.get('Visual');
-                    if (visual) visual.size = 2 + Math.min(drop.amount * 0.1, 2);
+                    if (visual) {
+                        // 📦 시각적 크기는 스택 양에 따라 조절하되, 렌더러에서 분산 그리기를 유도함
+                        visual.size = 8 + Math.min(drop.amount * 0.2, 12);
+                    }
 
                     return id;
                 }
@@ -112,5 +102,23 @@ export default class ItemFactory extends IEntityFactory {
 
         // 2. 🆕 병합할 대상이 없으면 새로 생성 (편차가 적용된 위치에)
         return this.create(itemType, jX, jY, { amount, villageId });
+    }
+
+    /** 🏷️ [Expert Utility] 아이템 타입 기반 카테고리 판별 */
+    _getItemCategory(type, config = null) {
+        const lowerType = type.toLowerCase();
+        const resConfig = config || this.engine.resourceConfig[type] || {};
+        
+        let category = resConfig.type;
+        if (!category) {
+            if (lowerType.includes('wood') || lowerType.includes('tree') || lowerType.includes('log')) category = 'wood';
+            else if (lowerType.includes('grass') || lowerType.includes('pasture') || lowerType.includes('hay')) category = 'grass';
+            else if (lowerType.includes('flower') || lowerType.includes('plant') || lowerType.includes('shrub') || lowerType.includes('leaf')) category = 'plant';
+            else if (lowerType.includes('meat')) category = 'food';
+            else if (lowerType.includes('food') || lowerType.includes('fruit') || lowerType.includes('berry') || lowerType.includes('bread') || lowerType.includes('wheat') || lowerType.includes('grain') || lowerType.includes('corn') || lowerType.includes('crop')) category = 'food';
+            else if (lowerType.includes('stone') || lowerType.includes('rock') || lowerType.includes('ore') || lowerType.includes('mineral')) category = 'mineral';
+            else category = 'resource';
+        }
+        return category;
     }
 }
