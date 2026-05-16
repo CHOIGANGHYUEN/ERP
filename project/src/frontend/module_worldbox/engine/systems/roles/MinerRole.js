@@ -32,9 +32,9 @@ export default class MinerRole extends BaseRole {
         }
 
         // 이미 유효한 광석 타겟이 있으면 유지
-        if (state.mode === 'gather_stone' && state.targetId) {
+        if (state.mode === 'job_miner' && state.targetId) {
             const tgt = this.em.entities.get(state.targetId);
-            if (tgt) return 'gather_stone';
+            if (tgt) return 'job_miner';
             state.targetId = null;
         }
 

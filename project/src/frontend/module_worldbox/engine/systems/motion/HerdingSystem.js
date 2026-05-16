@@ -1,6 +1,13 @@
 import { AnimalStates } from '../../components/behavior/State.js';
+import SpatialLODManager from './lod/SpatialLODManager.js';
+import FlockingSolver from './physics/FlockingSolver.js';
 
-export default class SocialSystem {
+/**
+ * 🐏 HerdingSystem
+ * 동물 개체들의 무리(Herd) 형성 및 사회적 행동(Boids, Leader Following)을 관리합니다.
+ * 리팩토링을 통해 복잡한 연산 및 LOD 판별 로직을 lod/ 및 physics/ 모듈로 분리하였습니다.
+ */
+export default class HerdingSystem {
     constructor(engine) {
         this.engine = engine;
         this.herds = new Map(); // herdId -> [entityId, ...]
@@ -10,7 +17,7 @@ export default class SocialSystem {
     update(dt) {
         const em = this.engine.entityManager;
 
-        // 1. Cleanup dead members
+        // 1. [Maintenance] 죽은 멤버 제거 및 무리 데이터 청소
         for (const [hId, members] of this.herds) {
             const alive = members.filter(mid => em.entities.has(mid));
             if (alive.length === 0) {
@@ -21,13 +28,18 @@ export default class SocialSystem {
         }
 
         const camera = this.engine?.camera;
-        const viewW = camera ? (this.engine.width / camera.zoom) + 100 : 0;
-        const viewH = camera ? (this.engine.height / camera.zoom) + 100 : 0;
-        const viewX = camera ? camera.x - 50 : 0;
-        const viewY = camera ? camera.y - 50 : 0;
+        if (!camera) return;
+
+        // 🚀 [Expert Optimization] 카메라 가시 영역 데이터 캡슐화
+        const view = {
+            x: camera.x - 50,
+            y: camera.y - 50,
+            w: (this.engine.width / camera.zoom) + 100,
+            h: (this.engine.height / camera.zoom) + 100
+        };
         const frameCount = this.engine.frameCount || 0;
 
-        // 2. Assign herds & apply flocking (동물 개체만 선별하여 처리)
+        // 2. [Social Logic] 동물 개체별 무리 형성 및 상태 전파
         for (const id of em.animalIds) {
             const entity = em.entities.get(id);
             if (!entity) continue;
@@ -35,33 +47,23 @@ export default class SocialSystem {
             const animal = entity.components.get('Animal');
             const transform = entity.components.get('Transform');
             
-            // 👤 인간은 사회적 무리(flocking) 로직에서 제외하여 독립성 보장
+            // 👤 인간은 독립적 행동을 하므로 사회적 무리 연산에서 제외
             if (animal && animal.type === 'human') continue;
 
             if (animal && transform) {
-                // 🚀 [Expert Optimization] 가시성 및 거리에 따른 극단적 업데이트 빈도 조절
-                const isVisible = transform.x >= viewX && transform.x <= viewX + viewW &&
-                                   transform.y >= viewY && transform.y <= viewY + viewH;
-                
-                if (!isVisible) {
-                    const centerX = viewX + viewW / 2;
-                    const centerY = viewY + viewH / 2;
-                    const dist = Math.abs(transform.x - centerX) + Math.abs(transform.y - centerY);
-                    const isFar = dist > (viewW + viewH) * 2; 
-                    
-                    // 원거리는 허딩 연산 자체를 완전히 생략 (O(N^2) 폭주 방지)
-                    if (isFar) continue;
-                    
-                    // 근거리 화면 밖은 15프레임(약 4FPS)당 1번만 허딩 계산
-                    if ((id + frameCount) % 15 !== 0) continue;
-                }
+                // 🚀 [Spatial LOD] 원거리 개체는 허딩 연산을 완전히 생략하여 O(N^2) 부하 방지
+                if (SpatialLODManager.shouldSkipHerding(id, transform.x, transform.y, view, frameCount)) continue;
 
+                // 무리 할당 및 리더 추종 상태 동기화 (전략 객체 위임)
                 this.maintainHerd(id, animal);
-                this.applyFlocking(id, animal, transform, dt);
+                FlockingSolver.updateHerdStatus(id, animal, this.herds, em);
+                
+                // 🕊️ [Boids Integration] 필요 시 여기서 FlockingSolver.resolveBoids(id, ...) 호출 가능
             }
         }
     }
 
+    /** 🐏 [Maintenance] 종족별 무리 크기 제한 및 서열(Rank)에 따른 리더 선출 */
     maintainHerd(id, animal) {
         const config = this.engine.speciesConfig[animal.type] || {};
         const limit = config.herdLimit || 20;
@@ -72,10 +74,11 @@ export default class SocialSystem {
                 if (members.length < limit && members.length > 0) {
                     const em = this.engine.entityManager;
                     const leaderAnimal = em.entities.get(members[0])?.components.get('Animal');
-                    // 같은 종족끼리만 무리를 형성하도록 체크
+                    
+                    // 같은 종족끼리만 무리 형성
                     if (leaderAnimal && leaderAnimal.type === animal.type) {
                         members.push(id);
-                        // 🐺 서열(Rank)에 따른 무리 내림차순 정렬 (가장 쎈 개체가 0번 인덱스 리더가 됨)
+                        // 🐺 서열(Rank) 기반 정렬: 가장 강한 개체가 0번 인덱스(리더)가 됨
                         members.sort((a, b) => {
                             const rankA = em.entities.get(a)?.components.get('Animal')?.rank || 0;
                             const rankB = em.entities.get(b)?.components.get('Animal')?.rank || 0;
@@ -94,59 +97,5 @@ export default class SocialSystem {
                 animal.herdId = newId;
             }
         }
-    }
-
-    applyFlocking(myId, animal, transform, dt) {
-        const members = this.herds.get(animal.herdId);
-        if (!members || members.length <= 1) return;
-
-        const em = this.engine.entityManager;
-        const myState = em.entities.get(myId)?.components.get('AIState');
-
-        // 🛑 [Expert Update] IDLE 상태인 개체는 무리 이동 로직을 적용하지 않음 (완전 정지 보장)
-        if (myState && myState.mode === AnimalStates.IDLE) {
-            return;
-        }
-
-        // 무리의 첫 번째 멤버를 리더로 지정 (죽으면 다음 멤버가 자동으로 리더가 됨)
-        const leaderId = members[0];
-
-        // 인간(human)은 무리 추종 로직에서 제외 (각자 독립적 행동)
-        const animalComp = em.entities.get(myId)?.components.get('Animal');
-        if (animalComp && animalComp.type === 'human') return;
-
-        // 자신이 리더라면 누군가를 따라갈 필요 없이 자유롭게 배회함
-        if (myId === leaderId) return;
-
-        const leaderEntity = em.entities.get(leaderId);
-        const leaderTransform = leaderEntity?.components.get('Transform');
-        if (!leaderTransform) return;
-
-        // 리더의 AI 상태를 확인하여 위급 상황(flee) 전파
-        const leaderState = leaderEntity.components.get('AIState');
-
-        if (leaderState && myState) {
-            if (leaderState.mode === 'flee' && myState.mode !== 'flee') {
-                myState.mode = 'flee';
-                myState.targetId = leaderState.targetId; // 포식자 정보 공유
-            } else if (leaderState.mode === 'wander' && myState.mode === 'flee') {
-                myState.mode = 'wander';
-                myState.targetId = null;
-            }
-        }
-
-        const stats = em.entities.get(myId)?.components.get('BaseStats');
-
-        // 🥗 [Survival Priority] 식사 중이거나, 먹이를 찾는 중이거나, 허기가 임계치(60) 이하인 경우 무리 로직 차단
-        const isSearchingFood = myState && (myState.mode === AnimalStates.EAT || myState.mode === AnimalStates.FORAGE || myState.mode === AnimalStates.HUNT);
-        const isHungry = stats && stats.hunger < 60;
-
-        if (isSearchingFood || isHungry) {
-            return;
-        }
-
-        // 🛑 [Legacy Cleanup] Pathfinder 없이 속도를 직접 조작하던 로직 제거
-        // 이제 모든 배회 및 이동은 WanderState 등에서 Pathfinder를 통해 정식으로 수행됩니다.
-        return;
     }
 }

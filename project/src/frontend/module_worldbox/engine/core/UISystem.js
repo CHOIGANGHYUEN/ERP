@@ -524,6 +524,12 @@ export default class UISystem extends System {
                 type: task.type,
                 priority: task.priority
             };
+        } else if (isChief && stateComp && stateComp.mode && stateComp.mode.startsWith('chief_')) {
+            currentTask = {
+                id: 'chief_duty',
+                type: stateComp.mode,
+                priority: 100 // 촌장의 임무는 항상 최우선권으로 표시
+            };
         }
 
         let fertility = s ? (s.storedFertility || 0) : (m?.storedFertility || r?.storedFertility || 0);

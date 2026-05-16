@@ -55,12 +55,13 @@ export default class ConstructionSystem extends System {
 
             const targetPos = target.components.get('Transform');
             if (targetPos) {
+                const isRoad = ['road', 'dirt_road', 'stone_road'].includes(structure.type);
                 // 1. 지형 및 점유 업데이트 (에러 발생 시 로그만 출력)
                 try {
                     if (this.engine.terrainGen) {
-                        this.engine.terrainGen.setOccupancy(targetPos.x, targetPos.y, 2);
+                        this.engine.terrainGen.setOccupancy(targetPos.x, targetPos.y, isRoad ? 0 : 2);
                         // 건설 완료 시 해당 자리 비옥도 초기화 (건물 부지)
-                        if (typeof this.engine.terrainGen.setFertility === 'function') {
+                        if (!isRoad && typeof this.engine.terrainGen.setFertility === 'function') {
                             this.engine.terrainGen.setFertility(targetPos.x, targetPos.y, 0);
                         }
                     }

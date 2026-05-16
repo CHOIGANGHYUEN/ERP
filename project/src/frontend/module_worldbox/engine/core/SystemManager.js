@@ -27,11 +27,23 @@ import EmotionSystem from '../systems/lifecycle/EmotionSystem.js';
 import VillageSystem from '../systems/civilization/VillageSystem.js';
 import ConstructionSystem from '../systems/civilization/ConstructionSystem.js';
 import FenceSystem from '../systems/civilization/FenceSystem.js';
+import RoadNetworkSystem from '../systems/civilization/RoadNetworkSystem.js';
 import ZoneManager from '../systems/civilization/ZoneManager.js';
 import Blackboard from '../systems/behavior/Blackboard.js';
 import TargetManager from '../systems/behavior/TargetManager.js';
 import EconomyManager from '../systems/economy/EconomyManager.js';
 import GodPowerSystem from '../systems/god/GodPowerSystem.js';
+
+// 🚀 Village Sub-Systems
+import VillageRecruitmentSystem from '../systems/civilization/village_modules/VillageRecruitmentSystem.js';
+import VillagePlanningSystem from '../systems/civilization/village_modules/VillagePlanningSystem.js';
+import VillageEconomySystem from '../systems/civilization/village_modules/VillageEconomySystem.js';
+
+// 🚀 Nation Sub-Systems
+import NationDiplomacySystem from '../systems/civilization/nation_modules/NationDiplomacySystem.js';
+import NationMilitarySystem from '../systems/civilization/nation_modules/NationMilitarySystem.js';
+import NationPoliticsSystem from '../systems/civilization/nation_modules/NationPoliticsSystem.js';
+import NationEconomySystem from '../systems/civilization/nation_modules/NationEconomySystem.js';
 
 export default class SystemManager {
     constructor(engine) {
@@ -57,7 +69,17 @@ export default class SystemManager {
         this.deathProcessor = new DeathProcessor(em, eb, engine);
         this.herding = new HerdingSystem(engine);
         this.social = new SocialSystem(em, eb, engine);
+        
+        // 🚩 Nation & Its Sub-Systems
         this.nationSystem = new NationSystem(em, eb, engine);
+        this.nationDiplomacy = new NationDiplomacySystem(em, eb, engine, this.nationSystem);
+        this.nationMilitary = new NationMilitarySystem(em, eb, engine, this.nationSystem);
+        this.nationPolitics = new NationPoliticsSystem(em, eb, engine, this.nationSystem);
+        this.nationEconomy = new NationEconomySystem(em, eb, engine, this.nationSystem);
+        
+        // Dependency Injection
+        this.nationSystem.setSubSystems(this.nationDiplomacy, this.nationMilitary, this.nationPolitics, this.nationEconomy);
+
         this.gathering = new GatheringSystem(em, eb, engine);
         this.consumption = new ConsumptionSystem(em, eb, engine);
         this.metabolism = new MetabolismSystem(em, eb, engine, tg);
@@ -70,8 +92,16 @@ export default class SystemManager {
         this.livestock = new LivestockSystem(em, eb, engine);
         this.emotion = new EmotionSystem(em, eb);
         this.villageSystem = new VillageSystem(em, eb, engine);
+        this.villageRecruitment = new VillageRecruitmentSystem(em, eb, engine, this.villageSystem);
+        this.villagePlanning = new VillagePlanningSystem(em, eb, engine, this.villageSystem);
+        this.villageEconomy = new VillageEconomySystem(em, eb, engine, this.villageSystem);
+        
+        // Dependency Injection
+        this.villageSystem.setSubSystems(this.villageRecruitment, this.villagePlanning, this.villageEconomy);
+
         this.construction = new ConstructionSystem(em, eb, engine);
         this.fenceSystem = new FenceSystem(em, eb, engine);
+        this.roadNetwork = new RoadNetworkSystem(em, eb, engine);
         this.zoneManager = new ZoneManager(engine);
 
         // 🧠 Central Dispatch & Economy
@@ -136,7 +166,14 @@ export default class SystemManager {
             if (frameCount % 5 === 0) {
                 const dt5 = dt * 5;
                 this.social.update(dt5, time);
+                
+                // 🚩 Nation Sub-Systems Update
+                this.nationPolitics.update(dt5);
+                this.nationEconomy.update(dt5);
+                this.nationDiplomacy.update(dt5);
+                this.nationMilitary.update(dt5);
                 this.nationSystem.update(dt5, time);
+
                 this.gathering.update(dt5, time);
                 this.consumption.update(dt5);
             }
@@ -144,9 +181,13 @@ export default class SystemManager {
                 const dt5 = dt * 5;
                 this.farming.update(dt5, time);
                 this.livestock.update(dt5, time);
+                this.villageRecruitment.update(dt5);
+                this.villageEconomy.update(dt5);
+                this.villagePlanning.update(dt5);
                 this.villageSystem.update(dt5, time);
                 this.construction.update(dt5, time);
                 this.fenceSystem.update(dt5);
+                this.roadNetwork.update(dt5, time);
                 this.spawner.update(dt5, time);
                 this.zoneManager.update(dt5);
             }

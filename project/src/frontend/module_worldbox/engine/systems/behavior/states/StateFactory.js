@@ -6,6 +6,7 @@ import EatState from './EatState.js';
 import SleepState from './SleepState.js';
 import FleeState from './FleeState.js';
 import GatherWoodState from './GatherWoodState.js';
+import GatherStoneState from './GatherStoneState.js';
 import GatherPlantState from './GatherPlantState.js';
 import BuildState from './BuildState.js';
 import DepositState from './DepositState.js';
@@ -19,6 +20,13 @@ import GrazeState from './GrazeState.js';
 import GrabbedState from './GrabbedState.js';
 import PickupState from './PickupState.js';
 import WithdrawState from './WithdrawState.js';
+import ChiefSurveyState from './roles/ChiefSurveyState.js';
+import ChiefExpandState from './roles/ChiefExpandState.js';
+import ChiefInspectState from './roles/ChiefInspectState.js';
+import ChiefPatrolState from './roles/ChiefPatrolState.js';
+import EmergencyWorkingState from './roles/EmergencyWorkingState.js';
+import ChiefSpeechState from './roles/ChiefSpeechState.js';
+import ChiefDispatchState from './roles/ChiefDispatchState.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 
 export default class StateFactory {
@@ -39,7 +47,7 @@ export default class StateFactory {
         this.states.set(AnimalStates.EVADE, this.states.get(AnimalStates.FLEE));
         this.states.set(AnimalStates.PICKUP, new PickupState(system));
         this.states.set('gather_wood', new GatherWoodState(system));
-        this.states.set('gather_stone', new GatherWoodState(system));
+        this.states.set('gather_stone', new GatherStoneState(system));
         this.states.set('gather_plant', new GatherPlantState(system));
         this.states.set('build', new BuildState(system));
         this.states.set('deposit', new DepositState(system));
@@ -57,6 +65,13 @@ export default class StateFactory {
         
         this.states.set('job_transporter', new TransporterState(system));
         this.states.set('wait_target', new WaitForTargetState(system));
+        this.states.set('chief_survey', new ChiefSurveyState(system));
+        this.states.set('chief_expand', new ChiefExpandState(system));
+        this.states.set('chief_inspect', new ChiefInspectState(system));
+        this.states.set('chief_patrol', new ChiefPatrolState(system));
+        this.states.set('chief_emergency', new EmergencyWorkingState(system));
+        this.states.set('chief_speech', new ChiefSpeechState(system));
+        this.states.set('chief_dispatch', new ChiefDispatchState(system));
         this.states.set(AnimalStates.GRABBED, new GrabbedState(system));
     }
 

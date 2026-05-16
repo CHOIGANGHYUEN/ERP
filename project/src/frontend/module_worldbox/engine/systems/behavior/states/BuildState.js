@@ -1,6 +1,7 @@
 import State from './State.js';
 import { AnimalStates } from '../../../components/behavior/State.js';
 import Pathfinder from '../../../utils/Pathfinder.js';
+import BlueprintRegistry from '../../../data/BlueprintRegistry.js';
 
 /**
  * 🔨 BuildState
@@ -67,22 +68,13 @@ export default class BuildState extends State {
 
             // 🚀 [Construction Logic] 건설 진행도 업데이트
             if (inventory) {
-                // 건물별 요구 자원 결정
-                let requiredType = 'wood';
                 const type = structure.type;
                 const prog = structure.progress || 0;
 
-                if (type === 'house') { if (prog > 50) requiredType = 'stone'; }
-                else if (type === 'well' || type === 'temple') { requiredType = 'stone'; }
-                else if (type === 'blacksmith') { requiredType = prog > 40 ? 'iron_ore' : 'stone'; }
-                else if (type === 'watchtower') { requiredType = 'stone'; }
-                else if (type === 'warehouse' || type === 'storage') { requiredType = 'wood'; }
-                else if (type === 'fence') {
-                    const fenceComp = blueprint.components.get('Fence');
-                    requiredType = fenceComp?.material === 'stone' ? 'stone' : 'wood';
-                }
+                // 🏗️ [BlueprintRegistry] 현재 진행도에 맞는 필요 자원 결정 (ArchitectRole과 로직 동기화)
+                const requiredType = BlueprintRegistry.getRequiredResource(type, prog);
 
-                if (inventory.has(requiredType, 1)) {
+                if (inventory.items[requiredType] >= 1) {
                     const builderComp = entity.components.get('Builder');
                     const buildSpeed = builderComp ? (builderComp.buildSpeed || 15) : 15;
                     const progressPerTick = buildSpeed * dt;
@@ -90,12 +82,11 @@ export default class BuildState extends State {
                     state._buildProgressCounter = (state._buildProgressCounter || 0) + progressPerTick;
                     
                     if (state._buildProgressCounter >= 10) {
-                        if (inventory.consume(requiredType, 1)) {
-                            structure.progress = Math.min(structure.maxProgress, (structure.progress || 0) + 10);
-                            state._buildProgressCounter = 0; // Reset counter after consuming
-                            
-                            // 완공 체크
-                            if (structure.progress >= structure.maxProgress) {
+                        const rt = this.system.engine.systemManager?.villageSystem?.resourceTransaction;
+                        if (rt && rt.deposit(entity, blueprintId, requiredType, 1)) {
+                            // 완공 체크 (deposit 내부에서 progress를 올려줌)
+                            state._buildProgressCounter = 0;
+                            if (structure.isComplete) {
                                 const constructionSystem = this.system.engine.systemManager?.construction;
                                 if (constructionSystem) {
                                     constructionSystem.finalizeBuilding(blueprint, blueprintId, structure);
@@ -113,7 +104,6 @@ export default class BuildState extends State {
                     state.targetId = null;
                     return AnimalStates.IDLE;
                 }
-
             }
 
             state.animTimer = (state.animTimer || 0) + dt;

@@ -5,6 +5,8 @@ import StateFactory from './states/StateFactory.js';
 import FoodSensor from './sensors/FoodSensor.js';
 import ZoneSensor from './sensors/ZoneSensor.js';
 import RoleFactory from '../roles/RoleFactory.js';
+import JobStateSynchronizer from './jobs/JobStateSynchronizer.js';
+import JobExecutionValidator from './jobs/JobExecutionValidator.js';
 import { JobTypes } from '../../config/JobTypes.js';
 import Pathfinder from '../../utils/Pathfinder.js';
 
@@ -17,11 +19,16 @@ export default class HumanBehaviorSystem extends System {
         super(entityManager, eventBus);
         this.engine = engine;
         this.spatialHash = spatialHash;
-        this.humanBrain = new HumanBrain(this.entityManager, this.eventBus, this.engine, this.spatialHash);
         this.stateFactory = new StateFactory(this);
         this.foodSensor = new FoodSensor(this.entityManager, this.spatialHash);
         this.zoneSensor = new ZoneSensor(this.engine);
         this.roleFactory = new RoleFactory(this);
+        
+        // 🔄 [Atomic Sync] 직업 상태 동기화 관리자
+        this.jobSynchronizer = new JobStateSynchronizer(this.entityManager, this.roleFactory);
+        this.jobValidator = new JobExecutionValidator(this.entityManager, this.engine);
+        
+        this.humanBrain = new HumanBrain(this.entityManager, this.eventBus, this.engine, this.spatialHash, this.jobSynchronizer);
     }
 
     update(dt, time) {
@@ -84,6 +91,9 @@ export default class HumanBehaviorSystem extends System {
                 // 🧠 [Stable AI Transition] 브레인은 '권장' 상태만 제안함 (직접 주입하지 않음)
                 const suggestedMode = this.humanBrain.decide(entity, state, stats, emotion, inventory, effectiveDt);
                 
+                // 🕵️ [Validation] 직무 수행 상태 검증
+                this.jobValidator.validate(id, entity, effectiveDt);
+
                 // 🛑 [Blacklist Maintenance] 도달 불가능 타겟 주기적 정리 (만료된 항목 제거)
                 state.pruneBlacklist();
 
@@ -154,6 +164,24 @@ export default class HumanBehaviorSystem extends System {
         const currentHandler = this.stateFactory.getState(state.mode);
         if (currentHandler && currentHandler.exit) currentHandler.exit(id, entity);
 
+        // 🔄 [Job Resumption] 생존 욕구(EAT, SLEEP 등) 해결 후 원래 작업으로 복구
+        if (nextMode === AnimalStates.IDLE) {
+            const jobCtrl = entity.components.get('JobController');
+            if (jobCtrl && jobCtrl.jobState === 'INTERRUPTED') {
+                const preserved = jobCtrl.resumeJob();
+                if (preserved && preserved.targetId) {
+                    state.targetId = preserved.targetId;
+                    
+                    // 💾 [Path Restoration] 보존된 경로가 있다면 복구 시도
+                    if (preserved.data && preserved.data.lastPath) {
+                        state.path = preserved.data.lastPath;
+                        state.pathIndex = preserved.data.pathIndex || 0;
+                        GlobalLogger.info(`📂 [JobSync] Entity ${id} resumed task at target ${state.targetId}`);
+                    }
+                }
+            }
+        }
+
         // 🧹 상태 데이터 초기화
         state.isTargetRequested = false;
         state.targetRequestFailed = false;
@@ -175,7 +203,8 @@ export default class HumanBehaviorSystem extends System {
             AnimalStates.EAT, AnimalStates.PICKUP, AnimalStates.ATTACK, 
             'build', 'deposit', 'withdraw',
             'gather_wood', 'gather_plant', 'gather_stone',
-            AnimalStates.FORAGE, AnimalStates.HUNT
+            AnimalStates.FORAGE, AnimalStates.HUNT,
+            'chief_inspect', 'chief_dispatch', 'chief_speech'
         ].includes(nextMode) || nextMode.startsWith('job_');
 
         if (!preservesTarget) state.targetId = null;

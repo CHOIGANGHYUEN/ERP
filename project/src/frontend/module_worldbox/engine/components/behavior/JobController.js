@@ -1,4 +1,5 @@
 import { JobTypes as GlobalJobTypes } from '../../config/JobTypes.js';
+import JobTaskContext from '../../systems/behavior/jobs/JobTaskContext.js';
 
 // 🚀 [DOD Mapping] 문자열 JobType을 Buffer용 인덱스로 변환
 const JobTypeToIndex = {
@@ -16,19 +17,21 @@ const JobTypeToIndex = {
     [GlobalJobTypes.CARPENTER]: 11
 };
 
-export const JobStates = {
-    'IDLE': 0, 'SEARCHING': 1, 'MOVING': 2, 'WORKING': 3, 
-    'MINING': 4, 'FARMING': 5, 'FIGHTING': 6, 'PATROLLING': 7
-};
+import { JobExecutionStates, JobStateToIndex } from '../../systems/behavior/jobs/JobStateDefinitions.js';
+
+export const JobStates = JobStateToIndex;
 
 export default class JobController {
     constructor() {
         this._currentJob = GlobalJobTypes.UNEMPLOYED;
         this.zoneId = null;
         this._jobState = 'IDLE';
-        this.data = {}; // 📦 직업별 고유 데이터 저장 (타이머, 타겟 보존 등)
-        this.equipment = null; // 직업 관련 도구 참조 등
-        this.lastJobSwitchTime = Date.now(); // ⏱️ 마지막 직업 변경 시간
+        
+        // 💾 [Context Persistence] 진행 중인 작업 정보 보존용
+        this.context = new JobTaskContext();
+        this._contextStack = []; // 나중에 복잡한 인터럽트 구조를 위해 스택 준비
+        
+        this.lastJobSwitchTime = Date.now(); 
 
         this._buffer = null;
         this._index = -1;
@@ -65,46 +68,69 @@ export default class JobController {
     assignJob(jobType, zoneId = null) {
         if (this.currentJob === jobType) return;
 
-        // 직업 변경 시 상태 초기화
-        this.interrupt();
+        // 직업 완전 변경 시 기존 컨텍스트 폐기
+        this.context.clear();
+        this._contextStack = [];
 
         this.currentJob = jobType;
         this.zoneId = zoneId;
-        this.jobState = 'IDLE'; // Job 내부 세부 상태
-        this.data = {}; // 초기화
+        this.jobState = 'IDLE';
         this.lastJobSwitchTime = Date.now();
+        this.context.jobType = jobType;
+    }
+
+    /** ⏸️ 생존을 위해 작업을 일시 중단 (데이터 보존) */
+    pauseJob(targetId, currentData = {}) {
+        this.context.save(targetId, currentData);
+        this.jobState = 'INTERRUPTED';
+    }
+
+    /** ▶️ 중단되었던 작업으로 복귀 */
+    resumeJob() {
+        if (this.jobState === 'INTERRUPTED') {
+            this.jobState = 'IDLE'; // 다시 업무 모드로 전환
+            return this.context.load();
+        }
+        return null;
     }
 
     interrupt() {
-        this.equipment = null;
+        // 기존의 파괴적인 interrupt 대신 안전한 초기화로 변경
         this.jobState = 'IDLE';
-        this.data = {}; // 진행 중이던 직업 내부 데이터 증발
-    }
-
-    setData(key, value) {
-        this.data[key] = value;
-    }
-
-    getData(key) {
-        return this.data[key];
+        // 직업이 바뀌지 않는 한 context는 유지하여 재도전 가능하게 함
     }
 
     /**
-     * 🆘 생존 욕구(허기, 피로 등) 발생 시 현재 작업을 중단하고 생존 상태를 주입합니다.
+     * 🆘 생존 욕구 발생 시 현재 작업을 안전하게 일시 정지하고 상태 주입
      */
     requestSurvivalInterrupt(entity, needMode) {
         const aiState = entity.components.get('AIState');
         if (aiState && aiState.mode !== needMode) {
-            // 현재 작업의 세부 상태는 IDLE로 돌려놓고 (나중에 돌아올 때를 대비)
-            this.jobState = 'IDLE';
-            // AI 본체에 생존 상태 강제 주입 (이전 상태는 스택에 저장됨)
+            // 현재 타겟과 데이터를 저장하고 INTERRUPTED 상태로 전환
+            this.pauseJob(aiState.targetId, {
+                lastPath: aiState.path,
+                pathIndex: aiState.pathIndex
+            });
+            
+            // AI 본체에 생존 상태 강제 주입
             aiState.pushMode(needMode);
         }
     }
 
     clearJob() {
-        this.currentJob = null;
+        this.currentJob = GlobalJobTypes.UNEMPLOYED;
         this.zoneId = null;
-        this.interrupt();
+        this.context.clear();
+        this._contextStack = [];
+        this.jobState = 'IDLE';
+    }
+
+    /** 🏷️ 직업별 임시 데이터 접근 (타이머, 스택 등) */
+    getData(key) {
+        return this.context.customData[key];
+    }
+
+    setData(key, value) {
+        this.context.customData[key] = value;
     }
 }

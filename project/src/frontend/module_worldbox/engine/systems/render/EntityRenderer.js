@@ -5,6 +5,7 @@ import { TreeRenderer } from '../../objects/renders/nature/TreeRenderer.js';
 import { BuildRender } from '../../objects/renders/BuildRender.js';
 import FenceRenderer from '../../objects/renders/building/FenceRenderer.js';
 import { ItemRenderer } from '../../objects/renders/ItemRenderer.js';
+import JobVisualRenderer from './jobs/JobVisualRenderer.js';
 import { textureManager } from './TextureManager.js';
 
 /**
@@ -21,6 +22,8 @@ export default class EntityRenderer {
         this.silhouetteCanvas.width = 64;
         this.silhouetteCanvas.height = 64;
         this.silhouetteCtx = this.silhouetteCanvas.getContext('2d');
+
+        this.jobVisualRenderer = new JobVisualRenderer(engine);
     }
 
     // (Shadow sprite is now handled by textureManager)
@@ -206,6 +209,8 @@ export default class EntityRenderer {
 
             if (isAnimal) {
                 this.renderAnimal(entity, ctx, time, isHighDetail);
+                // 🛠️ [Step 32] 직업별 추가 시각 효과 (도구 등)
+                this.jobVisualRenderer.draw(ctx, entity, state, entity.components.get('Transform'), entity.components.get('JobController'), camera.zoom);
             } else if (type === 'fence') {
                 FenceRenderer.draw(ctx, entity, time);
             } else {
@@ -443,19 +448,21 @@ export default class EntityRenderer {
     drawBuildingCached(ctx, t, v, structure, time) {
         const size = v.size || 30;
         const type = v.subtype || 'default';
+        const alpha = v.alpha !== undefined ? v.alpha : 1.0;
         
-        // 1. 캐시 키 생성 (청사진인 경우 진행도 포함)
-        const progress = structure ? Math.floor(structure.progress / (structure.maxProgress / 4)) : 4;
+        // 1. 캐시 키 생성 (청사진 여부 및 진행 단계 포함)
         const isComplete = !structure || structure.isComplete;
-        const key = `build_${type}_${size}_${isComplete ? 'full' : 'p' + progress}`;
+        const progressLevel = structure ? Math.floor(structure.progress / (Math.max(1, structure.maxProgress) / 4)) : 4;
+        const key = `build_${type}_${size}_${isComplete ? 'full' : 'p' + progressLevel}`;
         
-        // 2. 캐시된 스프라이트 가져오기 또는 생성
+        // 2. 본체(Body) 스프라이트 가져오기 (정적인 부분만 캐싱)
         const sprite = this.getSprite(key, (sCtx) => {
-            // 💡 [Fix] 청사진이어도 본체(Body)를 그리도록 overlayOnly=false (기본값)로 호출
-            BuildRender.render(sCtx, type, { x: 0, y: 0 }, v, structure, 0, this.engine, false);
+            const hpPercent = structure ? (structure.hp / structure.maxHp) : 1.0;
+            if (!isComplete) sCtx.globalAlpha = 0.6; // 청사진은 캐시 단계에서 반투명하게 기록
+            BuildRender._drawBuildingBody(sCtx, { x: 0, y: 0 }, v, type, 0, false, hpPercent);
         }, size * 2.5, size * 2.5);
 
-        // 3. 스프라이트 그리기 (배칭 큐 활용)
+        // 3. 스프라이트 그리기 (배칭 큐 활용 - 알파값 전달)
         textureManager.enqueueDraw(
             sprite,
             Math.floor(t.x),
@@ -463,21 +470,23 @@ export default class EntityRenderer {
             sprite.width, sprite.height,
             {
                 pivotX: 0.5,
-                pivotY: 0.85 // 건물의 바닥면 정렬
+                pivotY: 0.85,
+                alpha: alpha // 🛡️ [Expert Fix] 엔티티 알파값 연동
             }
         );
         
-        // 4. 동적 오버레이 및 건설 정보 (캐시하지 않음 - 즉시 렌더링)
+        // 4. 동적 오버레이 및 건설 정보 (캐시하지 않고 매 프레임 즉시 렌더링)
         ctx.save();
         ctx.translate(Math.floor(t.x), Math.floor(t.y));
         
         if (isComplete) {
-            // 연기, 불꽃 등 오버레이 (overlayOnly=true)
-            if (type === 'bonfire' || type === 'house' || type === 'farm') {
+            // 연기, 불꽃 등 애니메이션 오버레이
+            if (['bonfire', 'house', 'farm', 'blacksmith', 'temple'].includes(type)) {
                 BuildRender.render(ctx, type, { x: 0, y: 0 }, v, structure, time, this.engine, true);
             }
         } else {
-            // 건설 정보 라벨 및 청사진 가이드 (Body는 이미 배칭 큐에서 그려짐)
+            // 🚧 건설 중인 경우: 먼지 효과 및 청사진 정보 라벨
+            BuildRender.renderConstructionDust(ctx, { x: 0, y: 0 }, v, time);
             BuildRender.renderBlueprintInfo(ctx, { x: 0, y: 0 }, structure);
         }
         ctx.restore();

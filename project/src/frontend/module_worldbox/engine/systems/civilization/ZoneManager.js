@@ -155,10 +155,13 @@ export default class ZoneManager {
             }
 
             // 마을 영토에 추가
-            village.territory.add(pick.nKey);
+            const claimed = vs.territoryManager
+                ? vs.territoryManager.claimTile(villageId, pick.nx, pick.ny)
+                : false;
+            if (!claimed) return;
 
             // 구역에 추가
-            this.addTileToZone(zoneId, pick.nx, pick.ny);
+            this.syncVillageZone(zoneId);
 
             // 🎨 [Sync] TerrainGen 버퍼 동기화
             const territoryBuffer = this.engine.terrainGen?.territoryBuffer;
@@ -568,96 +571,4 @@ export default class ZoneManager {
         return entities;
     }
 
-    /**
-     * 🎨 [Zone View System] 카메라 뷰포트에 보이는 구역들을 시각적으로 렌더링합니다.
-     * (디버그 모드 또는 신(God) 모드의 오버레이로 사용)
-     */
-    render(ctx, camera) {
-        const viewFlags = this.engine.viewFlags || {};
-        const isZoneTileActive = viewFlags.ZONETILE || viewFlags.showZones || viewFlags.zone;
-        const isVillageTileActive = viewFlags.VILLAGETILE || viewFlags.showVillageInfo || viewFlags.showVillages || viewFlags.village;
-
-        // 💡 [핵심] 게임 엔진의 메인 루프가 VillageSystem의 렌더링을 누락하는 현상을 방지하기 위해,
-        // 화면 렌더링이 확실히 보장된 ZoneManager에서 마을 영역(Territory) 타일 렌더링을 끌어와 강제로 실행합니다.
-        if (isVillageTileActive) {
-            const vs = this.engine.systemManager?.villageSystem;
-            if (vs && typeof vs.render === 'function') {
-                vs.render(ctx, camera);
-            }
-        }
-
-        // 엔진의 viewFlags 객체에 ZONETILE 플래그가 켜져있을 때만 Zone 렌더링
-        if (!isZoneTileActive) return;
-
-        ctx.save();
-        for (const zone of this.zones.values()) {
-            const bounds = zone.bounds;
-            if (!bounds) continue;
-
-            // 🚀 [Optimization] 카메라 가시 영역(Culling) 밖의 구역은 렌더링 스킵
-            if (bounds.minX > camera.x + camera.width / camera.zoom ||
-                bounds.minX + bounds.width < camera.x ||
-                bounds.minY > camera.y + camera.height / camera.zoom ||
-                bounds.minY + bounds.height < camera.y) {
-                continue;
-            }
-
-            const screenX = (bounds.minX - camera.x) * camera.zoom;
-            const screenY = (bounds.minY - camera.y) * camera.zoom;
-            const screenW = bounds.width * camera.zoom;
-            const screenH = bounds.height * camera.zoom;
-
-            // 🎨 구역 타입별 색상 설정 (Color Coding)
-            let color;
-            let icon = '';
-            switch (zone.type) {
-                case 'residential': color = '33, 150, 243'; icon = '🏠'; break; // 파랑 (주거)
-                case 'lumber': color = '76, 175, 80'; icon = '🪵'; break;      // 초록 (벌목)
-                case 'gathering': color = '76, 175, 80'; icon = '🧺'; break;   // 초록 (채집)
-                case 'mining': color = '158, 158, 158'; icon = '⛏️'; break;    // 회색 (채광)
-                case 'farming': color = '255, 193, 7'; icon = '🌾'; break;     // 노랑 (농사)
-                case 'military': color = '244, 67, 54'; icon = '⚔️'; break;    // 빨강 (군사)
-                default: color = '156, 39, 176'; icon = '📍'; break;           // 보라 (기타)
-            }
-
-            // 🚀 타일 기반 구역 렌더링
-            if (zone.territory && zone.territory.size > 0) {
-                const TILE_SIZE = 16;
-                ctx.fillStyle = `rgba(${color}, 0.25)`;
-                ctx.strokeStyle = `rgba(${color}, 0.6)`;
-                ctx.lineWidth = 1 * camera.zoom;
-
-                for (const key of zone.territory) {
-                    const tx = key & 0xFFFF;
-                    const ty = key >> 16;
-                    const worldX = tx * TILE_SIZE;
-                    const worldY = ty * TILE_SIZE;
-
-                    // 컬링
-                    if (worldX + TILE_SIZE < camera.x || worldX > camera.x + camera.width / camera.zoom ||
-                        worldY + TILE_SIZE < camera.y || worldY > camera.y + camera.height / camera.zoom) {
-                        continue;
-                    }
-
-                    const sX = (worldX - camera.x) * camera.zoom;
-                    const sY = (worldY - camera.y) * camera.zoom;
-                    const size = TILE_SIZE * camera.zoom;
-                    const gap = 1 * camera.zoom;
-
-                    ctx.fillRect(sX + gap, sY + gap, size - gap * 2, size - gap * 2);
-                    ctx.strokeRect(sX + gap, sY + gap, size - gap * 2, size - gap * 2);
-                }
-            }
-            // 🚀 [Tile Fix] 사각형 기반 렌더링을 완전히 제거하고 타일 기반만 허용하거나 라벨만 표시합니다.
-
-            // 3. 구역 라벨 및 정보 텍스트 (중앙 정렬)
-            ctx.fillStyle = `rgba(${color}, 1.0)`;
-            ctx.font = `bold ${Math.max(12, 14 * camera.zoom)}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            const workerCount = zone.assignedWorkers ? zone.assignedWorkers.size : 0;
-            ctx.fillText(`${zone.type.toUpperCase()} [${workerCount}명]`, screenX + screenW / 2, screenY + screenH / 2);
-        }
-        ctx.restore();
-    }
 }

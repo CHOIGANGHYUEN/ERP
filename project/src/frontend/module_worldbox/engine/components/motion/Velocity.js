@@ -76,4 +76,11 @@ export default class Velocity {
         let dir = Math.round(((angle * 180 / Math.PI) + 90) / 45);
         return (dir + 8) % 8;
     }
+
+    /** 🏎️ 속도 벡터의 크기(Magnitude) 반환 */
+    mag() {
+        const vx = this.vx;
+        const vy = this.vy;
+        return Math.sqrt(vx * vx + vy * vy);
+    }
 }

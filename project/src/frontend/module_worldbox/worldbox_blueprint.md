@@ -169,3 +169,20 @@
 ### 20.2 Store & View
 - `worldboxStore.js`: Pinia(Vuex) 스토어로, 엔진의 상태(선택된 엔티티 ID 등)와 Vue 컴포넌트 간의 단방향 데이터 바인딩을 매개합니다.
 - `WorldboxView.vue`: 캔버스 엔진과 모든 UI 컴포넌트를 감싸고 있는 최상위 화면(Page) 컴포넌트입니다.
+
+---
+
+## 21. 리팩토링 기대 효과 (Expected Effects of SOLID Refactoring)
+`worldBoxTodo.md`에 정의된 18, 19, 20단계의 SOLID 원칙 기반 리팩토링이 수행되었을 때 기대되는 아키텍처 개선 효과입니다.
+
+### 18단계: 자원 및 건축 시스템 분리 (Data & Logic Decoupling)
+*   **응집도(Cohesion) 향상:** `Inventory`는 순수 데이터 보관 컨테이너로써의 단일 책임(SRP)만 가지게 되며, 자원 유사어 및 카테고리 검증 로직은 `ResourceRegistry`로 이관되어 관리가 용이해집니다.
+*   **유연성(Flexibility) 확보:** 건물 종류에 따른 필요 자원 조건이 하드코딩되지 않고 `BlueprintRegistry` 데이터로 관리되므로, 새로운 건물이나 자원 타입을 추가할 때 핵심 AI 시스템(`ArchitectRole` 등) 코드를 전혀 수정할 필요가 없어져 OCP(개방-폐쇄 원칙)를 달성합니다.
+
+### 19단계: AI 타겟 탐색 시스템의 전략 패턴 적용 (Strategy Pattern)
+*   **확장성(Scalability) 극대화:** `TargetManager` 내의 거대한 분기문(`switch`)이 제거됨에 따라, 향후 '적군 침략 탐색', '특정 이벤트 타겟 탐색' 등 새로운 탐색 행동이 필요할 때 기존 코드를 건드리지 않고 새로운 `TargetStrategy` 클래스만 등록하면 됩니다.
+*   **복잡도 감소 및 단일 책임(SRP) 달성:** 수백 줄에 달하던 거대한 자원/창고/청사진 탐색 알고리즘이 각각 독립된 파일로 분할되어, 디버깅과 테스트가 매우 쉬워지며 시스템 매니저 본연의 역할(요청 분배)에만 집중할 수 있게 됩니다.
+
+### 20단계: ECS 렌더링 로직 분리 (Presentation & Logic Separation)
+*   **관심사 분리(SoC) 완벽 달성:** 데이터 시뮬레이션을 담당하는 비즈니스 시스템(`VillageSystem`, `ZoneManager`)에서 Canvas API 렌더링 로직이 완전히 분리되어, State(상태)와 View(표현)를 분리하는 Data-Oriented Design 및 ECS의 기본 철학을 엄격히 준수하게 됩니다.
+*   **유지보수 및 렌더링 최적화 안전성 확보:** 화면을 그리는 로직이 전용 Overlay 렌더러(`VillageOverlayRenderer`, `ZoneOverlayRenderer`)로 분리되므로, UI 연출 변경이나 렌더링 최적화(예: 오프스크린 렌더링) 작업 시 핵심 비즈니스 로직에 부작용(Side-effect)을 일으킬 위험 없이 안전하게 뷰(View) 레이어만 수정할 수 있습니다.

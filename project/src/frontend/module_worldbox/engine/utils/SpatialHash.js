@@ -264,6 +264,12 @@ export default class SpatialHash {
                         foundIds.push(sCell[i]);
                     }
                 }
+                const oCell = this.obstacleCells.get(key);
+                if (oCell) {
+                    for (let i = 0; i < oCell.length; i++) {
+                        foundIds.push(oCell[i]);
+                    }
+                }
                 const dCell = this.dynamicCells.get(key);
                 if (dCell) {
                     for (let i = 0; i < dCell.length; i++) {

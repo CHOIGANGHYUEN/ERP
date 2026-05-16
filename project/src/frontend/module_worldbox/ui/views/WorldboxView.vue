@@ -12,108 +12,79 @@
       <EntityStatusPanel />
       <JobMonitorPanel />
 
-      <!-- TOP LEFT DEBUG PANEL -->
-      <div class="debug-panel" :class="{ 'collapsed': isMobile && !showDebugCollapse }">
-        <div class="debug-header" @click="showDebugCollapse = !showDebugCollapse">
-          <span>🔬 SIMULATION DEBUG</span>
-          <span v-if="isMobile" class="collapse-icon">{{ showDebugCollapse ? '▼' : '▶' }}</span>
-        </div>
-        <div class="debug-content" v-show="!isMobile || showDebugCollapse">
-          <div class="debug-item">
-            <span>Spread Speed (Hz): {{ spreadSpeed }}</span>
-            <input type="range" min="1" max="100" v-model="spreadSpeed" @input="updateSimParams" />
+      <!-- TOP HUD (Global Status Bar) -->
+      <Transition name="fade">
+        <div class="top-hud" v-if="isGameStarted">
+          <div class="hud-left">
+            <span class="hud-logo">WORLD<span class="hl">BOX</span></span>
           </div>
-          <div class="debug-item">
-            <span>Spread Power: {{ spreadAmount }}</span>
-            <input type="range" min="100" max="10000" step="100" v-model="spreadAmount" @input="updateSimParams" />
+          <div class="hud-center">
+            <div class="hud-badge"><span class="icon">⏱️</span> {{ fps }} FPS</div>
+            <div class="hud-badge"><span class="icon">👥</span> {{ entityCount }} Ents</div>
+            <div class="hud-badge" v-if="dodStats"><span class="icon">💾</span> {{ dodStats.bufferMemoryMB }} MB</div>
           </div>
-          <div class="debug-stats" v-if="engine">
-            FPS: {{ fps }} | Entities: {{ entityCount }} <br/>
-            Fertility: {{ (totalFertility / 100).toLocaleString() }} / {{ (totalMaxFertility / 100).toLocaleString() }} ({{ ((totalFertility / totalMaxFertility) * 100).toFixed(1) }}%)
-            <div v-if="dodStats" class="dod-metrics">
-              Memory: {{ dodStats.bufferMemoryMB }} MB | Pooled: {{ dodStats.pooledIds }}
+          <div class="hud-right">
+            <!-- Time Controls -->
+            <div class="time-controls">
+              <button v-for="speed in [1, 2, 3, 5]" :key="speed" 
+                :class="{ active: currentGameSpeed === speed }"
+                @click="setGameSpeed(speed)" class="speed-btn">
+                {{ speed }}x
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      </Transition>
 
       <VillageDetailPanel />
       <NationDetailPanel />
 
-      <div class="top-bar">
-        <h1>Worldbox Simulation</h1>
-        <!-- 🚀 [Expert UI] Time Control Panel -->
-        <div class="time-controls" v-if="isGameStarted">
-          <button 
-            v-for="speed in [1, 2, 3, 5]" 
-            :key="speed" 
-            :class="{ active: currentGameSpeed === speed }"
-            @click="setGameSpeed(speed)"
-            class="speed-btn"
-          >
-            {{ speed }}x
-          </button>
-        </div>
-      </div>
-      
-      <!-- Bottom Tool Menu -->
-      <div class="bottom-controls" :class="{ 'open': isMenuOpen }">
-        <!-- BRUSH SIZE CONTROL (Side Panel) -->
-        <Transition name="fade">
-          <div v-if="showBrushSettings" class="brush-settings">
-            <div class="setting-title">BRUSH SIZE: {{ brushSize }}</div>
-            <input type="range" min="2" max="100" v-model="brushSize" @input="updateBrushSize" />
-            <div class="brush-preview" :style="{ width: brushSize + 'px', height: brushSize + 'px' }"></div>
+      <!-- PREMIUM DOCK (macOS Style) -->
+      <div class="premium-dock" v-if="isGameStarted">
+        <!-- Sub Dock (Tools) -->
+        <Transition name="slide-up">
+          <div v-if="activeCategory && isMenuOpen" class="sub-dock">
+            <div v-for="tool in filteredTools" :key="tool.id" 
+                 class="dock-item tool"
+                 :class="{ active: activeTool === tool.id }"
+                 @click="selectTool(tool)">
+              <div class="icon">{{ tool.icon }}</div>
+              <div class="tooltip">{{ tool.name }}</div>
+              <div class="active-dot" v-if="activeTool === tool.id"></div>
+            </div>
+            
+            <div v-if="showBrushSettings" class="dock-divider"></div>
+            <div v-if="showBrushSettings" class="dock-brush-slider">
+              <span class="slider-label">SIZE: {{ brushSize }}</span>
+              <input type="range" min="2" max="100" v-model="brushSize" @input="updateBrushSize" />
+            </div>
           </div>
         </Transition>
 
-        <div class="controls-panel">
-          <!-- 📖 [Expert UI] Tool Information Panel -->
-          <Transition name="slide-up">
-            <div v-if="hoveredTool || activeToolData" class="tool-info-overlay">
-              <div class="info-icon">{{ hoveredTool?.icon || activeToolData?.icon }}</div>
-              <div class="info-text">
-                <div class="info-name">{{ hoveredTool?.name || activeToolData?.name }}</div>
-                <div class="info-desc">{{ hoveredTool?.description || activeToolData?.description }}</div>
-              </div>
-            </div>
-          </Transition>
-
-          <div class="tool-tabs" ref="toolTabsContainer" @wheel="handleWheelScroll">
-            <button 
-              v-for="cat in toolCategories" 
-              :key="cat.name"
-              :class="{ active: activeCategory === cat.name }"
-              @click="activeCategory = cat.name"
-            >
-              <span class="cat-icon">{{ cat.icon }}</span>
-              <span class="cat-name">{{ cat.name }}</span>
-            </button>
-          </div>
-
-          <div class="tool-grid-container">
-            <TransitionGroup name="tool-list" tag="div" class="tool-belt">
-              <div v-for="tool in filteredTools" :key="tool.id" 
-                   class="tool-item" 
-                   :class="{ active: activeTool === tool.id }"
-                   @mouseenter="hoveredTool = tool"
-                   @mouseleave="hoveredTool = null"
-                   @click="selectTool(tool)">
-                <div class="tool-icon-wrapper">
-                  <div class="tool-icon">{{ tool.icon }}</div>
-                </div>
-                <div class="tool-name">{{ tool.name }}</div>
-              </div>
-            </TransitionGroup>
-          </div>
+        <!-- Main Dock (Categories) -->
+        <div class="main-dock">
+           <div class="dock-bg"></div>
+           
+           <button class="dock-item menu-toggle" :class="{ active: isMenuOpen }" @click="toggleMenu">
+             <div class="icon">{{ isMenuOpen ? '▼' : '🛠️' }}</div>
+             <div class="tooltip">Toggle Tools</div>
+           </button>
+           
+           <Transition name="fade-slide-horizontal">
+             <div class="dock-categories" v-show="isMenuOpen">
+               <div class="dock-divider"></div>
+               <div v-for="cat in toolCategories" :key="cat.name" 
+                    class="dock-item category"
+                    :class="{ active: activeCategory === cat.name }"
+                    @click="activeCategory = cat.name">
+                 <div class="icon" :style="{ filter: activeCategory === cat.name ? 'grayscale(0)' : 'grayscale(100%)' }">{{ cat.icon }}</div>
+                 <div class="tooltip">{{ cat.name }}</div>
+                 <div class="active-dot" v-if="activeCategory === cat.name"></div>
+               </div>
+             </div>
+           </Transition>
         </div>
       </div>
-
-      <!-- Toggle Button - INSIDE Overlay for better event flow -->
-      <button v-if="isGameStarted" class="fixed-toggle-btn" @click="toggleMenu">
-        <span class="icon">{{ isMenuOpen ? '▼' : '▲' }}</span>
-        TOOLS
-      </button>
 
       <!-- 🚀 [Expert Design] Intro / Start Screen -->
       <Transition name="fade-scale">
@@ -571,485 +542,203 @@ const handleGodPower = (toolId) => {
   z-index: 1000;
 }
 
-/* Debug Panel */
-.debug-panel {
+/* 💎 TOP HUD (Premium Status Bar) */
+.top-hud {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.1);
-  padding: 15px;
-  border-radius: 8px;
-  pointer-events: auto;
-  color: #00ff00;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 0.75rem;
-  width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.debug-panel.collapsed {
-  width: 40px;
-  height: 40px;
-  overflow: hidden;
-  padding: 10px;
-}
-
-.debug-header {
-  border-bottom: 1px solid #333;
-  padding-bottom: 5px;
-  font-weight: bold;
-  color: #fff;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-}
-
-.debug-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.debug-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.debug-stats {
-  margin-top: 5px;
-  color: #aaa;
-  font-size: 0.65rem;
-  line-height: 1.4;
-}
-
-.dod-metrics {
-  margin-top: 4px;
-  color: #4fc3f7;
-  font-weight: bold;
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
-  padding-top: 4px;
-}
-
-
-input[type="range"] {
-  accent-color: #2e7d32;
-}
-
-.fixed-toggle-btn {
-  position: absolute;
-  bottom: 20px;
+  top: 15px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1005;
-  background: rgba(46, 125, 50, 0.9);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  padding: 8px 30px;
-  border-radius: 20px;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 0.75rem;
-  letter-spacing: 2px;
-  pointer-events: auto;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.fixed-toggle-btn:hover {
-  background: #388e3c;
-  transform: translateX(-50%) translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-}
-
-.fixed-toggle-btn .icon {
-  font-size: 0.6rem;
-  transition: transform 0.4s ease;
-}
-
-.menu-active .fixed-toggle-btn .icon {
-  transform: rotate(180deg);
-}
-
-.bottom-controls {
-  position: absolute;
-  bottom: -450px;
-  left: 0;
-  width: 100%;
-  transition: bottom 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 1000;
-  padding-bottom: 80px;
-}
-
-.bottom-controls.open {
-  bottom: 0;
-}
-
-.controls-panel {
-  position: relative;
-  background: linear-gradient(to bottom, rgba(15, 15, 15, 0.85), rgba(5, 5, 5, 0.95));
-  backdrop-filter: blur(30px) saturate(150%);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 -15px 50px rgba(0,0,0,0.8);
-  border-radius: 24px 24px 0 0;
-  margin: 0 10px;
-}
-
-/* Tool Info Overlay */
-.tool-info-overlay {
-  position: absolute;
-  top: -85px;
-  left: 20px;
-  right: 20px;
-  background: rgba(20, 20, 20, 0.8);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  color: white;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  pointer-events: none;
-  z-index: 1001;
-}
-
-.info-icon {
-  font-size: 2rem;
-  text-shadow: 0 0 15px rgba(255,255,255,0.3);
-}
-
-.info-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.info-name {
-  font-size: 0.9rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #4caf50;
-}
-
-.info-desc {
-  font-size: 0.75rem;
-  color: #ccc;
-  line-height: 1.4;
-  max-width: 600px;
-}
-
-/* Brush Settings */
-.brush-settings {
-  position: absolute;
-  left: 20px;
-  bottom: 180px;
-  background: rgba(10, 10, 10, 0.9);
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(255,255,255,0.1);
-  padding: 15px;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  pointer-events: auto;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-}
-
-.setting-title {
-  font-size: 0.6rem;
-  letter-spacing: 1px;
-  color: #888;
-  font-weight: bold;
-}
-
-.brush-preview {
-  border: 2px solid #4caf50;
-  border-radius: 50%;
-  background: rgba(76, 175, 80, 0.15);
-  box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
-}
-
-.tool-tabs {
-  display: flex;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  pointer-events: auto;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tool-tabs::-webkit-scrollbar { display: none; }
-
-.tool-tabs button {
-  background: none;
-  border: none;
-  color: #777;
-  cursor: pointer;
-  padding: 8px 20px;
-  border-radius: 12px;
-  transition: all 0.3s;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.tool-tabs button .cat-icon {
-  font-size: 1.1rem;
-  filter: grayscale(1);
-  transition: all 0.3s;
-}
-
-.tool-tabs button .cat-name {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.tool-tabs button:hover {
-  color: #bbb;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.tool-tabs button.active {
-  color: #fff;
-  background: rgba(76, 175, 80, 0.15);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-  box-shadow: 0 0 20px rgba(76, 175, 80, 0.1);
-}
-
-.tool-tabs button.active .cat-icon {
-  filter: grayscale(0);
-  transform: scale(1.2) rotate(-5deg);
-}
-
-.tool-grid-container {
-  max-height: 280px;
-  overflow-y: auto;
-  pointer-events: auto;
-}
-
-.tool-belt {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 15px;
-  padding: 25px 40px;
-  max-width: 1000px;
-  margin: 0 auto;
-}
-
-.tool-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-
-.tool-icon-wrapper {
-  width: 56px;
-  height: 56px;
-  background: rgba(255, 255, 255, 0.03);
+  width: 90%;
+  max-width: 1200px;
+  height: 48px;
+  background: rgba(10, 10, 15, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s;
-}
-
-.tool-icon {
-  font-size: 1.8rem;
-  transition: transform 0.3s;
-}
-
-.tool-name {
-  font-size: 0.65rem;
-  font-weight: 500;
-  color: #999;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.tool-item:hover .tool-icon-wrapper {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-5px);
-}
-
-.tool-item:hover .tool-icon {
-  transform: scale(1.1);
-}
-
-.tool-item.active .tool-icon-wrapper {
-  background: rgba(76, 175, 80, 0.2);
-  border-color: #4caf50;
-  box-shadow: 0 0 20px rgba(76, 175, 80, 0.2);
-}
-
-.tool-item.active .tool-icon {
-  transform: scale(1.15);
-}
-
-.tool-item.active .tool-name {
-  color: #4caf50;
-  font-weight: 700;
-}
-
-/* Animations */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.tool-list-move,
-.tool-list-enter-active,
-.tool-list-leave-active {
-  transition: all 0.4s cubic-bezier(0.55, 0, 0.1, 1);
-}
-
-.tool-list-enter-from,
-.tool-list-leave-to {
-  opacity: 0;
-  transform: scale(0.5) translateY(30px);
-}
-
-.tool-list-leave-active {
-  position: absolute;
-}
-
-/* Slide Up Animation */
-.slide-up-enter-active, .slide-up-leave-active {
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.slide-up-enter-from {
-  opacity: 0;
-  transform: translateY(20px) scale(0.95);
-}
-.slide-up-leave-to {
-  opacity: 0;
-  transform: translateY(10px) scale(0.98);
-}
-
-@media (max-width: 768px) {
-  .tool-belt {
-    grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
-    gap: 10px;
-    padding: 15px 10px;
-  }
-  .tool-icon-wrapper {
-    width: 48px;
-    height: 48px;
-  }
-  .tool-icon {
-    font-size: 1.4rem;
-  }
-  .tool-tabs button {
-    padding: 6px 12px;
-    white-space: nowrap;
-  }
-  .tool-tabs button .cat-name {
-    display: none; /* Hide names to save space on very small screens, or just keep icons */
-  }
-  .bottom-controls {
-    bottom: -400px;
-  }
-  .top-bar {
-    padding: 10px 20px;
-  }
-  .top-bar h1 {
-    font-size: 0.9rem;
-  }
-  .tool-info-overlay {
-    top: -70px;
-    left: 10px;
-    right: 10px;
-    padding: 8px 15px;
-  }
-  .info-icon {
-    font-size: 1.5rem;
-  }
-  .info-desc {
-    font-size: 0.65rem;
-  }
-  .brush-settings {
-    bottom: 140px;
-    left: 10px;
-    padding: 10px;
-  }
-}
-
-.top-bar {
-  padding: 20px 40px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+  border-radius: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 0 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+  pointer-events: auto;
+  z-index: 1005;
 }
 
-.top-bar h1 {
-  font-size: 1.2rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 3px;
+.hud-left .hud-logo {
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 4px;
   color: #fff;
-  margin: 0;
+  text-shadow: 0 0 10px rgba(255,255,255,0.2);
 }
+.hud-logo .hl { color: #4caf50; text-shadow: 0 0 10px rgba(76, 175, 80, 0.4); }
 
-/* ⏳ Time Controls Style */
-.time-controls {
+.hud-center {
   display: flex;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  padding: 4px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  gap: 4px;
+  gap: 15px;
 }
 
-.speed-btn {
+.hud-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.05);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #ccc;
+  font-family: 'Inter', monospace;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.hud-badge .icon { font-size: 0.85rem; }
+
+/* 💎 PREMIUM DOCK (macOS Style) */
+.premium-dock {
+  position: absolute;
+  bottom: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  z-index: 1010;
+  pointer-events: none;
+}
+
+.main-dock, .sub-dock {
+  display: flex;
+  align-items: center;
+  background: rgba(20, 20, 25, 0.75);
+  backdrop-filter: blur(30px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 8px;
+  gap: 8px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15);
+  pointer-events: auto;
+}
+
+.dock-categories {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.dock-divider {
+  width: 1px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+}
+
+.dock-item {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
   background: transparent;
   border: none;
-  color: #888;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 800;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.dock-item .icon {
+  font-size: 1.6rem;
   transition: all 0.3s ease;
 }
 
-.speed-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
+.dock-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.25) translateY(-5px);
+  z-index: 10;
 }
 
-.speed-btn.active {
-  background: #2e7d32;
+.dock-item:hover .icon {
+  transform: scale(1.1);
+}
+
+.dock-item:active {
+  transform: scale(0.95);
+}
+
+.dock-item.active {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.active-dot {
+  position: absolute;
+  bottom: -4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #4caf50;
+  box-shadow: 0 0 8px #4caf50;
+}
+
+/* Tooltip */
+.tooltip {
+  position: absolute;
+  top: -35px;
+  background: rgba(0, 0, 0, 0.8);
   color: #fff;
-  box-shadow: 0 4px 15px rgba(46, 125, 50, 0.4);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: all 0.2s;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.dock-item:hover .tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Brush Slider in Dock */
+.dock-brush-slider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+}
+.slider-label {
+  font-size: 0.6rem;
+  color: #888;
+  font-weight: bold;
+}
+input[type="range"] {
+  width: 80px;
+  accent-color: #4caf50;
+}
+
+/* Animations */
+.slide-up-enter-active, .slide-up-leave-active { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-up-enter-from { opacity: 0; transform: translateY(20px) scale(0.9); }
+.slide-up-leave-to { opacity: 0; transform: translateY(10px) scale(0.9); pointer-events: none; }
+
+.fade-slide-horizontal-enter-active, .fade-slide-horizontal-leave-active { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.fade-slide-horizontal-enter-from, .fade-slide-horizontal-leave-to { opacity: 0; transform: translateX(-20px); max-width: 0; }
+
+@media (max-width: 768px) {
+  .top-hud { width: 95%; height: auto; flex-direction: column; gap: 10px; padding: 10px; }
+  .hud-center { flex-wrap: wrap; justify-content: center; }
+  .dock-item { width: 40px; height: 40px; }
+  .dock-item .icon { font-size: 1.2rem; }
+  .sub-dock { flex-wrap: wrap; max-width: 95vw; justify-content: center; }
 }
 
 /* 🚀 Intro Screen Styles */

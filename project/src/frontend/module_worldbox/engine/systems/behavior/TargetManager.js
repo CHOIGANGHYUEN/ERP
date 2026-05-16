@@ -1,6 +1,5 @@
-/* 개체가 타겟을 요청하면 최적의 대상을 찾아 직접 주입합니다.
-*/
 import ObjectPool from '../../utils/ObjectPool.js';
+import StrategyRegistry from './strategies/StrategyRegistry.js';
 
 export default class TargetManager {
     constructor(entityManager, eventBus, blackboard, engine) {
@@ -84,38 +83,21 @@ export default class TargetManager {
 
         let bestTargetId = null;
 
-        // 🚀 [Expert Logic] 구역(Zone) 우선 탐색 후, 없으면 전역 탐색(Fallback) 수행
-        switch (targetType) {
-            case 'RESOURCE':
-                bestTargetId = this._findBestResource(transform.x, transform.y, criteria.resourceType, entity, req.intent, forceDeferred);
-                if (bestTargetId === null || bestTargetId === undefined) {
-                    if (!forceDeferred) {
-                        // 🚀 [Expert Optimization] 첫 탐색에서 실패 시, 즉시 전역 탐색하지 않고 저우선순위 큐로 지연
-                        req.isDeferred = true;
-                        this.lowPriorityQueue.push(req);
-                        return;
-                    }
+        // 🎯 [Strategy Pattern] 전략 레지스트리를 통한 탐색 위임 (OCP 달성)
+        const strategy = StrategyRegistry.get(targetType);
+        
+        if (strategy) {
+            bestTargetId = strategy.execute(this, entity, transform, criteria, req.intent, forceDeferred);
+            
+            // 🚀 [Expert Optimization] 첫 탐색에서 실패 시, 즉시 전역 탐색하지 않고 저우선순위 큐로 지연
+            if ((bestTargetId === null || bestTargetId === undefined) && !forceDeferred) {
+                const needsDeferred = ['RESOURCE', 'BLUEPRINT', 'STORAGE'].includes(targetType);
+                if (needsDeferred) {
+                    req.isDeferred = true;
+                    this.lowPriorityQueue.push(req);
+                    return;
                 }
-                break;
-            case 'STORAGE':
-            case 'STORAGE_DEPOSIT':
-                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, true, entity);
-                break;
-            case 'STORAGE_WITHDRAW':
-                bestTargetId = this._findBestStorage(transform.x, transform.y, criteria.resourceType, false, entity);
-                break;
-            case 'BLUEPRINT':
-                bestTargetId = this._findBestBlueprint(transform.x, transform.y, entity, req.intent, forceDeferred);
-                if (bestTargetId === null || bestTargetId === undefined) {
-                    if (!forceDeferred) {
-                        req.isDeferred = true;
-                        this.lowPriorityQueue.push(req);
-                        return;
-                    }
-                }
-                break;
-            case 'WANDER':
-                break;
+            }
         }
 
         if (bestTargetId !== null && bestTargetId !== undefined) {
@@ -217,195 +199,28 @@ export default class TargetManager {
             const vs = this.engine.systemManager?.villageSystem;
             const village = vs?.getVillage(civ.villageId);
             if (village) {
-                // 인텐트에 따라 적절한 마을 구역 반환 (나무 채집은 벌목 구역, 건설은 주거 구역 등)
-                // 🍎 [Expert Fix] 식량 수급(forage/eat)은 벌목 구역에 얽매이지 않고 자유롭게 찾을 수 있도록 함
-                if (intent === 'gather_wood' || intent === 'gather_plant' || intent === 'gather_stone') {
-                    return zm.getZone(village.lumberZoneId);
+                // 🛠️ [Architect Flexibility] 건축가 등 비전문화된 채집 행동은 구역 제한을 완화합니다.
+                const isGatherIntent = intent === 'gather_wood' || intent === 'gather_plant' || intent === 'gather_stone';
+                
+                if (isGatherIntent) {
+                    const jobType = civ.jobType;
+                    // 벌목꾼, 광부, 채집가만 구역(LumberZone)에 묶이고, 나머지는 자유롭게 채집 가능
+                    const isProfessionalGatherer = jobType === 'logger' || jobType === 'miner' || jobType === 'gatherer';
+                    
+                    if (isProfessionalGatherer) {
+                        return zm.getZone(village.lumberZoneId);
+                    } else {
+                        // 건축가 등은 구역 제한 없이 근처 자원을 채집하도록 허용 (null 반환)
+                        return null;
+                    }
                 }
+                
                 if (intent === 'build') return zm.getZone(village.residentialZoneId);
                 
                 // forage, eat 등은 구역 제한 없이 전역 탐색 유도 (null 반환)
                 return null;
-
             }
         }
         return null;
-    }
-
-    _findBestResource(x, y, resourceType, entity, intent, forceGlobal = false) {
-        const type = (resourceType || '').toLowerCase();
-        const MAX_RADIUS = 1200;
-
-        const aiState = entity.components.get('AIState');
-        if (aiState) aiState.searchRange = MAX_RADIUS;
-
-        // forceGlobal이 true면 구역을 무시하고 전역 탐색
-        const zone = forceGlobal ? null : this._getZone(entity, intent);
-        const spatialHash = this.engine.spatialHash;
-
-        // 🚀 [Tiered Search] 근거리부터 원거리로 점진적 확장 (O(N) 방지)
-        const searchSteps = forceGlobal ? [MAX_RADIUS] : [300, 600, MAX_RADIUS];
-
-        for (const radius of searchSteps) {
-            let minDistSq = radius * radius;
-            let bestId = null;
-
-            if (spatialHash) {
-                // 🚀 [Expert Optimization] eachInRange 대신 eachInSpiral을 사용하여 가장 가까운 자원을 즉시 확보
-                spatialHash.eachInSpiral(x, y, radius, (id) => {
-                    const ent = this.entityManager.entities.get(id);
-                    if (!ent) return false;
-
-                    // 🗺️ [Zone System] 구역 제한 검사
-                    const transform = ent.components.get('Transform');
-                    if (!transform) return false;
-                    if (!this._isInZone(transform.x, transform.y, zone)) return false;
-
-                    const res = ent.components.get('Resource');
-                    const drop = ent.components.get('DroppedItem');
-
-                    // 타입 및 카테고리 교차 검사
-                    if (res) {
-                        const resType = (res.type || '').toLowerCase();
-                        const resCat = (res.category || '').toLowerCase();
-                        const searchType = type;
-
-                        // 🔍 [Intelligence] 'wood'를 찾으면 'tree' 카테고리도 인정, 'food'를 찾으면 'plant'/'food' 카테고리 인정
-                        let isMatch = (resType === searchType || resCat === searchType);
-                        if (!isMatch) {
-                            if (searchType === 'wood' && (resCat === 'tree' || resType.includes('tree') || res.isTree)) isMatch = true;
-                            if (searchType === 'food' && (resCat === 'food' || resCat === 'plant' || resCat === 'berry' || resCat === 'fruit' || res.edible)) isMatch = true;
-                            if ((searchType === 'stone' || searchType === 'mineral') && (resCat === 'mineral' || resCat === 'ore' || res.isMineral)) isMatch = true;
-                            if (searchType === 'iron_ore' && (resType.includes('iron') || resType.includes('ore') || resCat === 'mineral' || res.isMineral)) isMatch = true;
-                        }
-
-                        if (!isMatch) return false;
-                        if (res.value <= 0 || res.isFalling) return false;
-                        if (res.claimedBy && res.claimedBy !== entity.id) return false;
-                    } else if (drop) {
-                        const dType = (drop.itemType || '').toLowerCase();
-                        const dCat = (drop.category || '').toLowerCase();
-                        
-                        // 🔍 [Flexible Item Match]
-                        let isMatch = (dType === type || dCat === type);
-                        if (!isMatch) {
-                            if (type === 'food' && (dCat === 'food' || dCat === 'nature' || dType === 'fruit' || dType === 'berry' || dType === 'meat' || dType === 'bread')) isMatch = true;
-                            if (type === 'wood' && (dCat === 'wood' || dType.includes('wood') || dType.includes('log'))) isMatch = true;
-                            if (type === 'stone' && (dCat === 'mineral' || dType.includes('stone') || dType.includes('rock'))) isMatch = true;
-                        }
-
-                        if (!isMatch) return false;
-
-                        const reqCiv = entity.components.get('Civilization');
-                        const isOwner = drop.villageId === -1 || (reqCiv && drop.villageId === reqCiv.villageId);
-                        if (!isOwner || (drop.claimedBy && drop.claimedBy !== entity.id)) return false;
-                    } else {
-
-                        return false;
-                    }
-
-                    if (aiState && aiState.isBlacklisted && aiState.isBlacklisted(id)) return false;
-
-                    const dx = transform.x - x;
-                    const dy = transform.y - y;
-                    const distSq = dx * dx + dy * dy;
-
-                    if (distSq < minDistSq) {
-                        minDistSq = distSq;
-                        bestId = id;
-
-                        // 🎯 [Expert Exit] 자원의 경우 가장 가까운 하나만 찾으면 되므로 즉시 종료
-                        return true;
-                    }
-                    return false;
-                });
-            }
-
-            if (bestId !== null && bestId !== undefined) return bestId;
-        }
-
-        return null;
-    }
-
-    _findBestStorage(x, y, resourceType, isDeposit, entity) {
-        const spatialHash = this.engine.spatialHash;
-        const SEARCH_RADIUS = 2000;
-
-        let minDistSq = SEARCH_RADIUS * SEARCH_RADIUS;
-        let bestId = null;
-
-        if (spatialHash) {
-            spatialHash.eachInSpiral(x, y, SEARCH_RADIUS, (id) => {
-                const ent = this.entityManager.entities.get(id);
-                if (!ent) return false;
-
-                const storageComp = ent.components.get('Storage');
-                if (!storageComp) return false;
-
-                const structureComp = ent.components.get('Structure');
-                const civComp = ent.components.get('Civilization');
-                const reqCiv = entity.components.get('Civilization');
-
-                // 🏗️ [Strict Validation]
-                const isComplete = !structureComp || structureComp.isComplete;
-                const isSameVillage = civComp && reqCiv && civComp.villageId === reqCiv.villageId;
-
-                if (!isComplete || !isSameVillage) return false;
-
-                const transform = ent.components.get('Transform');
-                if (!transform) return false;
-
-                // 🚫 [Blacklist Check] 최근에 실패한 저장소 제외
-                const aiState = entity.components.get('AIState');
-                if (aiState && aiState.isBlacklisted && aiState.isBlacklisted(id)) return false;
-
-                const dx = transform.x - x;
-                const dy = transform.y - y;
-                const distSq = dx * dx + dy * dy;
-
-                if (distSq < minDistSq) {
-                    if (isDeposit) {
-                        if (!storageComp.isFull) {
-                            minDistSq = distSq;
-                            bestId = id;
-                            return true; // 최적의 저장소 발견
-                        }
-                    } else {
-                        if ((storageComp.items[resourceType] || 0) >= 5) {
-                            minDistSq = distSq;
-                            bestId = id;
-                            return true; // 최적의 저장소 발견
-                        }
-                    }
-                }
-                return false;
-            });
-        }
-        return bestId;
-    }
-
-    _findBestBlueprint(x, y, entity, intent, forceGlobal = false) {
-        const spatialHash = this.engine.spatialHash;
-        const SEARCH_RADIUS = forceGlobal ? 2000 : 800;
-
-        const aiState = entity.components.get('AIState');
-        if (aiState) aiState.searchRange = SEARCH_RADIUS;
-
-        const zone = forceGlobal ? null : this._getZone(entity, intent);
-
-        // 🚀 [Optimization] Blackboard 순회 대신 SpatialHash 기반 쿼리로 통합
-        let bestId = this.entityManager.findNearestEntityWithComponent(x, y, SEARCH_RADIUS, (ent) => {
-            const struc = ent.components.get('Structure');
-            const transform = ent.components.get('Transform');
-            if (!struc || !struc.isBlueprint || struc.isComplete) return false;
-            if (transform && !this._isInZone(transform.x, transform.y, zone)) return false;
-
-            // 본인 마을 소속 청사진만
-            const civ = ent.components.get('Civilization');
-            const reqCiv = entity.components.get('Civilization');
-            return civ && reqCiv && civ.villageId === reqCiv.villageId;
-        }, spatialHash);
-
-        return bestId;
     }
 }

@@ -46,5 +46,41 @@
         "color": "#6d4c41",
         "techRequired": 0,
         "provides": ["gate"]
+    },
+    "dirt_road": {
+        "id": "dirt_road",
+        "name": "Dirt Road",
+        "cost": { "wood": 4 },
+        "maxProgress": 30,
+        "maxHp": 80,
+        "width": 14,
+        "height": 14,
+        "color": "#9c7a4d",
+        "techRequired": 0,
+        "provides": ["road"]
+    },
+    "stone_road": {
+        "id": "stone_road",
+        "name": "Stone Road",
+        "cost": { "stone": 6 },
+        "maxProgress": 45,
+        "maxHp": 120,
+        "width": 14,
+        "height": 14,
+        "color": "#8e9a9a",
+        "techRequired": 1,
+        "provides": ["road"]
+    },
+    "road": {
+        "id": "road",
+        "name": "Road",
+        "cost": { "wood": 4 },
+        "maxProgress": 30,
+        "maxHp": 80,
+        "width": 14,
+        "height": 14,
+        "color": "#9c7a4d",
+        "techRequired": 0,
+        "provides": ["road"]
     }
 }

@@ -32,7 +32,10 @@ export const StateIndices = {
 
     // Non-animal specialized states
     'bee_gather': 25, 'bee_return': 26, 'bee_inside': 27,
-    'bee_wander': 28, 'gather': 29, 'attack': 30, 'walk': 31
+    'bee_wander': 28, 'gather': 29, 'attack': 30, 'walk': 31,
+    'chief_survey': 32, 'chief_expand': 33, 'chief_inspect': 34,
+    'chief_patrol': 35, 'chief_emergency': 36, 'chief_speech': 37,
+    'chief_dispatch': 38
 };
 
 export const StateNames = [];

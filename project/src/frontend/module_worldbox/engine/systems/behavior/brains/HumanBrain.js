@@ -9,11 +9,12 @@ import FoodSensor from '../sensors/FoodSensor.js';
  * 인간 개체의 고도화된 행동 우선순위를 결정합니다.
  */
 export default class HumanBrain {
-    constructor(entityManager, eventBus, engine, spatialHash) {
+    constructor(entityManager, eventBus, engine, spatialHash, jobSynchronizer) {
         this.em = entityManager;
         this.eventBus = eventBus;
         this.engine = engine;
         this.spatialHash = spatialHash;
+        this.jobSynchronizer = jobSynchronizer;
 
         // 🧠 전용 센서 초기화 (블랙리스트 연동 지원)
         this.predatorSensor = new PredatorSensor(entityManager, spatialHash);
@@ -59,18 +60,25 @@ export default class HumanBrain {
         }
 
         // 2. 생존 욕구 (허기, 피로)
-        // 🚀 [Expert AI] 번식 조건을 상시 충족하기 위해 허기 임계치 상향 (30 -> 75)
+        const jobCtrl = entity.components.get('JobController');
+        
         if (stats.hunger < 75) {
             const foodId = this._findFoodTarget(entity, state, stats);
             if (foodId) {
-                state.targetId = foodId;
+                if (jobCtrl && jobCtrl.currentJob !== JobTypes.UNEMPLOYED && state.mode !== AnimalStates.IDLE) {
+                    jobCtrl.requestSurvivalInterrupt(entity, AnimalStates.FORAGE);
+                    state.targetId = foodId; // 인터럽트 후 타겟 재설정
+                } else {
+                    state.targetId = foodId;
+                }
                 return AnimalStates.FORAGE;
             }
         }
 
-
         if (stats.fatigue > 90) {
-            GlobalLogger.info(`😴 FATIGUE: Citizen ${entity.id}${jobSuffix} is exhausted and seeking rest.`);
+            if (jobCtrl && jobCtrl.currentJob !== JobTypes.UNEMPLOYED && state.mode !== AnimalStates.IDLE) {
+                jobCtrl.requestSurvivalInterrupt(entity, AnimalStates.SLEEP);
+            }
             return AnimalStates.SLEEP;
         }
 
@@ -94,6 +102,10 @@ export default class HumanBrain {
         if (civ && civ.role) {
             const roleDecision = civ.role.decide(entity, dt);
             if (roleDecision) return roleDecision;
+        } else if (civ && (civ.jobType === JobTypes.UNEMPLOYED || !civ.jobType)) {
+            // 💼 [Job Recruitment] 백수 상태면 주기적으로 마을 게시판/쿼터 확인 (Pull 기반)
+            const newJob = this._checkJobRecruitment(entity, civ, dt);
+            if (newJob) return AnimalStates.IDLE; // 직업이 변경되면 다음 프레임에 새로운 Role로 결정
         }
 
         // 5. [Fallback] 할일이 없는 경우 주변 아이템 줍기 시도
@@ -104,13 +116,61 @@ export default class HumanBrain {
             const pickupId = this._getBestPickupTarget(entity, state);
             if (pickupId) {
                 state.targetId = pickupId;
-                // state.searchRange는 _getBestPickupTarget 내부에서 갱신됨
                 return AnimalStates.PICKUP;
             }
         }
 
         // 6. 진짜 아무것도 할 게 없으면 배회
         return AnimalStates.WANDER;
+    }
+
+    /**
+     * 💼 [Pull-based Recruitment]
+     * 마을의 인력 수급 현황을 파악하여 부족한 직업이 있다면 스스로 지원합니다.
+     */
+    _checkJobRecruitment(entity, civ, dt) {
+        if (!civ || civ.villageId === -1) return null;
+
+        const vs = this.engine.systemManager?.villageSystem;
+        const village = vs?.getVillage(civ.villageId);
+        if (!village || !village.jobQuotas || !village.jobDistribution) return null;
+
+        // ⏱️ 너무 자주 체크하지 않음 (랜덤 딜레이)
+        if (Math.random() > 0.05) return null;
+
+        const quotas = village.jobQuotas;
+        const dist = village.jobDistribution;
+
+        // 부족한 직업군 탐색
+        let bestCandidate = null;
+        let maxGap = 0;
+
+        for (const jobType in quotas) {
+            if (jobType === JobTypes.CHIEF || jobType === JobTypes.UNEMPLOYED) continue;
+            
+            const quota = quotas[jobType] || 0;
+            const current = dist[jobType] || 0;
+            
+            if (current < quota) {
+                const gap = quota - current;
+                if (gap > maxGap) {
+                    maxGap = gap;
+                    bestCandidate = jobType;
+                }
+            }
+        }
+
+        if (bestCandidate) {
+            // 🚀 [Atomic Switch] 스스로 직업 수락 (Synchronizer 위임)
+            if (this.jobSynchronizer) {
+                this.jobSynchronizer.syncJob(entity.id, bestCandidate);
+            }
+
+            GlobalLogger.info(`💼 [Recruit] Entity ${entity.id} joined ${bestCandidate} (Quota Pull).`);
+            return bestCandidate;
+        }
+
+        return null;
     }
 
     _findFoodTarget(entity, state, stats) {

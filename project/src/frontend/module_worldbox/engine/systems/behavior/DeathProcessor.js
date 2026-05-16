@@ -104,18 +104,22 @@ export default class DeathProcessor extends System {
         }
 
         // 2. 인벤토리 드롭 (가지고 있던 자원을 월드에 환원)
-        const inventory = entity.components.get('Inventory');
-        if (inventory && inventory.items) {
-            for (const [itemType, count] of Object.entries(inventory.items)) {
-                if (count > 0) {
-                    // 모든 아이템 타입을 드랍하도록 허용 (성능을 위해 5개 제한 유지)
-                    
-                    for (let i = 0; i < Math.min(5, count); i++) { // 너무 많이 드랍하면 성능 저하되므로 최대 5개 제한
-                        this.eventBus.emit('SPAWN_ENTITY', { 
-                            type: itemType, 
-                            x: transform.x + (Math.random() - 0.5) * 20, 
-                            y: transform.y + (Math.random() - 0.5) * 20 
-                        });
+        const vs = this.engine.systemManager?.villageSystem;
+        if (vs && vs.resourceTransaction) {
+            vs.resourceTransaction.dropAll(entity.id);
+        } else {
+            // Fallback: Legacy Drop (If transaction system is unavailable)
+            const inventory = entity.components.get('Inventory');
+            if (inventory && inventory.items) {
+                for (const [itemType, count] of Object.entries(inventory.items)) {
+                    if (count > 0) {
+                        for (let i = 0; i < Math.min(5, count); i++) {
+                            this.eventBus.emit('SPAWN_ENTITY', { 
+                                type: itemType, 
+                                x: transform.x + (Math.random() - 0.5) * 20, 
+                                y: transform.y + (Math.random() - 0.5) * 20 
+                            });
+                        }
                     }
                 }
             }

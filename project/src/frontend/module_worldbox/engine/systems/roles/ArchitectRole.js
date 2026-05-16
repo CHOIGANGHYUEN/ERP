@@ -1,4 +1,6 @@
 import BaseRole from './BaseRole.js';
+import ResourceRegistry from '../../data/ResourceRegistry.js';
+import BlueprintRegistry from '../../data/BlueprintRegistry.js';
 
 /**
  * 🏗️ ArchitectRole
@@ -41,26 +43,13 @@ export default class ArchitectRole extends BaseRole {
             return null;
         }
 
-        // 건물의 종류 및 진행도에 따른 필요 자원 파악
-        let requiredType = 'wood';
-        const type = structure.type;
-        const prog = structure.progress || 0;
-
-        if (type === 'house') {
-            if (prog > 50) requiredType = 'stone';
-        } else if (type === 'well' || type === 'temple' || type === 'watchtower') {
-            requiredType = 'stone';
-        } else if (type === 'blacksmith') {
-            requiredType = prog > 40 ? 'iron_ore' : 'stone';
-        } else if (type === 'warehouse' || type === 'storage') {
-            requiredType = 'wood';
-        }
+        // 🏗️ [BlueprintRegistry] 건물의 종류 및 진행도에 따른 필요 자원 파악 (OCP 달성)
+        const requiredType = BlueprintRegistry.getRequiredResource(structure.type, structure.progress || 0);
 
         const requiredAmount = 1;
 
-        // 🏷️ [Unified Match] 인벤토리에 필요한 자원(또는 유사 속성 자원)이 있는지 확인
-        // 🚀 [Expert Fix] hasFlexible을 사용하여 돌(Stone)-광물(Mineral) 등의 명칭 불일치 해결
-        const hasResource = inventory && requiredType && (typeof inventory.hasFlexible === 'function' ? inventory.hasFlexible(requiredType, requiredAmount) : inventory.has(requiredType, requiredAmount));
+        // 🏷️ [ResourceRegistry] 인벤토리에 필요한 자원(또는 유사 속성 자원)이 있는지 확인
+        const hasResource = inventory && ResourceRegistry.hasMatchInItems(inventory.items, requiredType, requiredAmount);
 
 
 
@@ -81,20 +70,9 @@ export default class ArchitectRole extends BaseRole {
                 const item = ent.components.get('DroppedItem');
                 if (!item) return false;
 
-                const req = requiredType.toLowerCase();
-                const iType = (item.itemType || '').toLowerCase();
-                const iCat = (item.category || '').toLowerCase();
-
-                // 🎯 [Flexible Match] 타입명 직접 일치 또는 카테고리 일치 확인
-                let isMatch = (iType === req) || (iCat === req);
-                
-                // 특수 케이스: 돌(stone)은 카테고리가 'mineral'일 수 있음
-                if (!isMatch) {
-                    if (req === 'stone' && (iCat === 'mineral' || iType.includes('stone') || iType.includes('rock'))) isMatch = true;
-                    if (req === 'wood' && (iCat === 'wood' || iType.includes('wood') || iType.includes('log'))) isMatch = true;
-                    if (req === 'iron_ore' && (iCat === 'mineral' || iType.includes('iron') || iType.includes('ore'))) isMatch = true;
-                    if (req === 'food' && (iCat === 'food' || iCat === 'nature' || iType === 'fruit' || iType === 'berry' || iType === 'meat')) isMatch = true;
-                }
+                // 🎯 [ResourceRegistry] 타입명 직접 일치 또는 카테고리 일치 확인
+                const isMatch = ResourceRegistry.isMatch(item.itemType || '', requiredType) || 
+                                ResourceRegistry.isMatch(item.category || '', requiredType);
 
                 if (isMatch) {
                     // 🏘️ [Ownership] 자국 아이템이거나 무소속 아이템만 수집
@@ -127,10 +105,9 @@ export default class ArchitectRole extends BaseRole {
                     const structComp = storeEnt?.components.get('Structure');
 
                     if (storeComp && structComp?.isComplete) {
-                        const lowerReq = requiredType.toLowerCase();
                         let found = false;
-                        for (const id of Object.keys(storeComp.items)) {
-                            if (id.toLowerCase().includes(lowerReq)) {
+                        for (const storeItemType of Object.keys(storeComp.items)) {
+                            if (ResourceRegistry.isMatch(storeItemType, requiredType)) {
                                 found = true;
                                 break;
                             }
@@ -160,10 +137,12 @@ export default class ArchitectRole extends BaseRole {
             state.targetId = null;
             state.targetResourceType = requiredType;
 
-            // 🪨 돌이나 철광석은 내구도가 있으므로 gather_wood(채광/벌목 로직)를 사용하고,
+            // 🪨 돌이나 철광석은 채광(gather_stone)을 사용하고,
+            // 🌲 나무는 벌목(gather_wood)을 사용하며,
             // 🌿 풀이나 베리류는 단발성인 gather_plant를 사용합니다.
-            const isHeavy = requiredType === 'stone' || requiredType === 'iron_ore' || requiredType === 'wood';
-            return isHeavy ? 'gather_wood' : 'gather_plant';
+            if (requiredType === 'stone' || requiredType === 'iron_ore') return 'gather_stone';
+            if (requiredType === 'wood') return 'gather_wood';
+            return 'gather_plant';
         }
 
         state.targetId = targetId;

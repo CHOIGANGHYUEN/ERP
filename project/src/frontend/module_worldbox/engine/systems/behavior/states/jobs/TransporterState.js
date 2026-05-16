@@ -219,17 +219,17 @@ export default class TransporterState extends BaseJobState {
             destId = this._findStorage(transform, civ, em, true);
             if (!destId) {
                 // 창고 없음 — 아이템 버리고 idle
-                jobCtrl.setData('carriedType', null);
-                jobCtrl.setData('carriedAmount', 0);
-                jobCtrl.jobState = 'FINDING_TASK';
+                jobCtrl.setData('waitTimer', (jobCtrl.getData('waitTimer') || 0) + dt);
                 return null;
             }
+            jobCtrl.setData('waitTimer', 0);
             jobCtrl.setData('destStorageId', destId);
         }
 
         const destEnt = em.entities.get(destId);
         if (!destEnt) {
             jobCtrl.setData('destStorageId', null);
+            jobCtrl.jobState = 'GOING_TO_DEST';
             return null;
         }
 
@@ -256,7 +256,7 @@ export default class TransporterState extends BaseJobState {
 
         if (!storage) {
             jobCtrl.setData('destStorageId', null);
-            jobCtrl.jobState = 'FINDING_TASK';
+            jobCtrl.jobState = 'GOING_TO_DEST';
             return null;
         }
 
@@ -277,16 +277,24 @@ export default class TransporterState extends BaseJobState {
                 jobCtrl.jobState = 'GOING_TO_DEST';
             } else {
                 // 모든 창고가 꽉 참 — 마을 창고에 강제 납입 후 종료
-                storage.addItem(resType, amount);
-                if (inventory) inventory.remove(resType, amount);
-                this._completeTask(jobCtrl, entity);
+                jobCtrl.setData('destStorageId', null);
+                jobCtrl.jobState = 'GOING_TO_DEST';
             }
             return null;
         }
 
         const added = storage.addItem(resType, amount);
         if (inventory) inventory.remove(resType, Math.min(added, amount));
-        jobCtrl.setData('carriedAmount', Math.max(0, amount - added));
+        const remaining = Math.max(0, amount - added);
+        if (remaining > 0) {
+            jobCtrl.setData('carriedAmount', remaining);
+            jobCtrl.setData('carriedType', resType);
+            jobCtrl.setData('destStorageId', null);
+            jobCtrl.jobState = 'GOING_TO_DEST';
+            return null;
+        }
+
+        jobCtrl.setData('carriedAmount', 0);
         jobCtrl.setData('carriedType', null);
 
         this._completeTask(jobCtrl, entity);
@@ -297,6 +305,15 @@ export default class TransporterState extends BaseJobState {
     // 헬퍼 메서드
     // ─────────────────────────────────────────────────
     _findStorage(transform, civ, em, isDeposit) {
+        const logistics = this.system.engine.systemManager?.villageSystem?.logisticsMediator;
+        if (logistics && civ?.villageId !== undefined && civ.villageId !== -1) {
+            const resourceType = 'wood';
+            const id = isDeposit
+                ? logistics.findStorageForDeposit(civ.villageId, resourceType, 1, transform)
+                : logistics.findStorageForWithdraw(civ.villageId, resourceType, 1, transform);
+            if (id !== null && id !== undefined) return id;
+        }
+
         const spatialHash = this.system.engine.spatialHash;
         if (!spatialHash || !transform) return null;
 

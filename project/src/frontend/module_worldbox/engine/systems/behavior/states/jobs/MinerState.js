@@ -1,5 +1,6 @@
 import BaseJobState from './BaseJobState.js';
 import Pathfinder from '../../../../utils/Pathfinder.js';
+import { JobExecutionStates } from '../../jobs/JobStateDefinitions.js';
 
 /**
  * ⛏️ MinerState
@@ -9,7 +10,7 @@ export default class MinerState extends BaseJobState {
     enter(entityId, entity) {
         const jobCtrl = entity.components.get('JobController');
         if (jobCtrl) {
-            jobCtrl.jobState = 'SEARCHING';
+            jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
             jobCtrl.targetId = null;
         }
     }
@@ -27,7 +28,7 @@ export default class MinerState extends BaseJobState {
 
         // 2. 업무 FSM
         switch (jobCtrl.jobState) {
-            case 'SEARCHING':
+            case JobExecutionStates.SEARCHING_TARGET:
                 // 🚀 [Optimization] 매 프레임 검색하는 대신 1.5초 간격으로 검색 수행
                 jobCtrl.setData('searchTimer', (jobCtrl.getData('searchTimer') || 0) + dt);
                 if (jobCtrl.getData('searchTimer') >= 1.5) {
@@ -35,10 +36,10 @@ export default class MinerState extends BaseJobState {
                     jobCtrl.setData('searchTimer', 0);
                 }
                 break;
-            case 'MOVING':
+            case JobExecutionStates.MOVING_TO_WORK:
                 this.moveToMineral(entity, jobCtrl, transform);
                 break;
-            case 'MINING':
+            case JobExecutionStates.WORKING:
                 this.mineMineral(entity, jobCtrl, dt);
                 break;
         }
@@ -67,26 +68,26 @@ export default class MinerState extends BaseJobState {
 
         if (jobCtrl.targetId) {
             jobCtrl.isTargetRequested = false;
-            jobCtrl.jobState = 'MOVING';
+            jobCtrl.jobState = JobExecutionStates.MOVING_TO_WORK;
         }
     }
 
     moveToMineral(entity, jobCtrl, transform) {
         const target = this.system.engine.entityManager.entities.get(jobCtrl.targetId);
         if (!target) {
-            jobCtrl.jobState = 'SEARCHING';
+            jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
             return;
         }
 
         const tPos = target.components.get('Transform');
         if (!tPos) {
-            jobCtrl.jobState = 'SEARCHING';
+            jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
             return;
         }
 
         const distSq = (tPos.x - transform.x) ** 2 + (tPos.y - transform.y) ** 2;
         if (distSq <= 1200) { // 약 35px 이내
-            jobCtrl.jobState = 'MINING';
+            jobCtrl.jobState = JobExecutionStates.WORKING;
             jobCtrl.setData('mineTimer', 0);
             transform.vx = 0;
             transform.vy = 0;
@@ -98,7 +99,7 @@ export default class MinerState extends BaseJobState {
                 if (aiState) aiState.addToBlacklist(jobCtrl.targetId, 60);
                 
                 jobCtrl.targetId = null;
-                jobCtrl.jobState = 'SEARCHING';
+                jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
                 if (this.system.eventBus) this.system.eventBus.emit('SHOW_SPEECH_BUBBLE', { entityId: entity.id, text: '❓', duration: 1500 });
             }
         }
@@ -107,7 +108,7 @@ export default class MinerState extends BaseJobState {
     mineMineral(entity, jobCtrl, dt) {
         const target = this.system.engine.entityManager.entities.get(jobCtrl.targetId);
         if (!target) {
-            jobCtrl.jobState = 'SEARCHING';
+            jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
             return;
         }
 
@@ -123,7 +124,7 @@ export default class MinerState extends BaseJobState {
             const visual = entity.components.get('Visual');
             if (visual) {
                 visual.impactTime = performance.now();
-                visual.impactType = 'gather';
+                visual.impactType = 'mine'; // 'gather'에서 'mine'으로 변경하여 모션 구별
             }
             
             const res = target.components.get('Resource');
@@ -152,11 +153,11 @@ export default class MinerState extends BaseJobState {
                 if (res.value <= 0) {
                     this.system.engine.entityManager.removeEntity(jobCtrl.targetId);
                     jobCtrl.targetId = null;
-                    jobCtrl.jobState = 'SEARCHING';
+                    jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
                 }
             } else {
                 jobCtrl.targetId = null;
-                jobCtrl.jobState = 'SEARCHING';
+                jobCtrl.jobState = JobExecutionStates.SEARCHING_TARGET;
             }
         }
     }

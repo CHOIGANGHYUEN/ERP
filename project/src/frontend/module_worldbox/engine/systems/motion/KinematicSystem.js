@@ -1,5 +1,12 @@
-import CollisionSystem from './CollisionSystem.js';
+import SpatialLODManager from './lod/SpatialLODManager.js';
+import CollisionResolver from './physics/CollisionResolver.js';
+import FlockingSolver from './physics/FlockingSolver.js';
 
+/**
+ * 🏃 KinematicSystem
+ * 모든 동적 엔티티의 물리 법칙(Euler Integration), 충돌 회피, 무리 행동 및 LOD 연산을 주관합니다.
+ * 리팩토링을 통해 수학 연산 로직을 lod/ 및 physics/ 모듈로 이관하였습니다.
+ */
 export default class KinematicSystem {
     constructor(engine) {
         this.engine = engine;
@@ -10,34 +17,28 @@ export default class KinematicSystem {
         const mw = this.engine.mapWidth || 2400;
         const mh = this.engine.mapHeight || 2400;
         
-        if (frameCount < 5 && frameCount % 10 === 0) {
-            console.log(`[KinematicSystem] Map Size: ${mw}x${mh}, Entities: ${em.animalIds.size}`);
-        }
-
         const camera = this.engine.camera;
         const spatialHash = this.engine.spatialHash;
         const fc = frameCount || 0;
 
-        // 🚀 [Expert Optimization] 더 이상 매 프레임 동적 해시를 지우지 않습니다. (Incremental Update)
-        // if (spatialHash) spatialHash.clearDynamic();
+        // 🚀 [Expert Optimization] 카메라 가시 영역 계산 (LOD 전용 객체 생성)
+        const margin = 300; 
+        const view = {
+            x: camera.x - margin,
+            y: camera.y - margin,
+            w: (camera.width / camera.zoom) + (margin * 2),
+            h: (camera.height / camera.zoom) + (margin * 2)
+        };
 
-        // 🚀 [Optimization] 카메라 가시 영역 계산 (LOD 및 Spatial Hash 등록용)
-        const margin = 300; // AI 탐색 범위를 고려하여 충분히 확보 (기존 100 -> 300)
-        const viewX = camera.x - margin;
-        const viewY = camera.y - margin;
-        const viewW = (camera.width / camera.zoom) + (margin * 2);
-        const viewH = (camera.height / camera.zoom) + (margin * 2);
-
-        // 👤 [Unified Physics] 모든 움직이는 개체(동물+인간)에 대해 물리 연산 적용
-        // em.animalIds에 이미 인간(human)이 포함되어 있으므로 em.humanIds를 별도로 돌릴 필요가 없음 (이중 업데이트 방지)
-        this._updateEntityList(em.animalIds, em, viewX, viewY, viewW, viewH, mw, mh, dt, frameCount, spatialHash);
+        // 👤 [Unified Physics] 동물 및 인간 개체 일괄 물리 업데이트
+        this._updateEntityList(em.animalIds, em, view, mw, mh, dt, fc, spatialHash);
     }
 
-    _updateEntityList(ids, em, viewX, viewY, viewW, viewH, mw, mh, dt, frameCount, spatialHash) {
+    _updateEntityList(ids, em, view, mw, mh, dt, frameCount, spatialHash) {
         const tBuffer = em.transformBuffer;
         const vBuffer = em.velocityBuffer;
         const tg = this.engine.terrainGen;
-        const items = ids.items; // 🚀 [Expert Optimization] Raw Array 접근
+        const items = ids.items; 
 
         for (let i = 0; i < items.length; i++) {
             const id = items[i];
@@ -48,153 +49,125 @@ export default class KinematicSystem {
             const y = tBuffer[tIdx + 1];
             let vx = vBuffer[vIdx];
             let vy = vBuffer[vIdx + 1];
-            const ax = vBuffer[vIdx + 2];
-            const ay = vBuffer[vIdx + 3];
 
-            // 1. [Physics LOD] 화면 밖 개체는 거리에 따라 물리 연산 빈도 차등 적용
-            const isVisible = (x > viewX && x < viewX + viewW && y > viewY && y < viewY + viewH);
+            // 1. [Spatial LOD] 화면 가시성 및 거리에 따른 연산 스킵 여부 결정
+            const lod = SpatialLODManager.getLODLevel(id, x, y, view, frameCount);
             
-            let currentDt = dt; // 🚀 [BugFix] dt 원본 보호를 위한 지역 변수 사용
-
-            // 🛑 [LOD Logic & Tick Slicing]
-            if (!isVisible) {
-                // 뷰포트 중심점과 거리 계산 (간략화된 맨해튼 거리)
-                const centerX = viewX + viewW / 2;
-                const centerY = viewY + viewH / 2;
-                const dist = Math.abs(x - centerX) + Math.abs(y - centerY);
-                
-                // 원거리(Far Offscreen): 화면 크기의 약 2배 이상 벗어난 경우
-                const isFar = dist > (viewW + viewH); 
-                
-                // 원거리: 10프레임에 1번 (6 FPS), 근거리: 3프레임에 1번 (20 FPS)
-                const skipFactor = isFar ? 10 : 3;
-                
-                if ((id + frameCount) % skipFactor !== 0) {
-                    // 보간(Interpolation)을 위한 선형 이동 처리
-                    const nextX = x + vx * currentDt;
-                    const nextY = y + vy * currentDt;
-                    
-                    // 🛡️ [Stability] NaN 방어
-                    if (isFinite(nextX) && isFinite(nextY)) {
-                        tBuffer[tIdx] = nextX;
-                        tBuffer[tIdx + 1] = nextY;
-                        
-                        // 🧭 [Incremental Spatial Update]
-                        if (spatialHash) {
-                            const cellSize = spatialHash.cellSize;
-                            const newKey = ((Math.floor(nextY / cellSize) + 1000) << 16) | (Math.floor(nextX / cellSize) + 1000);
-                            const oldKey = em.cellKeyBuffer[id];
-                            if (newKey !== oldKey) {
-                                if (oldKey !== -1) spatialHash.removeFromCell(id, oldKey, 0); // 0: Dynamic Layer
-                                spatialHash.insertWithKey(id, newKey, 0);
-                                em.cellKeyBuffer[id] = newKey;
-                            }
-                        }
-                    }
-                    continue; 
-                }
-                
-                // 틱 슬라이싱으로 인해 건너뛴 프레임만큼 dt 보정
-                currentDt = dt * skipFactor;
+            if (!lod.shouldUpdate) {
+                // 🚀 [Tick Slicing] 연산은 스킵하되, 마지막 속도 기반으로 선형 보간 이동만 수행
+                this._applyLinearMovement(id, x, y, vx, vy, dt, tBuffer, em, spatialHash);
+                continue; 
             }
 
-            // 🛑 [Expert Optimization] State Buffer를 이용한 상태 체크 (객체 lookup 제거)
-            const sIdx = id * 2;
-            const stateBitmask = em.stateBuffer[sIdx + 1];
-            if (stateBitmask & 1) continue; // 1: grabbed 상태면 물리 연산 제외
+            // 틱 슬라이싱으로 인해 건너뛴 프레임만큼 물리 시간(dt) 보정
+            const currentDt = dt * lod.skipFactor;
 
-            // 2. 가속도 적용 및 속도 갱신 (DOD)
+            // 2. [Status Check] Grabbed 상태 등 특수 상황 예외 처리
+            const stateBitmask = em.stateBuffer[id * 2 + 1];
+            if (stateBitmask & 1) continue; // 1: grabbed
+
+            // 3. [Physics Update] 가속도 적용 및 속도 갱신
+            const ax = vBuffer[vIdx + 2];
+            const ay = vBuffer[vIdx + 3];
+            
             vx += ax * currentDt;
             vy += ay * currentDt;
             
-            // 🛡️ [Stability] 속도 이상 수치(Infinity) 방지
             if (!isFinite(vx)) vx = 0;
             if (!isFinite(vy)) vy = 0;
 
             vBuffer[vIdx] = vx;
             vBuffer[vIdx + 1] = vy;
-            vBuffer[vIdx + 2] = 0; // ax = 0 (가속도는 매 프레임 초기화하여 누적 방지)
-            vBuffer[vIdx + 3] = 0; // ay = 0
+            vBuffer[vIdx + 2] = 0; // ax 초기화
+            vBuffer[vIdx + 3] = 0; // ay 초기화
 
-            // 3. 위치 통합 (Euler)
+            // 4. [Steering & Flocking] 충돌 회피 및 군집 행동 (화면 안에서만 정밀하게)
             let nextX = x + vx * dt;
             let nextY = y + vy * dt;
 
-            // 🛡️ [Step 29] Separation Steering (충돌 회피)
-            if (isVisible) {
-                const separation = CollisionSystem.resolveSeparation(id, x, y, spatialHash, em, 12);
-                const pushWeight = 0.5; // 밀어내는 강도
-                nextX += separation.pushX * pushWeight;
-                nextY += separation.pushY * pushWeight;
+            if (lod.isVisible) {
+                // Separation (충돌 회피)
+                const separation = CollisionResolver.resolveSeparation(id, x, y, spatialHash, em, 12);
+                nextX += separation.pushX * 0.5;
+                nextY += separation.pushY * 0.5;
 
-                // 🕊️ [Task 67] Boids Swarm Behavior (전사/전투 개체 대상)
+                // Boids Behavior (Warrior 등 특정 직업군 대상)
                 const jobType = em.jobBuffer ? em.jobBuffer[id * 2] : 0;
                 if (jobType === 9) { // 9: WARRIOR
-                    // Alignment (정렬) - 주변과 방향 맞추기
-                    const alignment = CollisionSystem.resolveAlignment(id, x, y, spatialHash, em, 40);
-                    nextX += alignment.avgVx * 0.05;
-                    nextY += alignment.avgVy * 0.05;
-
-                    // Cohesion (응집) - 무리 중심으로 모이기
-                    const cohesion = CollisionSystem.resolveCohesion(id, x, y, spatialHash, em, 50);
-                    nextX += (cohesion.centerX - x) * 0.02;
-                    nextY += (cohesion.centerY - y) * 0.02;
+                    const alignment = FlockingSolver.resolveAlignment(id, x, y, spatialHash, em, 40);
+                    const cohesion = FlockingSolver.resolveCohesion(id, x, y, spatialHash, em, 50);
+                    
+                    nextX += alignment.avgVx * 0.05 + (cohesion.centerX - x) * 0.02;
+                    nextY += alignment.avgVy * 0.05 + (cohesion.centerY - y) * 0.02;
                 }
             }
 
-            // 4. 지형 충돌 및 내비게이션 제한 (HPA* 호환)
+            // 5. [Environment Collision] 지형 내비게이션 제한 및 맵 경계 클램핑
             if (tg && !tg.isNavigable(nextX, nextY)) {
-                // 부딪혔을 때 속도 감쇄
                 vBuffer[vIdx] *= 0.1;
                 vBuffer[vIdx + 1] *= 0.1;
                 nextX = x;
                 nextY = y;
             }
 
-            // 5. 맵 경계 클램핑 (0 ~ mw/mh 사이로 제한)
-            // 🚀 [Critical Fix] mw, mh가 0이거나 유효하지 않을 경우를 대비한 방어 로직
-            const limitX = Math.max(10, (mw || 2400) - 10);
-            const limitY = Math.max(10, (mh || 2400) - 10);
+            const limitX = (mw || 2400) - 10;
+            const limitY = (mh || 2400) - 10;
             const finalX = Math.max(0, Math.min(limitX, nextX));
             const finalY = Math.max(0, Math.min(limitY, nextY));
 
-            // 🚀 [Expert AI] 마이크로 지터링 방지: 속도가 매우 낮으면 0으로 클램핑
-            if (vx * vx + vy * vy < 0.0025) { // speed < 0.05
+            if (vx * vx + vy * vy < 0.0025) { 
                 vBuffer[vIdx] = 0;
                 vBuffer[vIdx + 1] = 0;
             }
 
-            // 6. 결과 버퍼에 쓰기
+            // 6. [Write Back] 결과 버퍼 기록 및 방향 데이터 갱신
             tBuffer[tIdx] = finalX;
             tBuffer[tIdx + 1] = finalY;
 
-            if (finalX <= 0 || finalX >= (mw - 1)) vBuffer[vIdx] = 0;
-            if (finalY <= 0 || finalY >= (mh - 1)) vBuffer[vIdx + 1] = 0;
-
-            // 6. 🧭 방향 데이터 갱신 (DOD Render Buffer Write)
-            if (isVisible) {
-                const speedSq = vx * vx + vy * vy;
-                if (speedSq > 2.25) { // speed > 1.5
-                    const rIdx = id * 8;
-                    const targetAngle = Math.atan2(vy, vx);
-                    const dirIdx = Math.round(((targetAngle + Math.PI) / (Math.PI * 2)) * 8) % 8;
-                    
-                    em.renderBuffer[rIdx + 6] = dirIdx; // facing
-                    em.renderBuffer[rIdx + 3] = (dirIdx >= 3 && dirIdx <= 5) ? 1 : 0; // flipX
-                }
+            if (lod.isVisible) {
+                this._updateFacingDirection(id, vx, vy, em);
             }
 
-            // 7. 🚀 [Optimization] 공간 해시 증분 갱신 (Incremental Update)
-            if (spatialHash) {
-                const cellSize = spatialHash.cellSize;
-                const newKey = ((Math.floor(finalY / cellSize) + 1000) << 16) | (Math.floor(finalX / cellSize) + 1000);
-                const oldKey = em.cellKeyBuffer[id];
-                if (newKey !== oldKey) {
-                    if (oldKey !== -1) spatialHash.removeFromCell(id, oldKey, 0); // 0: Dynamic Layer
-                    spatialHash.insertWithKey(id, newKey, 0);
-                    em.cellKeyBuffer[id] = newKey;
-                }
-            }
+            // 7. [Spatial Hash] 증분 업데이트
+            this._updateSpatialHash(id, finalX, finalY, em, spatialHash);
+        }
+    }
+
+    /** 🚀 [Helper] 속도 기반 단순 선형 이동 (LOD 업데이트 스킵 시 사용) */
+    _applyLinearMovement(id, x, y, vx, vy, dt, tBuffer, em, spatialHash) {
+        const nextX = x + vx * dt;
+        const nextY = y + vy * dt;
+        if (isFinite(nextX) && isFinite(nextY)) {
+            tBuffer[id * 2] = nextX;
+            tBuffer[id * 2 + 1] = nextY;
+            this._updateSpatialHash(id, nextX, nextY, em, spatialHash);
+        }
+    }
+
+    /** 🧭 [Helper] 이동 방향에 따른 렌더링 Facing 데이터 업데이트 */
+    _updateFacingDirection(id, vx, vy, em) {
+        const speedSq = vx * vx + vy * vy;
+        if (speedSq > 2.25) { // speed > 1.5
+            const rIdx = id * 8;
+            const targetAngle = Math.atan2(vy, vx);
+            const dirIdx = Math.round(((targetAngle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+            
+            em.renderBuffer[rIdx + 6] = dirIdx; // facing
+            em.renderBuffer[rIdx + 3] = (dirIdx >= 3 && dirIdx <= 5) ? 1 : 0; // flipX
+        }
+    }
+
+    /** 📍 [Helper] 공간 해시 증분 갱신 (Cell 이동 감지) */
+    _updateSpatialHash(id, x, y, em, spatialHash) {
+        if (!spatialHash) return;
+        const cellSize = spatialHash.cellSize;
+        const newKey = ((Math.floor(y / cellSize) + 1000) << 16) | (Math.floor(x / cellSize) + 1000);
+        const oldKey = em.cellKeyBuffer[id];
+        
+        if (newKey !== oldKey) {
+            if (oldKey !== -1) spatialHash.removeFromCell(id, oldKey, 0); // 0: Dynamic
+            spatialHash.insertWithKey(id, newKey, 0);
+            em.cellKeyBuffer[id] = newKey;
         }
     }
 }

@@ -15,17 +15,19 @@ export const BuildRender = {
         const isDamaged = hpPercent < 0.6;
         const isSeverelyDamaged = hpPercent < 0.3;
 
-        // 💡 [Fix] 청사진 상태(건설 중)일 때도 본체(집 모양 등)를 반투명하게 그리도록 강제
-        if (!isComplete && !overlayOnly) {
-            this.renderConstructionDust(ctx, t, v, time);
-            
-            ctx.save();
-            ctx.globalAlpha = 0.6; // 청사진 알파
-            this._drawBuildingBody(ctx, t, v, actualType, time, false, hpPercent);
-            ctx.restore();
-            
-            this.renderBlueprintInfo(ctx, t, structure);
-            ctx.restore();
+        // 💡 [Fix] 청사진 상태(건설 중)일 때의 로직 분기 최적화
+        if (!isComplete) {
+            if (overlayOnly) {
+                // 🚧 건설 중인 경우: 먼지 효과만 렌더링 (동적)
+                this.renderConstructionDust(ctx, t, v, time);
+            } else {
+                // 🏗️ 본체 렌더링 (반투명)
+                ctx.save();
+                ctx.globalAlpha = 0.6; // 청사진 알파
+                this._drawBuildingBody(ctx, t, v, actualType, time, false, hpPercent);
+                ctx.restore();
+            }
+            // 청사진 정보 라벨은 EntityRenderer에서 직접 호출하도록 하여 성능 최적화 (배칭 호환)
             return;
         }
 

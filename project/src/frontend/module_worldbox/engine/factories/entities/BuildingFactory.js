@@ -54,7 +54,13 @@ export default class BuildingFactory extends IEntityFactory {
         }
 
         // 타입별 특수 기능 조립
-        if (type === 'storage' || type === 'warehouse') {
+        if (type === 'road' || type === 'dirt_road' || type === 'stone_road') {
+            builder.addComponent('Road', {
+                type,
+                speedMultiplier: type === 'stone_road' ? 1.8 : 1.45,
+                costMultiplier: type === 'stone_road' ? 0.45 : 0.65
+            });
+        } else if (type === 'storage' || type === 'warehouse') {
             builder.addComponent('Storage', new Storage({ capacity: 2000 }));
         } else if (type === 'house' || type === 'tent') {
             builder.addComponent('Housing', new Housing({ capacity: options.capacity || 4 }));

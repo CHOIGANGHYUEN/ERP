@@ -617,7 +617,7 @@ export default class Engine {
     }
 
     update(dt) {
-        if (this.isGenerating) return;
+        if (this.isGenerating || this._nationSyncLock) return;
         const time = performance.now();
 
         // 각 시스템의 업데이트 순서를 명시적으로 관리하는 매니저로 위임 (폴링/이벤트 기반 이원화)
